@@ -4,8 +4,8 @@
  * Mantiene separados el proyecto editable, la anatomía y el movimiento, y
  * ofrece una entrada única para crear, normalizar, validar e importar JSON.
  */
-import { PUPPET_TARGETS } from "./rig.js?v=0.6.0";
-import { TRANSFORM_PROPERTIES } from "./runtime.js?v=0.6.0";
+import { PUPPET_TARGETS } from "./rig.js?v=0.7.0";
+import { TRANSFORM_PROPERTIES } from "./runtime.js?v=0.7.0";
 
 export const STUDIO_SCHEMA = "cronicas-studio/v1";
 export const STUDIO_STATES = Object.freeze(["idle", "locomotion", "action", "hit", "defeated"]);

@@ -7,8 +7,8 @@ import {
   PUPPET_JOINT_PARENTS as PARENTS,
   PUPPET_PART_JOINTS as PART_JOINTS,
   PUPPET_TARGETS
-} from "../animations/rig.js?v=0.6.0";
-import { animationEase } from "../animations/runtime.js?v=0.6.0";
+} from "../animations/rig.js?v=0.7.0";
+import { animationEase } from "../animations/runtime.js?v=0.7.0";
 import {
   createStudioProject,
   normalizeStudioProject,
@@ -16,8 +16,8 @@ import {
   serializeStudioProject,
   STUDIO_EASES,
   validateStudioProject
-} from "../animations/studio-format.js?v=0.6.0";
-import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.6.0";
+} from "../animations/studio-format.js?v=0.7.0";
+import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.7.0";
 import {
   collapseHierarchicalSelection,
   constrainedTranslation,
@@ -27,8 +27,8 @@ import {
   hitScaleGizmo,
   scaleFromDrag,
   shortestAngleDelta
-} from "./gizmo.js?v=0.6.0";
-import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.6.0";
+} from "./gizmo.js?v=0.7.0";
+import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.7.0";
 
 const $ = (id) => document.getElementById(id);
 const BASE_SCALE = 0.32;
@@ -94,16 +94,28 @@ const MIDDLE_CHAINS = Object.freeze({
   kneeLeft: { upper: "hipLeft" }
 });
 const PANEL_DEFAULTS = Object.freeze({
-  left: { visible: true, dock: "left", lastDock: "left" },
-  right: { visible: true, dock: "right", lastDock: "right" },
+  skeleton: { visible: true, dock: "left", lastDock: "left" },
+  tracks: { visible: true, dock: "left", lastDock: "left" },
+  layers: { visible: true, dock: "left", lastDock: "left" },
+  inspector: { visible: true, dock: "right", lastDock: "right" },
+  presets: { visible: true, dock: "right", lastDock: "right" },
+  curves: { visible: true, dock: "right", lastDock: "right" },
   timeline: { visible: true, dock: "bottom", lastDock: "bottom" }
 });
-const PANEL_LABELS = Object.freeze({ left: "Jerarquía", right: "Inspector", timeline: "Línea de tiempo" });
+const PANEL_LABELS = Object.freeze({
+  skeleton: "Esqueleto", tracks: "Pistas", layers: "Capas",
+  inspector: "Inspector", presets: "Presets", curves: "Curvas",
+  timeline: "Línea de tiempo"
+});
 const DOCK_ZONES = Object.freeze(["left", "right", "bottom"]);
-const PANEL_LAYOUT_VERSION = 2;
+const PANEL_LAYOUT_VERSION = 3;
 const PANEL_FLOAT_SIZES = Object.freeze({
-  left: { width: 310, height: 470 },
-  right: { width: 350, height: 520 },
+  skeleton: { width: 310, height: 470 },
+  tracks: { width: 310, height: 430 },
+  layers: { width: 310, height: 470 },
+  inspector: { width: 350, height: 520 },
+  presets: { width: 320, height: 260 },
+  curves: { width: 420, height: 280 },
   timeline: { width: 760, height: 310 }
 });
 
@@ -115,7 +127,6 @@ const label = (id) => LABELS[id] || id.replaceAll("_", " ").replace(/^./, (value
 
 let project = freshProject();
 let mode = "animador";
-let leftTab = "skeleton";
 let rightTab = "inspector";
 let tool = "select";
 let selectedTarget = "rig";
@@ -178,7 +189,7 @@ function loadPanelLayout() {
         ...floatingGeometry
       }];
     }));
-    return { panels, active: { ...(saved.active || {}) } };
+    return { panels, active: saved.layoutVersion === PANEL_LAYOUT_VERSION ? { ...(saved.active || {}) } : {} };
   } catch {
     return { panels: structuredClone(PANEL_DEFAULTS), active: {} };
   }
@@ -204,8 +215,10 @@ function renderDockTabs(panelId) {
     button.onclick = (event) => {
       event.stopPropagation();
       dockActive[state.dock] = id;
+      if (["inspector", "presets", "curves"].includes(id)) rightTab = id;
       applyPanelLayout();
       savePanelStates();
+      if (id === "curves") requestAnimationFrame(drawCurve);
     };
     return button;
   }));
@@ -256,8 +269,10 @@ function applyPanelLayout() {
 function setPanelVisible(id, visible) {
   panelStates[id].visible = visible;
   if (visible && panelStates[id].dock !== "floating") dockActive[panelStates[id].dock] = id;
+  if (visible && ["inspector", "presets", "curves"].includes(id)) rightTab = id;
   applyPanelLayout();
   savePanelStates();
+  if (visible && id === "curves") requestAnimationFrame(drawCurve);
 }
 
 function setPanelFloating(id, floating) {
@@ -382,7 +397,8 @@ function bindPanels() {
   });
   $("reset-panels").onclick = () => {
     panelStates = structuredClone(PANEL_DEFAULTS);
-    dockActive = { left: "left", right: "right", bottom: "timeline" };
+    dockActive = { left: "skeleton", right: "inspector", bottom: "timeline" };
+    rightTab = "inspector";
     applyPanelLayout();
     savePanelStates();
     status("Disposición de paneles restablecida");
@@ -1010,6 +1026,9 @@ function draw() {
   context.restore();
   $("zoom-label").textContent = `${Math.round(zoom * 100)} %`;
   $("zoom").value = Math.round(zoom * 100);
+  document.querySelectorAll("[data-view-toggle]").forEach((toggle) => {
+    toggle.checked = $(toggle.dataset.viewToggle).checked;
+  });
   const pending = hasDraft() ? ` · Borrador ${draftTime} ms` : "";
   const selection = mode === "animador" ? ` · ${selectionLabel()}` : "";
   $("canvas-status").textContent = `Zoom: ${Math.round(zoom * 100)} % · ${label(mode)} · ${Math.round(time)} ms${selection}${pending}`;
@@ -1021,7 +1040,7 @@ function exactKey(target = selectedTarget, at = Math.round(time)) {
   return (project.clip.animation.keys[target] || []).find((frame) => frame.t === at) || null;
 }
 
-function appendTreeNode(node, depth, search) {
+function appendTreeNode(node, depth, search, host) {
   const visible = label(node.id).toLocaleLowerCase().includes(search) || (node.children || []).some((child) => label(child.id).toLocaleLowerCase().includes(search));
   if (!visible) return;
   const row = document.createElement("div");
@@ -1066,11 +1085,11 @@ function appendTreeNode(node, depth, search) {
     refresh();
   };
   row.append(icon, multi, button, toggle, lock);
-  $("tree").append(row);
-  (node.children || []).forEach((child) => appendTreeNode(child, depth + 1, search));
+  host.append(row);
+  (node.children || []).forEach((child) => appendTreeNode(child, depth + 1, search, host));
 }
 
-function renderLayers(search) {
+function renderLayers(search, host) {
   [...project.parts].sort((left, right) => right.z - left.z).forEach((item) => {
     if (!label(item.id).toLocaleLowerCase().includes(search)) return;
     const row = document.createElement("div");
@@ -1095,20 +1114,27 @@ function renderLayers(search) {
       refresh();
     };
     row.append(icon, button, toggle, lock);
-    $("tree").append(row);
+    host.append(row);
   });
 }
 
 function renderTree() {
-  $("tree").replaceChildren();
-  const search = $("search").value.trim().toLocaleLowerCase();
-  if (leftTab === "layers" || mode === "calibrador" || mode === "sprites") renderLayers(search);
-  else if (leftTab === "tracks") {
-    TARGETS.filter((target) => (project.clip.animation.keys[target] || []).length || !search)
-      .filter((target) => label(target).toLocaleLowerCase().includes(search))
-      .forEach((target) => appendTreeNode({ id: target }, 0, search));
-  } else TREE.forEach((node) => appendTreeNode(node, 0, search));
-  $("tree-meta").textContent = `${project.clip.rig} · ${project.clip.anatomy} · ${Object.keys(project.clip.animation.keys).length} pistas`;
+  document.querySelectorAll("[data-hierarchy-kind]").forEach((panel) => {
+    const kind = panel.dataset.hierarchyKind;
+    const host = panel.querySelector("[data-hierarchy-tree]");
+    const search = panel.querySelector("[data-hierarchy-search]").value.trim().toLocaleLowerCase();
+    host.replaceChildren();
+    if (kind === "layers") renderLayers(search, host);
+    else if (kind === "tracks") {
+      TARGETS.filter((target) => (project.clip.animation.keys[target] || []).length || !search)
+        .filter((target) => label(target).toLocaleLowerCase().includes(search))
+        .forEach((target) => appendTreeNode({ id: target }, 0, search, host));
+    } else TREE.forEach((node) => appendTreeNode(node, 0, search, host));
+    const description = kind === "layers"
+      ? `${project.parts.length} capas · ${project.clip.anatomy}`
+      : `${project.clip.rig} · ${Object.keys(project.clip.animation.keys).length} pistas`;
+    panel.querySelector("[data-hierarchy-meta]").textContent = description;
+  });
 }
 
 function renderInspector() {
@@ -1413,7 +1439,8 @@ function renderRuler() {
 }
 
 function renderTimeline() {
-  $("timeline-content").style.width = `${Math.round(1000 * timelineZoom)}px`;
+  const availableWidth = Math.max(900, $("timeline-scroll").clientWidth);
+  $("timeline-content").style.width = `${Math.round(availableWidth * timelineZoom)}px`;
   renderRuler();
   const host = $("tracks");
   host.replaceChildren();
@@ -1424,6 +1451,20 @@ function renderTimeline() {
 
 function gameValidationErrors() {
   return validateStudioProject(normalizeStudioProject(project.clip), { mode: "game", allowedTargets: PUPPET_TARGETS });
+}
+
+function createNewProject() {
+  if (!confirm("¿Crear un proyecto nuevo? El proyecto actual quedará reemplazado en el guardado local.")) return;
+  project = freshProject();
+  selectAnimationTarget("rig");
+  selectedPart = "torso";
+  selectedKeys.clear();
+  time = 0;
+  clearDraft();
+  clearGhost();
+  ensureImages();
+  commit("Proyecto nuevo creado");
+  setMode("animador");
 }
 
 function renderModeOverlay() {
@@ -1437,19 +1478,7 @@ function renderModeOverlay() {
     $("download-clip").onclick = exportClip;
   } else {
     overlay.innerHTML = `<h2>Proyecto</h2><div class="summary-grid"><div class="summary-card"><strong>${project.clip.animation.label}</strong><span>ID: ${project.clip.animation.id}<br>Rig: ${project.clip.rig}<br>Anatomía: ${project.clip.anatomy}<br>Estado: ${project.clip.animation.status}</span></div><div class="summary-card"><strong>Persistencia</strong><span>Guardado local versionado y exportación explícita. No se almacenan credenciales.</span></div></div><div class="button-row"><button id="new-project" class="small-button danger">Crear proyecto nuevo</button></div>`;
-    $("new-project").onclick = () => {
-      if (!confirm("¿Crear un proyecto nuevo? El proyecto actual quedará reemplazado en el guardado local.")) return;
-      project = freshProject();
-      selectAnimationTarget("rig");
-      selectedPart = "torso";
-      selectedKeys.clear();
-      time = 0;
-      clearDraft();
-      clearGhost();
-      ensureImages();
-      commit("Proyecto nuevo creado");
-      setMode("animador");
-    };
+    $("new-project").onclick = createNewProject;
   }
 }
 
@@ -1470,19 +1499,23 @@ function refresh() {
 
 function showRightTab(next) {
   rightTab = next;
-  document.querySelectorAll("[data-right-tab]").forEach((button) => button.classList.toggle("active", button.dataset.rightTab === next));
-  $("inspector-panel").hidden = next !== "inspector";
-  $("presets-panel").hidden = next !== "presets";
-  $("curves-panel").hidden = next !== "curves";
-  if (next === "curves") drawCurve();
+  const state = panelStates[next];
+  if (!state) return;
+  state.visible = true;
+  if (state.dock !== "floating") dockActive[state.dock] = next;
+  applyPanelLayout();
+  savePanelStates();
+  if (next === "curves") requestAnimationFrame(drawCurve);
 }
 
 function setMode(next) {
   mode = next;
   document.querySelectorAll("[data-mode]").forEach((button) => button.classList.toggle("active", button.dataset.mode === next));
-  if (next === "calibrador" || next === "sprites") leftTab = "layers";
-  if (next === "animador") leftTab = "skeleton";
-  document.querySelectorAll("[data-left-tab]").forEach((button) => button.classList.toggle("active", button.dataset.leftTab === leftTab));
+  const preferredPanel = next === "calibrador" || next === "sprites" ? "layers" : next === "animador" ? "skeleton" : null;
+  if (preferredPanel && panelStates[preferredPanel].visible && panelStates[preferredPanel].dock !== "floating") {
+    dockActive[panelStates[preferredPanel].dock] = preferredPanel;
+    applyPanelLayout();
+  }
   $("ghost").disabled = next !== "animador";
   setTool(tool);
   window.history.replaceState(null, "", `#${next}`);
@@ -1717,16 +1750,38 @@ function tick(now) {
 
 function bindControls() {
   document.querySelectorAll("[data-mode]").forEach((button) => { button.onclick = () => setMode(button.dataset.mode); });
-  document.querySelectorAll("[data-left-tab]").forEach((button) => {
-    button.onclick = () => {
-      leftTab = button.dataset.leftTab;
-      document.querySelectorAll("[data-left-tab]").forEach((item) => item.classList.toggle("active", item === button));
-      renderTree();
+  document.querySelectorAll("[data-tool]").forEach((button) => { button.onclick = () => setTool(button.dataset.tool); });
+  document.querySelectorAll("[data-hierarchy-search]").forEach((input) => { input.oninput = renderTree; });
+  document.querySelectorAll("[data-view-toggle]").forEach((toggle) => {
+    toggle.onchange = () => {
+      $(toggle.dataset.viewToggle).checked = toggle.checked;
+      draw();
     };
   });
-  document.querySelectorAll("[data-right-tab]").forEach((button) => { button.onclick = () => showRightTab(button.dataset.rightTab); });
-  document.querySelectorAll("[data-tool]").forEach((button) => { button.onclick = () => setTool(button.dataset.tool); });
-  $("search").oninput = renderTree;
+  const menuCommands = {
+    new: createNewProject,
+    open: () => $("file").click(),
+    save: () => saveLocal(hasDraft() ? "Proyecto guardado; el borrador del fotograma sigue pendiente" : "Proyecto guardado en este navegador"),
+    "export-project": exportProject,
+    "export-clip": exportClip,
+    undo,
+    redo,
+    fit: () => $("fit").click(),
+    fullscreen: () => $("fullscreen").click(),
+    shortcuts: () => status("Atajos: V seleccionar · H desplazar vista · R rotar · S escalar · Espacio reproducir · Ctrl+Z deshacer · Ctrl+Y rehacer")
+  };
+  document.querySelectorAll("[data-menu-command]").forEach((button) => {
+    button.onclick = () => {
+      menuCommands[button.dataset.menuCommand]?.();
+      button.closest("details")?.removeAttribute("open");
+    };
+  });
+  document.querySelectorAll(".app-menu").forEach((menu) => {
+    menu.addEventListener("toggle", () => {
+      if (!menu.open) return;
+      document.querySelectorAll(".app-menu[open]").forEach((other) => { if (other !== menu) other.removeAttribute("open"); });
+    });
+  });
   $("undo").onclick = undo;
   $("redo").onclick = redo;
   $("save-local").onclick = () => {
@@ -2071,6 +2126,8 @@ function initialize() {
   bindControls();
   bindCanvas();
   bindKeyboard();
+  const timelineResize = new ResizeObserver(() => renderTimeline());
+  timelineResize.observe($("timeline-scroll"));
   window.addEventListener("resize", draw);
   resetGhostFromProject(0);
   checkpoint();

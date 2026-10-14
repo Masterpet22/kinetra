@@ -10,11 +10,11 @@ const [html, css, editor] = await Promise.all([
 for (const mode of ["animador", "calibrador", "sprites", "exportar", "proyecto"]) {
   assert.match(html, new RegExp(`data-mode=["']${mode}["']`), `Debe existir el modo ${mode}`);
 }
-for (const id of ["canvas", "preview-canvas", "tree", "inspector-panel", "timeline-scroll", "tracks"]) {
+for (const id of ["canvas", "preview-canvas", "inspector-panel", "timeline-scroll", "tracks"]) {
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control ${id}`);
 }
 assert.doesNotMatch(html, /<iframe\b/i, "El Studio unificado no debe depender de vistas embebidas");
-assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.6\.0["']/);
+assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.7\.0["']/);
 assert.match(html, /navigator\.serviceWorker\.getRegistrations\(\)/, "El Studio debe retirar cachés heredadas antes de iniciar");
 assert.doesNotMatch(html, /window\.stop\(\)/, "La limpieza del Studio no debe abortar la navegación actual");
 assert.match(html, /id=["']timeline-zoom["']/, "El timeline debe tener zoom temporal independiente");
@@ -22,7 +22,7 @@ assert.match(css, /--left-dock:\s*270px/);
 assert.match(css, /--right-dock:\s*310px/);
 assert.match(css, /data-dock-zone=["']bottom["'][^}]*grid-column:\s*1\s*\/\s*-1/s);
 assert.match(editor, /sampleStudioAnimation/);
-assert.match(editor, /studio-format\.js\?v=0\.6\.0/, "Los módulos internos deben invalidar la caché junto con el editor");
+assert.match(editor, /studio-format\.js\?v=0\.7\.0/, "Los módulos internos deben invalidar la caché junto con el editor");
 assert.match(editor, /validateStudioProject/);
 assert.match(editor, /mode:\s*["']game["']/);
 assert.match(editor, /function restoreHistory/);
@@ -32,7 +32,7 @@ assert.match(editor, /lockedTargets/);
 assert.match(editor, /timelineZoom/);
 assert.match(editor, /TRANSFORM_FIELDS/);
 assert.match(editor, /spriteEvents/);
-assert.match(editor, /if \(rightTab === ["']curves["']\) drawCurve\(\)/, "El inspector no debe dibujar una curva en una pestaña oculta");
+assert.match(editor, /if \(rightTab === ["']curves["']\) drawCurve\(\)/, "El inspector solo debe actualizar la curva cuando esa ventana está activa");
 assert.match(editor, /if \(width <= 0 \|\| height <= 0\) return;/, "El lienzo de curvas debe ignorar dimensiones nulas");
 assert.doesNotMatch(editor, /x \+= width \/ 6|y \+= height \/ 4/, "La cuadrícula de curvas no debe usar incrementos que puedan valer cero");
 assert.match(html, /data-tool=["']select["'][^>]*title=["']Seleccionar y mover objetivo \(V\).*selección múltiple["']/, "La herramienta principal debe anunciar el desplazamiento y la selección múltiple");
@@ -60,10 +60,20 @@ assert.match(editor, /event\.shiftKey && tool === "select"/, "Mayús debe añadi
 assert.match(editor, /solveTwoBoneIk\(/, "Las extremidades deben usar cinemática inversa al arrastrar manos o pies");
 assert.match(editor, /solveJointRotation\(/, "Los codos y rodillas deben rotar desde su hueso superior sin romper la cadena");
 assert.match(editor, /className = "tree-multi"/, "El árbol debe ofrecer un control explícito de selección múltiple");
-for (const panel of ["left", "right", "timeline"]) {
+for (const panel of ["skeleton", "tracks", "layers", "inspector", "presets", "curves", "timeline"]) {
   assert.match(html, new RegExp(`data-panel=["']${panel}["']`), `Debe existir el panel móvil ${panel}`);
   assert.match(html, new RegExp(`data-panel-toggle=["']${panel}["']`), `El panel ${panel} debe poder activarse`);
 }
+for (const menu of ["Archivo", "Edición", "Ver", "Ventana", "Ayuda"]) {
+  assert.match(html, new RegExp(`<summary>${menu}</summary>`), `Debe existir el menú de aplicación ${menu}`);
+}
+for (const kind of ["skeleton", "tracks", "layers"]) {
+  assert.match(html, new RegExp(`data-hierarchy-kind=["']${kind}["']`), `La subventana ${kind} debe tener contenido independiente`);
+}
+assert.match(editor, /timeline-scroll["']\)\.clientWidth/, "La línea de tiempo debe partir del ancho realmente disponible");
+assert.match(editor, /new ResizeObserver\(\(\) => renderTimeline\(\)\)/, "La línea de tiempo debe reaccionar al redimensionado de su panel");
+assert.match(css, /\.workspace\s*\{[^}]*container-type:\s*inline-size/s, "La barra de herramientas debe responder al espacio del lienzo");
+assert.match(css, /\.toolbar\s*\{[^}]*flex-wrap:\s*wrap/s, "Los controles no deben quedar ocultos bajo el inspector");
 assert.match(editor, /function bindPanels\(/, "Los paneles deben poder desacoplarse y moverse");
 for (const zone of ["left", "right", "bottom"]) {
   assert.match(html, new RegExp(`data-dock-target=["']${zone}["']`), `Debe existir la zona de acoplamiento ${zone}`);

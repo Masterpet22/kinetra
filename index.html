@@ -21,11 +21,61 @@
       ]).catch((error) => console.warn("No se pudo retirar una caché antigua", error));
     })();
   </script>
-  <link rel="stylesheet" href="./styles.css?v=0.6.0">
+  <link rel="stylesheet" href="./styles.css?v=0.7.0">
 </head>
 <body>
   <header class="studio-header">
     <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span>Kinetra</span></div>
+    <nav class="app-menu-bar" aria-label="Menú de aplicación">
+      <details class="app-menu">
+        <summary>Archivo</summary>
+        <div class="app-menu-popover">
+          <button data-menu-command="new">Nuevo proyecto</button>
+          <button data-menu-command="open">Abrir JSON…</button>
+          <button data-menu-command="save">Guardar localmente</button>
+          <hr>
+          <button data-menu-command="export-project">Exportar proyecto…</button>
+          <button data-menu-command="export-clip">Exportar clip…</button>
+        </div>
+      </details>
+      <details class="app-menu">
+        <summary>Edición</summary>
+        <div class="app-menu-popover">
+          <button data-menu-command="undo">Deshacer <kbd>Ctrl Z</kbd></button>
+          <button data-menu-command="redo">Rehacer <kbd>Ctrl Y</kbd></button>
+        </div>
+      </details>
+      <details class="app-menu">
+        <summary>Ver</summary>
+        <div class="app-menu-popover">
+          <label><input type="checkbox" data-view-toggle="grid" checked> Cuadrícula</label>
+          <label><input type="checkbox" data-view-toggle="bones" checked> Huesos</label>
+          <label><input type="checkbox" data-view-toggle="ghost" checked> Vista fantasma</label>
+          <hr>
+          <button data-menu-command="fit">Centrar vista</button>
+          <button data-menu-command="fullscreen">Pantalla completa</button>
+        </div>
+      </details>
+      <details class="app-menu">
+        <summary>Ventana</summary>
+        <div class="app-menu-popover app-menu-windows">
+          <label><input type="checkbox" data-panel-toggle="skeleton" checked> Esqueleto</label>
+          <label><input type="checkbox" data-panel-toggle="tracks" checked> Pistas</label>
+          <label><input type="checkbox" data-panel-toggle="layers" checked> Capas</label>
+          <label><input type="checkbox" data-panel-toggle="inspector" checked> Inspector</label>
+          <label><input type="checkbox" data-panel-toggle="presets" checked> Presets</label>
+          <label><input type="checkbox" data-panel-toggle="curves" checked> Curvas</label>
+          <label><input type="checkbox" data-panel-toggle="timeline" checked> Línea de tiempo</label>
+          <hr>
+          <button id="reset-panels">Restablecer disposición</button>
+          <small>Arrastra ⠿ para convertir cualquier módulo en ventana o acoplarlo a otro borde.</small>
+        </div>
+      </details>
+      <details class="app-menu">
+        <summary>Ayuda</summary>
+        <div class="app-menu-popover"><button data-menu-command="shortcuts">Atajos de teclado</button></div>
+      </details>
+    </nav>
     <nav class="main-nav" aria-label="Herramientas del Studio">
       <button class="nav-button active" data-mode="animador">Animador</button>
       <button class="nav-button" data-mode="calibrador">Calibrador</button>
@@ -36,17 +86,6 @@
     <div class="header-spacer"></div>
     <label class="project-title">Proyecto <input id="project-name" value="nuevo_movimiento" maxlength="80" aria-label="ID del proyecto"></label>
     <div class="header-actions">
-      <details id="panel-menu" class="panel-menu">
-        <summary class="header-action">Paneles</summary>
-        <div class="panel-menu-popover">
-          <strong>Ventanas</strong>
-          <label><input type="checkbox" data-panel-toggle="left" checked> Jerarquía</label>
-          <label><input type="checkbox" data-panel-toggle="right" checked> Inspector</label>
-          <label><input type="checkbox" data-panel-toggle="timeline" checked> Línea de tiempo</label>
-          <small>Arrastra la barra de una ventana hacia un borde para acoplarla. Varias ventanas en la misma zona se organizan como pestañas.</small>
-          <button id="reset-panels" class="small-button">Restablecer disposición</button>
-        </div>
-      </details>
       <button id="undo" class="header-action" title="Deshacer (Ctrl+Z)" aria-label="Deshacer">↶</button>
       <button id="redo" class="header-action" title="Rehacer (Ctrl+Y)" aria-label="Rehacer">↷</button>
       <button id="header-play" class="header-action" title="Reproducir (Espacio)">▶ Reproducir</button>
@@ -56,21 +95,28 @@
   </header>
 
   <main class="studio-shell">
-    <aside class="panel left-panel" data-panel="left">
-      <div class="panel-window-bar" data-panel-handle="left">
-        <span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="left"></span>
-        <span class="panel-window-actions"><button data-panel-float="left" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Jerarquía">↗</button><button data-panel-close="left" title="Ocultar panel" aria-label="Ocultar Jerarquía">×</button></span>
-      </div>
-      <div class="panel-tabs" role="tablist" aria-label="Organización">
-        <button class="tab-button active" data-left-tab="skeleton">Esqueleto</button>
-        <button class="tab-button" data-left-tab="tracks">Pistas</button>
-        <button class="tab-button" data-left-tab="layers">Capas</button>
+    <aside class="panel left-panel hierarchy-panel" data-panel="skeleton" data-hierarchy-kind="skeleton">
+      <div class="panel-window-bar" data-panel-handle="skeleton">
+        <span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="skeleton"></span>
+        <span class="panel-window-actions"><button data-panel-float="skeleton" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Esqueleto">↗</button><button data-panel-close="skeleton" title="Ocultar panel" aria-label="Ocultar Esqueleto">×</button></span>
       </div>
       <div class="panel-body">
-        <input id="search" class="search" type="search" placeholder="Buscar articulación…">
-        <div id="tree" class="tree"></div>
+        <input class="search" data-hierarchy-search type="search" placeholder="Buscar articulación…">
+        <div class="tree" data-hierarchy-tree></div>
       </div>
-      <div id="tree-meta" class="tree-meta">Rig humanoide · Proyecto local</div>
+      <div class="tree-meta" data-hierarchy-meta>Rig humanoide · Proyecto local</div>
+    </aside>
+
+    <aside class="panel left-panel hierarchy-panel" data-panel="tracks" data-hierarchy-kind="tracks">
+      <div class="panel-window-bar" data-panel-handle="tracks"><span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="tracks"></span><span class="panel-window-actions"><button data-panel-float="tracks" aria-label="Desacoplar o acoplar Pistas">↗</button><button data-panel-close="tracks" aria-label="Ocultar Pistas">×</button></span></div>
+      <div class="panel-body"><input class="search" data-hierarchy-search type="search" placeholder="Buscar pista…"><div class="tree" data-hierarchy-tree></div></div>
+      <div class="tree-meta" data-hierarchy-meta></div>
+    </aside>
+
+    <aside class="panel left-panel hierarchy-panel" data-panel="layers" data-hierarchy-kind="layers">
+      <div class="panel-window-bar" data-panel-handle="layers"><span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="layers"></span><span class="panel-window-actions"><button data-panel-float="layers" aria-label="Desacoplar o acoplar Capas">↗</button><button data-panel-close="layers" aria-label="Ocultar Capas">×</button></span></div>
+      <div class="panel-body"><input class="search" data-hierarchy-search type="search" placeholder="Buscar capa…"><div class="tree" data-hierarchy-tree></div></div>
+      <div class="tree-meta" data-hierarchy-meta></div>
     </aside>
 
     <section class="workspace">
@@ -110,15 +156,10 @@
       </div>
     </section>
 
-    <aside class="panel right-panel" data-panel="right">
-      <div class="panel-window-bar" data-panel-handle="right">
-        <span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="right"></span>
-        <span class="panel-window-actions"><button data-panel-float="right" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Inspector">↗</button><button data-panel-close="right" title="Ocultar panel" aria-label="Ocultar Inspector">×</button></span>
-      </div>
-      <div class="panel-tabs" role="tablist" aria-label="Panel derecho">
-        <button class="tab-button active" data-right-tab="inspector">Inspector</button>
-        <button class="tab-button" data-right-tab="presets">Presets</button>
-        <button class="tab-button" data-right-tab="curves">Curvas</button>
+    <aside class="panel right-panel" data-panel="inspector">
+      <div class="panel-window-bar" data-panel-handle="inspector">
+        <span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="inspector"></span>
+        <span class="panel-window-actions"><button data-panel-float="inspector" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Inspector">↗</button><button data-panel-close="inspector" title="Ocultar panel" aria-label="Ocultar Inspector">×</button></span>
       </div>
       <div class="right-tabs-content">
         <div id="inspector-panel">
@@ -181,14 +222,17 @@
 
           <section class="inspector-section"><h2>Estado</h2><p id="status" class="status">Listo</p></section>
         </div>
-
-        <div id="presets-panel" hidden>
-          <section class="inspector-section"><h2>Curvas permitidas</h2><div id="preset-grid" class="preset-grid"></div><p class="muted">Cada preset corresponde a una curva comprendida por Studio y por el runtime del juego.</p></section>
-        </div>
-        <div id="curves-panel" hidden>
-          <section class="inspector-section"><h2>Vista de interpolación</h2><canvas id="curve-canvas"></canvas><p id="curve-label" class="muted">Linear</p></section>
-        </div>
       </div>
+    </aside>
+
+    <aside class="panel right-panel" data-panel="presets">
+      <div class="panel-window-bar" data-panel-handle="presets"><span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="presets"></span><span class="panel-window-actions"><button data-panel-float="presets" aria-label="Desacoplar o acoplar Presets">↗</button><button data-panel-close="presets" aria-label="Ocultar Presets">×</button></span></div>
+      <div id="presets-panel" class="right-tabs-content"><section class="inspector-section"><h2>Curvas permitidas</h2><div id="preset-grid" class="preset-grid"></div><p class="muted">Cada preset corresponde a una curva comprendida por Studio y por el runtime del juego.</p></section></div>
+    </aside>
+
+    <aside class="panel right-panel" data-panel="curves">
+      <div class="panel-window-bar" data-panel-handle="curves"><span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="curves"></span><span class="panel-window-actions"><button data-panel-float="curves" aria-label="Desacoplar o acoplar Curvas">↗</button><button data-panel-close="curves" aria-label="Ocultar Curvas">×</button></span></div>
+      <div id="curves-panel" class="right-tabs-content"><section class="inspector-section"><h2>Vista de interpolación</h2><canvas id="curve-canvas"></canvas><p id="curve-label" class="muted">Linear</p></section></div>
     </aside>
 
     <section class="timeline" data-panel="timeline">
@@ -229,6 +273,6 @@
   </main>
 
   <input id="file" type="file" accept=".json,application/json">
-  <script type="module" src="./src/studio/editor.js?v=0.6.0"></script>
+  <script type="module" src="./src/studio/editor.js?v=0.7.0"></script>
 </body>
 </html>
