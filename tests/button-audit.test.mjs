@@ -8,7 +8,7 @@ const [html, editor] = await Promise.all([
 
 const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const attribute = (tag, name) => tag.match(new RegExp(`${name}=["']([^"']+)["']`))?.[1] || null;
-const genericActions = ["data-mode", "data-tool", "data-menu-command", "data-panel-float", "data-panel-close"];
+const genericActions = ["data-mode", "data-tool", "data-menu-command", "data-panel-float", "data-panel-close", "data-tutorial"];
 const buttons = [...html.matchAll(/<button\b[^>]*>/g)].map((match) => match[0]);
 
 assert.ok(buttons.length > 30, "La auditoría debe abarcar los controles estáticos del Studio");
@@ -29,5 +29,6 @@ for (const id of ["download-project", "download-clip", "new-project"]) {
 assert.match(editor, /function updatePlaybackButtons\(/, "Los tres accesos de reproducción deben compartir estado visible");
 assert.match(editor, /preview-play["']\)\.onclick\s*=\s*\(\)\s*=>\s*playing\s*\?\s*pause\(\)\s*:\s*play\(\)/);
 assert.match(editor, /header-play["']\)\.onclick\s*=\s*\(\)\s*=>\s*playing\s*\?\s*pause\(\)\s*:\s*play\(\)/);
+assert.match(editor, /\$\(["']play["']\)\.onclick\s*=\s*\(\)\s*=>\s*playing\s*\?\s*pause\(\)\s*:\s*play\(\)/);
 
 console.log(`Auditoría de ${buttons.length + 3} botones de Kinetra superada.`);

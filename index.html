@@ -21,28 +21,31 @@
       ]).catch((error) => console.warn("No se pudo retirar una caché antigua", error));
     })();
   </script>
-  <link rel="stylesheet" href="./styles.css?v=0.7.1">
+  <link rel="stylesheet" href="./styles.css?v=0.8.0">
+  <script defer src="https://unpkg.com/lucide@1.57.0/dist/umd/lucide.min.js"></script>
 </head>
 <body>
   <header class="studio-header">
-    <div class="brand"><img class="brand-logo" src="./assets/brand/kinetra-logo.png?v=0.7.1" alt="Kinetra"></div>
+    <div class="brand"><img class="brand-logo" src="./assets/brand/kinetra-logo.png?v=0.8.0" alt="Kinetra"></div>
     <nav class="app-menu-bar" aria-label="Menú de aplicación">
       <details class="app-menu">
         <summary>Archivo</summary>
         <div class="app-menu-popover">
-          <button data-menu-command="new">Nuevo proyecto</button>
-          <button data-menu-command="open">Abrir JSON…</button>
-          <button data-menu-command="save">Guardar localmente</button>
+          <button data-menu-command="new"><span><i data-lucide="file-plus-2"></i> Nuevo proyecto</span></button>
+          <button data-menu-command="open"><span><i data-lucide="folder-open"></i> Abrir JSON…</span></button>
+          <button data-menu-command="save"><span><i data-lucide="save"></i> Guardar localmente</span></button>
           <hr>
-          <button data-menu-command="export-project">Exportar proyecto…</button>
-          <button data-menu-command="export-clip">Exportar clip…</button>
+          <button data-mode="proyecto"><span><i data-lucide="layout-dashboard"></i> Resumen del proyecto</span></button>
+          <button data-mode="exportar"><span><i data-lucide="package-check"></i> Preparar exportación</span></button>
+          <button data-menu-command="export-project"><span><i data-lucide="download"></i> Exportar proyecto…</span></button>
+          <button data-menu-command="export-clip"><span><i data-lucide="film"></i> Exportar clip…</span></button>
         </div>
       </details>
       <details class="app-menu">
         <summary>Edición</summary>
         <div class="app-menu-popover">
-          <button data-menu-command="undo">Deshacer <kbd>Ctrl Z</kbd></button>
-          <button data-menu-command="redo">Rehacer <kbd>Ctrl Y</kbd></button>
+          <button data-menu-command="undo"><span><i data-lucide="undo-2"></i> Deshacer</span><kbd>Ctrl Z</kbd></button>
+          <button data-menu-command="redo"><span><i data-lucide="redo-2"></i> Rehacer</span><kbd>Ctrl Y</kbd></button>
         </div>
       </details>
       <details class="app-menu">
@@ -52,8 +55,8 @@
           <label><input type="checkbox" data-view-toggle="bones" checked> Huesos</label>
           <label><input type="checkbox" data-view-toggle="ghost" checked> Vista fantasma</label>
           <hr>
-          <button data-menu-command="fit">Centrar vista</button>
-          <button data-menu-command="fullscreen">Pantalla completa</button>
+          <button data-menu-command="fit"><span><i data-lucide="scan"></i> Centrar vista</span></button>
+          <button data-menu-command="fullscreen"><span><i data-lucide="maximize-2"></i> Pantalla completa</span></button>
         </div>
       </details>
       <details class="app-menu">
@@ -66,39 +69,47 @@
           <label><input type="checkbox" data-panel-toggle="presets" checked> Presets</label>
           <label><input type="checkbox" data-panel-toggle="curves" checked> Curvas</label>
           <label><input type="checkbox" data-panel-toggle="timeline" checked> Línea de tiempo</label>
+          <label><input id="preview-toggle" type="checkbox" checked> Vista previa</label>
           <hr>
-          <button id="reset-panels">Restablecer disposición</button>
-          <small>Arrastra ⠿ para convertir cualquier módulo en ventana o acoplarlo a otro borde.</small>
+          <button id="reset-panels"><span><i data-lucide="rotate-ccw"></i> Restablecer disposición</span></button>
+          <small>Arrastra el asa de una ventana para moverla o acoplarla a otro borde.</small>
+        </div>
+      </details>
+      <details class="app-menu workspace-menu" id="workspace-menu">
+        <summary><i data-lucide="panels-top-left"></i><span id="workspace-menu-label">Animador</span></summary>
+        <div class="app-menu-popover">
+          <button data-mode="animador"><span><i data-lucide="film"></i> Animador</span></button>
+          <button data-mode="calibrador"><span><i data-lucide="bone"></i> Ensamblaje</span></button>
         </div>
       </details>
       <details class="app-menu">
         <summary>Ayuda</summary>
-        <div class="app-menu-popover"><button data-menu-command="shortcuts">Atajos de teclado</button></div>
+        <div class="app-menu-popover help-menu-popover">
+          <button data-tutorial="animador"><span><i data-lucide="film"></i> Tutorial del Animador</span></button>
+          <button data-tutorial="calibrador"><span><i data-lucide="bone"></i> Tutorial de Ensamblaje</span></button>
+          <button data-tutorial="timeline"><span><i data-lucide="clock-3"></i> Tutorial de línea de tiempo</span></button>
+          <button data-tutorial="paneles"><span><i data-lucide="panels-top-left"></i> Tutorial de paneles</span></button>
+          <button data-tutorial="exportar"><span><i data-lucide="package-check"></i> Tutorial de exportación</span></button>
+          <hr>
+          <button data-menu-command="shortcuts"><span><i data-lucide="keyboard"></i> Atajos de teclado</span></button>
+        </div>
       </details>
-    </nav>
-    <nav class="main-nav" aria-label="Herramientas del Studio">
-      <button class="nav-button active" data-mode="animador">Animador</button>
-      <button class="nav-button" data-mode="calibrador">Calibrador</button>
-      <button class="nav-button" data-mode="sprites">Sprites</button>
-      <button class="nav-button" data-mode="exportar">Exportar</button>
-      <button class="nav-button" data-mode="proyecto">Proyecto</button>
     </nav>
     <div class="header-spacer"></div>
     <label class="project-title">Proyecto <input id="project-name" value="nuevo_movimiento" maxlength="80" aria-label="ID del proyecto"></label>
     <div class="header-actions">
-      <button id="undo" class="header-action" title="Deshacer (Ctrl+Z)" aria-label="Deshacer">↶</button>
-      <button id="redo" class="header-action" title="Rehacer (Ctrl+Y)" aria-label="Rehacer">↷</button>
-      <button id="header-play" class="header-action" title="Reproducir (Espacio)">▶ Reproducir</button>
-      <button id="open-file" class="header-action">Abrir JSON</button>
-      <button id="save-local" class="header-action primary">▣ Guardar</button>
+      <button id="undo" class="header-action icon-button" title="Deshacer (Ctrl+Z)" aria-label="Deshacer"><i data-lucide="undo-2"></i></button>
+      <button id="redo" class="header-action icon-button" title="Rehacer (Ctrl+Y)" aria-label="Rehacer"><i data-lucide="redo-2"></i></button>
+      <button id="header-play" class="header-action playback-toggle" title="Reproducir (Espacio)" aria-label="Reproducir"><i class="when-stopped" data-lucide="play"></i><i class="when-playing" data-lucide="square"></i><span class="playback-label">Reproducir</span></button>
+      <button id="save-local" class="header-action primary"><i data-lucide="save"></i><span>Guardar</span></button>
     </div>
   </header>
 
   <main class="studio-shell">
     <aside class="panel left-panel hierarchy-panel" data-panel="skeleton" data-hierarchy-kind="skeleton">
       <div class="panel-window-bar" data-panel-handle="skeleton">
-        <span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="skeleton"></span>
-        <span class="panel-window-actions"><button data-panel-float="skeleton" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Esqueleto">↗</button><button data-panel-close="skeleton" title="Ocultar panel" aria-label="Ocultar Esqueleto">×</button></span>
+        <span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="skeleton"></span>
+        <span class="panel-window-actions"><button data-panel-float="skeleton" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Esqueleto"><i data-lucide="external-link"></i></button><button data-panel-close="skeleton" title="Ocultar panel" aria-label="Ocultar Esqueleto"><i data-lucide="x"></i></button></span>
       </div>
       <div class="panel-body">
         <input class="search" data-hierarchy-search type="search" placeholder="Buscar articulación…">
@@ -108,13 +119,13 @@
     </aside>
 
     <aside class="panel left-panel hierarchy-panel" data-panel="tracks" data-hierarchy-kind="tracks">
-      <div class="panel-window-bar" data-panel-handle="tracks"><span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="tracks"></span><span class="panel-window-actions"><button data-panel-float="tracks" aria-label="Desacoplar o acoplar Pistas">↗</button><button data-panel-close="tracks" aria-label="Ocultar Pistas">×</button></span></div>
+      <div class="panel-window-bar" data-panel-handle="tracks"><span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="tracks"></span><span class="panel-window-actions"><button data-panel-float="tracks" aria-label="Desacoplar o acoplar Pistas"><i data-lucide="external-link"></i></button><button data-panel-close="tracks" aria-label="Ocultar Pistas"><i data-lucide="x"></i></button></span></div>
       <div class="panel-body"><input class="search" data-hierarchy-search type="search" placeholder="Buscar pista…"><div class="tree" data-hierarchy-tree></div></div>
       <div class="tree-meta" data-hierarchy-meta></div>
     </aside>
 
     <aside class="panel left-panel hierarchy-panel" data-panel="layers" data-hierarchy-kind="layers">
-      <div class="panel-window-bar" data-panel-handle="layers"><span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="layers"></span><span class="panel-window-actions"><button data-panel-float="layers" aria-label="Desacoplar o acoplar Capas">↗</button><button data-panel-close="layers" aria-label="Ocultar Capas">×</button></span></div>
+      <div class="panel-window-bar" data-panel-handle="layers"><span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="layers"></span><span class="panel-window-actions"><button data-panel-float="layers" aria-label="Desacoplar o acoplar Capas"><i data-lucide="external-link"></i></button><button data-panel-close="layers" aria-label="Ocultar Capas"><i data-lucide="x"></i></button></span></div>
       <div class="panel-body"><input class="search" data-hierarchy-search type="search" placeholder="Buscar capa…"><div class="tree" data-hierarchy-tree></div></div>
       <div class="tree-meta" data-hierarchy-meta></div>
     </aside>
@@ -122,14 +133,13 @@
     <section class="workspace">
       <div class="toolbar">
         <div class="tool-group">
-          <button class="tool-button active" data-tool="select" title="Seleccionar y mover objetivo (V) · Mayús para selección múltiple">↖</button>
-          <button class="tool-button" data-tool="pan" title="Mover vista (H)">✥</button>
-          <button class="tool-button" data-tool="rotate" title="Rotar (R)">↻</button>
-          <button class="tool-button" data-tool="scale" title="Escalar objetivo (S)">⤢</button>
-          <button id="fit" class="tool-button" title="Centrar">▣</button>
+          <button class="tool-button active" data-tool="select" title="Seleccionar y mover objetivo (V) · Mayús para selección múltiple" aria-label="Seleccionar y mover"><i data-lucide="mouse-pointer-2"></i></button>
+          <button class="tool-button" data-tool="pan" title="Mover vista (H)" aria-label="Mover vista"><i data-lucide="hand"></i></button>
+          <button class="tool-button" data-tool="rotate" title="Rotar (R)" aria-label="Rotar"><i data-lucide="rotate-cw"></i></button>
+          <button class="tool-button" data-tool="scale" title="Escalar objetivo (S)" aria-label="Escalar"><i data-lucide="scaling"></i></button>
+          <button id="fit" class="tool-button" title="Centrar" aria-label="Centrar vista"><i data-lucide="scan"></i></button>
         </div>
         <div class="tool-group">
-          <select id="view" class="tool-select" aria-label="Vista"><option>Vista: Frontal</option></select>
           <label class="inline-control"><input id="grid" type="checkbox" checked> Cuadrícula</label>
           <label class="inline-control"><input id="bones" type="checkbox" checked> Huesos</label>
           <label class="inline-control"><input id="ghost" type="checkbox" checked> Vista fantasma</label>
@@ -137,19 +147,19 @@
           <output id="ghost-label" class="ghost-label">Sin referencia</output>
         </div>
         <div class="tool-group">
-          <button id="zoomout" class="tool-button" aria-label="Alejar">−</button>
+          <button id="zoomout" class="tool-button" aria-label="Alejar"><i data-lucide="zoom-out"></i></button>
           <input id="zoom" class="zoom-slider" type="range" min="40" max="220" value="100" aria-label="Zoom">
           <output id="zoom-label" class="zoom-output">100 %</output>
-          <button id="zoomin" class="tool-button" aria-label="Acercar">+</button>
-          <button id="fullscreen" class="tool-button" title="Pantalla completa">⛶</button>
+          <button id="zoomin" class="tool-button" aria-label="Acercar"><i data-lucide="zoom-in"></i></button>
+          <button id="fullscreen" class="tool-button" title="Pantalla completa" aria-label="Pantalla completa"><i data-lucide="maximize-2"></i></button>
         </div>
       </div>
       <div id="viewport" class="viewport">
         <canvas id="canvas" tabindex="0" aria-label="Lienzo del personaje y su esqueleto"></canvas>
         <section class="preview-card" aria-label="Vista previa">
-          <div class="preview-title"><span>Vista previa</span><span id="preview-state">○</span></div>
+            <div class="preview-title"><span>Vista previa</span><span id="preview-state" class="preview-state" aria-label="Detenido"></span></div>
           <canvas id="preview-canvas"></canvas>
-          <div class="preview-footer"><span id="preview-duration">1000 ms · 24 fps</span><button id="preview-play" class="small-button" aria-label="Reproducir vista previa">▶</button></div>
+          <div class="preview-footer"><span id="preview-duration">1000 ms · 24 fps</span><button id="preview-play" class="small-button icon-button playback-toggle" aria-label="Reproducir vista previa"><i class="when-stopped" data-lucide="play"></i><i class="when-playing" data-lucide="square"></i></button></div>
         </section>
         <div id="canvas-status" class="canvas-status">Zoom: 100 % · Animación · 0 ms</div>
         <section id="mode-overlay" class="mode-overlay" hidden></section>
@@ -158,13 +168,13 @@
 
     <aside class="panel right-panel" data-panel="inspector">
       <div class="panel-window-bar" data-panel-handle="inspector">
-        <span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="inspector"></span>
-        <span class="panel-window-actions"><button data-panel-float="inspector" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Inspector">↗</button><button data-panel-close="inspector" title="Ocultar panel" aria-label="Ocultar Inspector">×</button></span>
+        <span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="inspector"></span>
+        <span class="panel-window-actions"><button data-panel-float="inspector" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Inspector"><i data-lucide="external-link"></i></button><button data-panel-close="inspector" title="Ocultar panel" aria-label="Ocultar Inspector"><i data-lucide="x"></i></button></span>
       </div>
       <div class="right-tabs-content">
         <div id="inspector-panel">
           <section class="inspector-section selection-card">
-            <div class="selection-icon">⚮</div>
+            <div class="selection-icon"><i data-lucide="bone"></i></div>
             <div><div id="selected-name" class="selection-name">Torso</div><div id="selected-type" class="selection-type">Hueso · Objetivo: rig</div></div>
           </section>
 
@@ -226,36 +236,35 @@
     </aside>
 
     <aside class="panel right-panel" data-panel="presets">
-      <div class="panel-window-bar" data-panel-handle="presets"><span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="presets"></span><span class="panel-window-actions"><button data-panel-float="presets" aria-label="Desacoplar o acoplar Presets">↗</button><button data-panel-close="presets" aria-label="Ocultar Presets">×</button></span></div>
+      <div class="panel-window-bar" data-panel-handle="presets"><span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="presets"></span><span class="panel-window-actions"><button data-panel-float="presets" aria-label="Desacoplar o acoplar Presets"><i data-lucide="external-link"></i></button><button data-panel-close="presets" aria-label="Ocultar Presets"><i data-lucide="x"></i></button></span></div>
       <div id="presets-panel" class="right-tabs-content"><section class="inspector-section"><h2>Curvas permitidas</h2><div id="preset-grid" class="preset-grid"></div><p class="muted">Cada preset corresponde a una curva comprendida por Studio y por el runtime del juego.</p></section></div>
     </aside>
 
     <aside class="panel right-panel" data-panel="curves">
-      <div class="panel-window-bar" data-panel-handle="curves"><span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="curves"></span><span class="panel-window-actions"><button data-panel-float="curves" aria-label="Desacoplar o acoplar Curvas">↗</button><button data-panel-close="curves" aria-label="Ocultar Curvas">×</button></span></div>
+      <div class="panel-window-bar" data-panel-handle="curves"><span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="curves"></span><span class="panel-window-actions"><button data-panel-float="curves" aria-label="Desacoplar o acoplar Curvas"><i data-lucide="external-link"></i></button><button data-panel-close="curves" aria-label="Ocultar Curvas"><i data-lucide="x"></i></button></span></div>
       <div id="curves-panel" class="right-tabs-content"><section class="inspector-section"><h2>Vista de interpolación</h2><canvas id="curve-canvas"></canvas><p id="curve-label" class="muted">Linear</p></section></div>
     </aside>
 
     <section class="timeline" data-panel="timeline">
       <div class="panel-window-bar" data-panel-handle="timeline">
-        <span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="timeline"></span>
-        <span class="panel-window-actions"><button data-panel-float="timeline" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Línea de tiempo">↗</button><button data-panel-close="timeline" title="Ocultar panel" aria-label="Ocultar Línea de tiempo">×</button></span>
+        <span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="timeline"></span>
+        <span class="panel-window-actions"><button data-panel-float="timeline" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Línea de tiempo"><i data-lucide="external-link"></i></button><button data-panel-close="timeline" title="Ocultar panel" aria-label="Ocultar Línea de tiempo"><i data-lucide="x"></i></button></span>
       </div>
       <div class="timeline-top">
-        <div class="timeline-tabs"><span class="timeline-tab active" aria-current="page">Línea de tiempo</span><button class="timeline-tab" id="open-curves">Editor de curvas</button></div>
-        <button id="first" class="tool-button" aria-label="Primer fotograma">⏮</button>
-        <button id="previous-key" class="tool-button" title="Clave anterior (Mayús+←)" aria-label="Clave anterior">◆◀</button>
-        <button id="play" class="tool-button" aria-label="Reproducir">▶</button>
-        <button id="pause" class="tool-button" aria-label="Detener">■</button>
-        <button id="next-key" class="tool-button" title="Clave siguiente (Mayús+→)" aria-label="Clave siguiente">▶◆</button>
-        <button id="last" class="tool-button" aria-label="Último fotograma">⏭</button>
+        <div class="timeline-tabs"><span class="timeline-tab active" aria-current="page">Línea de tiempo</span></div>
+        <button id="first" class="tool-button" aria-label="Primer fotograma"><i data-lucide="skip-back"></i></button>
+        <button id="previous-key" class="tool-button" title="Clave anterior (Mayús+←)" aria-label="Clave anterior"><i data-lucide="step-back"></i></button>
+        <button id="play" class="tool-button playback-toggle" aria-label="Reproducir"><i class="when-stopped" data-lucide="play"></i><i class="when-playing" data-lucide="square"></i></button>
+        <button id="next-key" class="tool-button" title="Clave siguiente (Mayús+→)" aria-label="Clave siguiente"><i data-lucide="step-forward"></i></button>
+        <button id="last" class="tool-button" aria-label="Último fotograma"><i data-lucide="skip-forward"></i></button>
         <span id="clock" class="timeline-time">0.00 / 1.00 s</span>
         <input id="scrub" type="range" min="0" max="1000" value="0" step="1" aria-label="Tiempo">
         <label class="inline-control">FPS <select id="fps"><option>12</option><option selected>24</option><option>30</option><option>60</option></select></label>
         <label class="inline-control">Duración <input id="duration" type="number" min="100" max="60000" step="50" value="1000" style="width:82px"></label>
         <label class="inline-control"><input id="loop" type="checkbox"> Bucle</label>
         <label class="inline-control timeline-zoom-control">Zoom tiempo <input id="timeline-zoom" type="range" min="100" max="250" value="100" step="10"></label>
-        <button id="copy-keys" class="tool-button" title="Copiar claves">C</button>
-        <button id="paste-keys" class="tool-button" title="Pegar claves">V</button>
+        <button id="copy-keys" class="tool-button" title="Copiar claves" aria-label="Copiar claves"><i data-lucide="copy"></i></button>
+        <button id="paste-keys" class="tool-button" title="Pegar claves" aria-label="Pegar claves"><i data-lucide="clipboard-paste"></i></button>
       </div>
       <div id="timeline-scroll" class="timeline-scroll">
         <div id="timeline-content" class="timeline-content">
@@ -272,7 +281,12 @@
     </div>
   </main>
 
+  <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-dialog-title">
+    <div class="help-dialog-header"><div><span class="eyebrow">Ayuda de Kinetra</span><h2 id="help-dialog-title">Tutorial</h2></div><button id="help-dialog-close" class="icon-button" aria-label="Cerrar ayuda"><i data-lucide="x"></i></button></div>
+    <div id="help-dialog-body" class="help-dialog-body"></div>
+  </dialog>
+
   <input id="file" type="file" accept=".json,application/json">
-  <script type="module" src="./src/studio/editor.js?v=0.7.1"></script>
+  <script type="module" src="./src/studio/editor.js?v=0.8.0"></script>
 </body>
 </html>

@@ -7,14 +7,15 @@ const [html, css, editor] = await Promise.all([
   readFile(new URL("../src/studio/editor.js", import.meta.url), "utf8")
 ]);
 
-for (const mode of ["animador", "calibrador", "sprites", "exportar", "proyecto"]) {
+for (const mode of ["animador", "calibrador", "exportar", "proyecto"]) {
   assert.match(html, new RegExp(`data-mode=["']${mode}["']`), `Debe existir el modo ${mode}`);
 }
+assert.doesNotMatch(html, /data-mode=["']sprites["']/, "Calibrador y Sprites deben integrarse en Ensamblaje");
 for (const id of ["canvas", "preview-canvas", "inspector-panel", "timeline-scroll", "tracks"]) {
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control ${id}`);
 }
 assert.doesNotMatch(html, /<iframe\b/i, "El Studio unificado no debe depender de vistas embebidas");
-assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.7\.1["']/);
+assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.8\.0["']/);
 assert.match(html, /navigator\.serviceWorker\.getRegistrations\(\)/, "El Studio debe retirar cachés heredadas antes de iniciar");
 assert.doesNotMatch(html, /window\.stop\(\)/, "La limpieza del Studio no debe abortar la navegación actual");
 assert.match(html, /id=["']timeline-zoom["']/, "El timeline debe tener zoom temporal independiente");
@@ -22,7 +23,7 @@ assert.match(css, /--left-dock:\s*270px/);
 assert.match(css, /--right-dock:\s*310px/);
 assert.match(css, /data-dock-zone=["']bottom["'][^}]*grid-column:\s*1\s*\/\s*-1/s);
 assert.match(editor, /sampleStudioAnimation/);
-assert.match(editor, /studio-format\.js\?v=0\.7\.1/, "Los módulos internos deben invalidar la caché junto con el editor");
+assert.match(editor, /studio-format\.js\?v=0\.8\.0/, "Los módulos internos deben invalidar la caché junto con el editor");
 assert.match(editor, /validateStudioProject/);
 assert.match(editor, /mode:\s*["']game["']/);
 assert.match(editor, /function restoreHistory/);
@@ -67,6 +68,15 @@ for (const panel of ["skeleton", "tracks", "layers", "inspector", "presets", "cu
 for (const menu of ["Archivo", "Edición", "Ver", "Ventana", "Ayuda"]) {
   assert.match(html, new RegExp(`<summary>${menu}</summary>`), `Debe existir el menú de aplicación ${menu}`);
 }
+assert.match(html, /id=["']workspace-menu["']/, "Los modos de trabajo deben integrarse con los menús de aplicación");
+for (const tutorial of ["animador", "calibrador", "timeline", "paneles", "exportar"]) {
+  assert.match(html, new RegExp(`data-tutorial=["']${tutorial}["']`), `Debe existir el tutorial ${tutorial}`);
+}
+assert.match(html, /id=["']help-dialog["']/, "Ayuda debe abrir tutoriales y atajos en un modal");
+assert.match(html, /id=["']preview-toggle["']/, "La vista previa debe poder activarse desde Ventana");
+assert.match(editor, /document\.addEventListener\(["']click["']/, "Los menús deben cerrarse al hacer clic fuera");
+assert.match(html, /unpkg\.com\/lucide@1\.57\.0/, "La interfaz debe usar una versión fija de Lucide");
+assert.match(editor, /window\.lucide\?\.createIcons/, "Los iconos dinámicos deben usar Lucide");
 for (const kind of ["skeleton", "tracks", "layers"]) {
   assert.match(html, new RegExp(`data-hierarchy-kind=["']${kind}["']`), `La subventana ${kind} debe tener contenido independiente`);
 }
@@ -90,8 +100,11 @@ assert.match(css, /--timeline-h:\s*clamp\(/, "El dock inferior debe tener una al
 assert.match(editor, /PANEL_FLOAT_SIZES/, "Cada ventana debe tener un tamaño flotante apropiado");
 assert.match(editor, /function undo\(\)/, "Deshacer debe incluir borradores y cambios confirmados");
 assert.match(html, /id=["']canvas["'][^>]*tabindex=["']0["']/, "El lienzo debe recibir el foco para los atajos de teclado");
-assert.match(html, /assets\/brand\/kinetra-logo\.png\?v=0\.7\.1/, "La cabecera debe usar el logo oficial preparado para la aplicación");
+assert.match(html, /assets\/brand\/kinetra-logo\.png\?v=0\.8\.0/, "La cabecera debe usar el logo oficial preparado para la aplicación");
 assert.doesNotMatch(html, /<button[^>]*>Línea de tiempo<\/button>/, "Un rótulo sin acción no debe anunciarse como botón");
+assert.doesNotMatch(html, /id=["']open-curves["']/, "La línea de tiempo no debe duplicar el acceso directo al panel Curvas");
+assert.doesNotMatch(html, /id=["']pause["']/, "Reproducir y detener deben compartir un solo control");
+assert.doesNotMatch(html, /id=["']view["']/, "No debe mostrarse un selector con una única vista disponible");
 assert.match(editor, /header-play["']\)\.onclick\s*=\s*\(\)\s*=>\s*playing\s*\?\s*pause\(\)\s*:\s*play\(\)/, "La reproducción global debe alternar reproducir y detener");
 
 console.log("Pruebas de interfaz de Kinetra superadas.");

@@ -7,8 +7,8 @@ import {
   PUPPET_JOINT_PARENTS as PARENTS,
   PUPPET_PART_JOINTS as PART_JOINTS,
   PUPPET_TARGETS
-} from "../animations/rig.js?v=0.7.1";
-import { animationEase } from "../animations/runtime.js?v=0.7.1";
+} from "../animations/rig.js?v=0.8.0";
+import { animationEase } from "../animations/runtime.js?v=0.8.0";
 import {
   createStudioProject,
   normalizeStudioProject,
@@ -16,8 +16,8 @@ import {
   serializeStudioProject,
   STUDIO_EASES,
   validateStudioProject
-} from "../animations/studio-format.js?v=0.7.1";
-import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.7.1";
+} from "../animations/studio-format.js?v=0.8.0";
+import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.8.0";
 import {
   collapseHierarchicalSelection,
   constrainedTranslation,
@@ -27,13 +27,14 @@ import {
   hitScaleGizmo,
   scaleFromDrag,
   shortestAngleDelta
-} from "./gizmo.js?v=0.7.1";
-import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.7.1";
+} from "./gizmo.js?v=0.8.0";
+import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.8.0";
 
 const $ = (id) => document.getElementById(id);
 const BASE_SCALE = 0.32;
 const STORAGE_KEY = "kinetra:project";
 const PANEL_STORAGE_KEY = "kinetra:panels";
+const PREVIEW_STORAGE_KEY = "kinetra:preview-visible";
 const TARGETS = [...new Set(["rig", "torso", ...Object.keys(JOINTS)])];
 const LABELS = {
   rig: "Torso",
@@ -118,6 +119,33 @@ const PANEL_FLOAT_SIZES = Object.freeze({
   curves: { width: 420, height: 280 },
   timeline: { width: 760, height: 310 }
 });
+const WORKSPACE_LABELS = Object.freeze({ animador: "Animador", calibrador: "Ensamblaje", exportar: "Exportación", proyecto: "Proyecto" });
+const HELP_TOPICS = Object.freeze({
+  animador: {
+    title: "Tutorial del Animador",
+    body: `<p>El Animador crea poses y movimiento con fotogramas clave.</p><ol><li>Selecciona uno o varios puntos del esqueleto. Usa <kbd>Mayús</kbd> para sumar puntos.</li><li>Elige mover, rotar o escalar y manipula el control sobre el lienzo.</li><li>Revisa el borrador en el Inspector y pulsa <strong>Guardar fotograma</strong>.</li><li>Desplázate en el tiempo y repite para interpolar el movimiento.</li></ol><p class="help-tip">Las manos y los pies usan cinemática inversa; los codos y rodillas conservan su cadena.</p>`
+  },
+  calibrador: {
+    title: "Tutorial de Ensamblaje",
+    body: `<p>Ensamblaje reúne la calibración y la organización de sprites en un solo espacio.</p><ol><li>Abre <strong>Capas</strong> y selecciona una pieza.</li><li>Arrástrala en el lienzo o ajusta posición, rotación y escala en el Inspector.</li><li>Usa Voltear X y el orden de capas para corregir orientación y solapamiento.</li><li>Bloquea u oculta piezas desde Capas cuando termines.</li></ol>`
+  },
+  timeline: {
+    title: "Tutorial de línea de tiempo",
+    body: `<p>La línea de tiempo organiza claves, eventos y referencias.</p><ol><li>Haz clic en una pista para seleccionar su objetivo.</li><li>Arrastra una clave para cambiar su tiempo.</li><li>Usa anterior/siguiente para recorrer claves y el control de zoom para ampliar el tiempo.</li><li>Copia y pega claves para reutilizar poses.</li></ol>`
+  },
+  paneles: {
+    title: "Tutorial de paneles",
+    body: `<p>Cada módulo puede funcionar como pestaña acoplada o ventana flotante.</p><ol><li>Activa módulos desde <strong>Ventana</strong>.</li><li>Arrastra el asa de su cabecera para moverlos.</li><li>Suéltalos en un borde resaltado para acoplarlos.</li><li>Usa Restablecer disposición para volver al escritorio inicial.</li></ol>`
+  },
+  exportar: {
+    title: "Tutorial de exportación",
+    body: `<p>La exportación separa el proyecto editable del clip destinado al juego.</p><ol><li>Abre <strong>Archivo → Preparar exportación</strong>.</li><li>Corrige las observaciones de validación si aparecen.</li><li>Exporta el proyecto para conservar calibración y metadatos.</li><li>Exporta el clip cuando la validación para el runtime sea correcta.</li></ol>`
+  },
+  shortcuts: {
+    title: "Atajos de teclado",
+    body: `<div class="shortcut-grid"><kbd>V</kbd><span>Seleccionar y mover</span><kbd>H</kbd><span>Desplazar la vista</span><kbd>R</kbd><span>Rotar</span><kbd>S</kbd><span>Escalar</span><kbd>Espacio</kbd><span>Reproducir o detener</span><kbd>Ctrl Z</kbd><span>Deshacer</span><kbd>Ctrl Y</kbd><span>Rehacer</span><kbd>Ctrl C / V</kbd><span>Copiar o pegar claves</span><kbd>Mayús ← / →</kbd><span>Clave anterior o siguiente</span><kbd>Supr</kbd><span>Eliminar claves seleccionadas</span></div>`
+  }
+});
 
 const freshParts = () => PRESET.map(([id, x, y, assetId], z) => ({
   id, x, y, assetId: assetId || id, rotation: 0, scaleX: 1, scaleY: 1, visible: true, z
@@ -158,6 +186,7 @@ let panelStates = initialPanelLayout.panels;
 let dockActive = initialPanelLayout.active;
 let panelDrag = null;
 let panelZ = 120;
+let previewVisible = localStorage.getItem(PREVIEW_STORAGE_KEY) !== "false";
 
 const canvas = $("canvas");
 const context = canvas.getContext("2d");
@@ -166,6 +195,23 @@ const previewContext = previewCanvas.getContext("2d");
 const images = {};
 
 function status(message) { $("status").textContent = message; }
+
+function createIcon(name, className = "") {
+  const icon = document.createElement("i");
+  icon.dataset.lucide = name;
+  if (className) icon.className = className;
+  return icon;
+}
+
+function refreshIcons(root = document) {
+  window.lucide?.createIcons({ root, attrs: { "stroke-width": 1.8 } });
+}
+
+function closeApplicationMenus(except = null) {
+  document.querySelectorAll(".app-menu[open]").forEach((menu) => {
+    if (menu !== except) menu.removeAttribute("open");
+  });
+}
 
 function loadPanelLayout() {
   try {
@@ -211,7 +257,7 @@ function renderDockTabs(panelId) {
     const button = document.createElement("button");
     button.className = `dock-tab${id === panelId ? " active" : ""}`;
     button.textContent = PANEL_LABELS[id];
-    button.title = id === panelId ? `${PANEL_LABELS[id]} · arrastra desde ⠿ para mover` : `Mostrar ${PANEL_LABELS[id]}`;
+    button.title = id === panelId ? `${PANEL_LABELS[id]} · arrastra el asa para mover` : `Mostrar ${PANEL_LABELS[id]}`;
     button.onclick = (event) => {
       event.stopPropagation();
       dockActive[state.dock] = id;
@@ -258,11 +304,12 @@ function applyPanelLayout() {
     }
     document.querySelectorAll(`[data-panel-toggle="${id}"]`).forEach((toggle) => { toggle.checked = state.visible; });
     document.querySelectorAll(`[data-panel-float="${id}"]`).forEach((button) => {
-      button.textContent = floating ? "↙" : "↗";
       button.title = floating ? `Acoplar en ${state.lastDock}` : "Desacoplar panel";
+      button.setAttribute("aria-pressed", String(floating));
     });
     renderDockTabs(id);
   });
+  refreshIcons();
   requestAnimationFrame(draw);
 }
 
@@ -1048,10 +1095,10 @@ function appendTreeNode(node, depth, search, host) {
   row.style.paddingLeft = `${depth * 17}px`;
   const icon = document.createElement("span");
   icon.className = "tree-icon";
-  icon.textContent = node.children?.length ? "◇" : "○";
+  icon.append(createIcon(node.children?.length ? "git-branch" : "circle"));
   const multi = document.createElement("button");
   multi.className = "tree-multi";
-  multi.textContent = selectedTargets.has(node.id) ? "✓" : "+";
+  multi.append(createIcon(selectedTargets.has(node.id) ? "check" : "plus"));
   multi.title = selectedTargets.has(node.id) ? "Quitar de la selección múltiple" : "Añadir a la selección múltiple";
   multi.setAttribute("aria-label", `${selectedTargets.has(node.id) ? "Quitar" : "Añadir"} ${label(node.id)} ${selectedTargets.has(node.id) ? "de" : "a"} la selección múltiple`);
   multi.setAttribute("aria-pressed", String(selectedTargets.has(node.id)));
@@ -1072,12 +1119,12 @@ function appendTreeNode(node, depth, search, host) {
   };
   const toggle = document.createElement("button");
   toggle.className = "tree-toggle";
-  toggle.textContent = hiddenTargets.has(node.id) ? "○" : "◉";
+  toggle.append(createIcon(hiddenTargets.has(node.id) ? "eye-off" : "eye"));
   toggle.title = "Mostrar u ocultar en el lienzo";
   toggle.onclick = () => { hiddenTargets.has(node.id) ? hiddenTargets.delete(node.id) : hiddenTargets.add(node.id); renderTree(); draw(); };
   const lock = document.createElement("button");
   lock.className = "tree-toggle";
-  lock.textContent = lockedTargets.has(node.id) ? "◆" : "◇";
+  lock.append(createIcon(lockedTargets.has(node.id) ? "lock-keyhole" : "lock-keyhole-open"));
   lock.title = lockedTargets.has(node.id) ? "Desbloquear edición" : "Bloquear edición";
   lock.onclick = () => {
     lockedTargets.has(node.id) ? lockedTargets.delete(node.id) : lockedTargets.add(node.id);
@@ -1096,18 +1143,18 @@ function renderLayers(search, host) {
     row.className = `tree-row${selectedPart === item.id ? " active" : ""}`;
     const icon = document.createElement("span");
     icon.className = "tree-icon";
-    icon.textContent = "◇";
+    icon.append(createIcon("layers-3"));
     const button = document.createElement("button");
     button.className = "tree-select";
     button.textContent = label(item.id);
     button.onclick = () => { selectedPart = item.id; refresh(); };
     const toggle = document.createElement("button");
     toggle.className = "tree-toggle";
-    toggle.textContent = item.visible ? "◉" : "○";
+    toggle.append(createIcon(item.visible ? "eye" : "eye-off"));
     toggle.onclick = () => { item.visible = !item.visible; commit("Visibilidad actualizada"); refresh(); };
     const lock = document.createElement("button");
     lock.className = "tree-toggle";
-    lock.textContent = lockedParts.has(item.id) ? "◆" : "◇";
+    lock.append(createIcon(lockedParts.has(item.id) ? "lock-keyhole" : "lock-keyhole-open"));
     lock.title = lockedParts.has(item.id) ? "Desbloquear edición" : "Bloquear edición";
     lock.onclick = () => {
       lockedParts.has(item.id) ? lockedParts.delete(item.id) : lockedParts.add(item.id);
@@ -1134,11 +1181,12 @@ function renderTree() {
       ? `${project.parts.length} capas · ${project.clip.anatomy}`
       : `${project.clip.rig} · ${Object.keys(project.clip.animation.keys).length} pistas`;
     panel.querySelector("[data-hierarchy-meta]").textContent = description;
+    refreshIcons(panel);
   });
 }
 
 function renderInspector() {
-  const calibration = mode === "calibrador" || mode === "sprites";
+  const calibration = mode === "calibrador";
   $("animation-inspector").hidden = calibration;
   $("calibration-inspector").hidden = !calibration;
   $("selected-name").textContent = calibration ? label(selectedPart) : selectionLabel();
@@ -1377,7 +1425,7 @@ function makeEventRow() {
   row.className = "track-row";
   const trackLabel = document.createElement("div");
   trackLabel.className = "track-label";
-  trackLabel.textContent = "⚡ Eventos de sprite";
+  trackLabel.append(createIcon("zap"), document.createTextNode("Eventos de sprite"));
   const line = document.createElement("div");
   line.className = "track-line";
   line.onclick = (event) => timelineLineClick(event, line);
@@ -1406,7 +1454,7 @@ function makeSpriteRow() {
   row.className = "track-row";
   const trackLabel = document.createElement("div");
   trackLabel.className = "track-label";
-  trackLabel.textContent = "◇ Referencia de sprites";
+  trackLabel.append(createIcon("images"), document.createTextNode("Referencia de sprites"));
   const line = document.createElement("div");
   line.className = "track-line";
   const count = Math.max(8, Math.min(24, Math.round(duration() / 80)));
@@ -1447,6 +1495,7 @@ function renderTimeline() {
   TARGETS.forEach((target) => host.append(makeTrackRow(target)));
   host.append(makeEventRow(), makeSpriteRow());
   updateTimeDisplays();
+  refreshIcons($("timeline-content"));
 }
 
 function gameValidationErrors() {
@@ -1465,6 +1514,22 @@ function createNewProject() {
   ensureImages();
   commit("Proyecto nuevo creado");
   setMode("animador");
+}
+
+function applyPreviewVisibility() {
+  document.querySelector(".preview-card").hidden = !previewVisible;
+  $("preview-toggle").checked = previewVisible;
+  localStorage.setItem(PREVIEW_STORAGE_KEY, String(previewVisible));
+  if (previewVisible) requestAnimationFrame(drawPreview);
+}
+
+function openHelpDialog(topic) {
+  const content = HELP_TOPICS[topic];
+  if (!content) return;
+  closeApplicationMenus();
+  $("help-dialog-title").textContent = content.title;
+  $("help-dialog-body").innerHTML = content.body;
+  $("help-dialog").showModal();
 }
 
 function renderModeOverlay() {
@@ -1509,9 +1574,11 @@ function showRightTab(next) {
 }
 
 function setMode(next) {
+  if (next === "sprites") next = "calibrador";
   mode = next;
   document.querySelectorAll("[data-mode]").forEach((button) => button.classList.toggle("active", button.dataset.mode === next));
-  const preferredPanel = next === "calibrador" || next === "sprites" ? "layers" : next === "animador" ? "skeleton" : null;
+  $("workspace-menu-label").textContent = WORKSPACE_LABELS[next] || "Espacio";
+  const preferredPanel = next === "calibrador" ? "layers" : next === "animador" ? "skeleton" : null;
   if (preferredPanel && panelStates[preferredPanel].visible && panelStates[preferredPanel].dock !== "floating") {
     dockActive[panelStates[preferredPanel].dock] = preferredPanel;
     applyPanelLayout();
@@ -1736,10 +1803,15 @@ function pause() {
 }
 
 function updatePlaybackButtons() {
-  $("preview-state").textContent = playing ? "●" : "○";
-  $("header-play").textContent = playing ? "■ Detener" : "▶ Reproducir";
-  $("header-play").title = playing ? "Detener (Espacio)" : "Reproducir (Espacio)";
-  $("preview-play").textContent = playing ? "■" : "▶";
+  $("preview-state").classList.toggle("active", playing);
+  $("preview-state").setAttribute("aria-label", playing ? "Reproduciendo" : "Detenido");
+  document.querySelectorAll(".playback-toggle").forEach((button) => {
+    button.dataset.playing = String(playing);
+    button.setAttribute("aria-label", playing ? "Detener" : "Reproducir");
+    button.title = playing ? "Detener (Espacio)" : "Reproducir (Espacio)";
+  });
+  const label = $("header-play").querySelector(".playback-label");
+  if (label) label.textContent = playing ? "Detener" : "Reproducir";
 }
 
 function tick(now) {
@@ -1756,7 +1828,12 @@ function tick(now) {
 }
 
 function bindControls() {
-  document.querySelectorAll("[data-mode]").forEach((button) => { button.onclick = () => setMode(button.dataset.mode); });
+  document.querySelectorAll("[data-mode]").forEach((button) => {
+    button.onclick = () => {
+      setMode(button.dataset.mode);
+      closeApplicationMenus();
+    };
+  });
   document.querySelectorAll("[data-tool]").forEach((button) => { button.onclick = () => setTool(button.dataset.tool); });
   document.querySelectorAll("[data-hierarchy-search]").forEach((input) => { input.oninput = renderTree; });
   document.querySelectorAll("[data-view-toggle]").forEach((toggle) => {
@@ -1775,7 +1852,7 @@ function bindControls() {
     redo,
     fit: () => $("fit").click(),
     fullscreen: () => $("fullscreen").click(),
-    shortcuts: () => status("Atajos: V seleccionar · H desplazar vista · R rotar · S escalar · Espacio reproducir · Ctrl+Z deshacer · Ctrl+Y rehacer")
+    shortcuts: () => openHelpDialog("shortcuts")
   };
   document.querySelectorAll("[data-menu-command]").forEach((button) => {
     button.onclick = () => {
@@ -1789,12 +1866,23 @@ function bindControls() {
       document.querySelectorAll(".app-menu[open]").forEach((other) => { if (other !== menu) other.removeAttribute("open"); });
     });
   });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".app-menu")) closeApplicationMenus();
+  });
+  document.querySelectorAll("[data-tutorial]").forEach((button) => {
+    button.onclick = () => openHelpDialog(button.dataset.tutorial);
+  });
+  $("help-dialog-close").onclick = () => $("help-dialog").close();
+  $("help-dialog").onclick = (event) => { if (event.target === $("help-dialog")) $("help-dialog").close(); };
+  $("preview-toggle").onchange = () => {
+    previewVisible = $("preview-toggle").checked;
+    applyPreviewVisibility();
+  };
   $("undo").onclick = undo;
   $("redo").onclick = redo;
   $("save-local").onclick = () => {
     saveLocal(hasDraft() ? "Proyecto guardado; el borrador del fotograma sigue pendiente" : "Proyecto guardado en este navegador");
   };
-  $("open-file").onclick = () => $("file").click();
   $("project-name").onchange = () => {
     project.clip.animation.id = $("project-name").value.trim() || "nuevo_movimiento";
     commit("ID del proyecto actualizado");
@@ -1802,8 +1890,7 @@ function bindControls() {
   };
   $("header-play").onclick = () => playing ? pause() : play();
   $("preview-play").onclick = () => playing ? pause() : play();
-  $("play").onclick = play;
-  $("pause").onclick = pause;
+  $("play").onclick = () => playing ? pause() : play();
   $("first").onclick = () => setTime(0, true);
   $("previous-key").onclick = () => goToAdjacentKey(-1);
   $("last").onclick = () => setTime(duration(), true);
@@ -1881,7 +1968,6 @@ function bindControls() {
   $("layer-down").onclick = () => moveLayer(-1);
   $("copy-keys").onclick = copySelectedKeys;
   $("paste-keys").onclick = () => pasteKeys();
-  $("open-curves").onclick = () => showRightTab("curves");
   $("fit").onclick = () => { zoom = 1; offsetX = 0; offsetY = 0; draw(); };
   $("zoomin").onclick = () => { zoom = Math.min(2.2, zoom * 1.12); draw(); };
   $("zoomout").onclick = () => { zoom = Math.max(0.4, zoom / 1.12); draw(); };
@@ -1923,7 +2009,7 @@ function bindCanvas() {
       interaction = { type: "pan", x: event.clientX, y: event.clientY, offsetX, offsetY };
       return;
     }
-    if (mode === "calibrador" || mode === "sprites") {
+    if (mode === "calibrador") {
       let chosen = null;
       let distance = Infinity;
       [...project.parts].sort((left, right) => right.z - left.z).forEach((item) => {
@@ -2133,13 +2219,17 @@ function initialize() {
   bindControls();
   bindCanvas();
   bindKeyboard();
+  applyPreviewVisibility();
+  updatePlaybackButtons();
   const timelineResize = new ResizeObserver(() => renderTimeline());
   timelineResize.observe($("timeline-scroll"));
   window.addEventListener("resize", draw);
+  window.addEventListener("load", () => refreshIcons());
   resetGhostFromProject(0);
   checkpoint();
   const requestedMode = location.hash.slice(1);
-  setMode(["animador", "calibrador", "sprites", "exportar", "proyecto"].includes(requestedMode) ? requestedMode : "animador");
+  const initialMode = requestedMode === "sprites" ? "calibrador" : requestedMode;
+  setMode(["animador", "calibrador", "exportar", "proyecto"].includes(initialMode) ? initialMode : "animador");
 }
 
 initialize();
