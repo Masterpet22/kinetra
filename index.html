@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kinetra · Editor de animación por marionetas</title>
   <meta name="description" content="Editor web para ensamblar y animar personajes 2D mediante sprites y esqueletos articulados.">
-  <link rel="icon" href="./assets/favicon.png?v=0.10.0" type="image/png">
+  <link rel="icon" href="./assets/favicon.png?v=0.11.0" type="image/png">
   <script>
     // Retira trabajadores antiguos sin detener ni recargar la navegación actual.
     (() => {
@@ -27,12 +27,12 @@
       if (["noche", "grafito", "aurora"].includes(theme)) document.documentElement.dataset.theme = theme;
     } catch {}
   </script>
-  <link rel="stylesheet" href="./styles.css?v=0.10.0">
+  <link rel="stylesheet" href="./styles.css?v=0.11.0">
   <script defer src="https://unpkg.com/lucide@1.57.0/dist/umd/lucide.min.js"></script>
 </head>
 <body>
   <header class="studio-header">
-    <div class="brand" aria-label="Kinetra"><span class="brand-mark"><img class="brand-logo" src="./assets/brand/kinetra-logo.png?v=0.10.0" alt=""></span><span class="brand-name">Kinetra</span></div>
+    <div class="brand" aria-label="Kinetra"><span class="brand-mark"><img class="brand-logo" src="./assets/brand/kinetra-logo.png?v=0.11.0" alt=""></span><span class="brand-name">Kinetra</span></div>
     <nav class="app-menu-bar" aria-label="Menú de aplicación">
       <details class="app-menu">
         <summary>Archivo</summary>
@@ -312,6 +312,31 @@
     <div id="help-dialog-body" class="help-dialog-body"></div>
   </dialog>
 
+  <dialog id="new-project-dialog" class="help-dialog template-dialog" aria-labelledby="new-project-title">
+    <div class="help-dialog-header"><div><span class="eyebrow">Nuevo proyecto</span><h2 id="new-project-title">Elige una plantilla</h2></div><button id="new-project-close" class="icon-button" aria-label="Cerrar selector de plantilla"><i data-lucide="x"></i></button></div>
+    <div class="template-dialog-body">
+      <p>La plantilla reemplazará el proyecto guardado localmente. Después podrás modificar todas sus capas y huesos.</p>
+      <div class="template-grid">
+        <button class="template-card" data-project-template="male">
+          <span class="template-preview"><img src="./assets/templates/male/preview.png" alt="Vista previa del humano masculino"></span>
+          <strong>Humano masculino</strong><small>La marioneta original de Kinetra</small>
+        </button>
+        <button class="template-card" data-project-template="female">
+          <span class="template-preview"><img src="./assets/templates/female/preview.png" alt="Vista previa del humano femenino"></span>
+          <strong>Humano femenino</strong><small>Personaje modular de 14 capas</small>
+        </button>
+        <button class="template-card" data-project-template="dog">
+          <span class="template-preview"><img src="./assets/templates/dog/preview.png" alt="Vista previa de la plantilla de perro"></span>
+          <strong>Perro</strong><small>Cuadrúpedo con cuatro cadenas IK</small>
+        </button>
+        <button class="template-card" data-project-template="blank">
+          <span class="template-preview blank"><i data-lucide="file-plus-2"></i></span>
+          <strong>Proyecto vacío</strong><small>Empieza sin capas ni huesos</small>
+        </button>
+      </div>
+    </div>
+  </dialog>
+
   <div id="tutorial-overlay" class="tutorial-overlay" hidden aria-live="polite">
     <div id="tutorial-spotlight" class="tutorial-spotlight"></div>
     <section id="tutorial-card" class="tutorial-card" role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
@@ -324,6 +349,6 @@
 
   <input id="file" type="file" accept=".json,application/json">
   <input id="image-files" type="file" accept="image/png,image/webp,image/jpeg" multiple>
-  <script type="module" src="./src/studio/editor.js?v=0.10.0"></script>
+  <script type="module" src="./src/studio/editor.js?v=0.11.0"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@ Kinetra es un editor web estático para ensamblar y animar personajes 2D constru
 
 ## Crear un personaje propio
 
-1. Usa `Archivo > Nuevo` para comenzar con un lienzo, rig y lista de capas vacíos.
+1. Usa `Archivo > Nuevo` y elige Humano masculino, Humano femenino, Perro o Proyecto vacío.
 2. En `Ensamblaje`, pulsa `Importar imágenes`. Cada PNG, WebP o JPEG se guarda como recurso y capa independiente.
 3. Añade huesos desde la ventana `Esqueleto`. El nuevo hueso será hijo del hueso seleccionado; nombre, padre y pivote pueden cambiarse desde el Inspector.
 4. Selecciona una capa, asígnala a un hueso y calibra posición, rotación, escala y orden visual.
@@ -12,6 +12,15 @@ Kinetra es un editor web estático para ensamblar y animar personajes 2D constru
 6. En `Exportar`, descarga el paquete `.kinetra.json`. Las imágenes quedan incrustadas como data URLs, por lo que el archivo no depende de la instalación del editor.
 
 Para que las articulaciones deformen zonas distintas, el personaje debe estar separado en imágenes por pieza (por ejemplo, brazo, antebrazo y mano). Una ilustración plana importada como una única capa se mueve como una sola pieza; el corte automático y la deformación por malla pertenecen a una etapa posterior.
+
+## Plantillas incluidas
+
+- **Humano masculino:** el personaje original, con 14 piezas y un rig humanoide.
+- **Humano femenino:** 14 piezas recortadas de un atlas compartido y el mismo conjunto de articulaciones humanoides.
+- **Perro:** 15 piezas y un rig cuadrúpedo; sus cuatro patas forman cadenas IK editables.
+- **Proyecto vacío:** sin recursos, capas ni huesos, para construir una marioneta desde cero.
+
+Las plantillas son puntos de partida normales: sus capas, pivotes, jerarquías y animaciones pueden modificarse igual que las de un proyecto importado.
 
 ## Controles de transformación
 
@@ -81,14 +90,19 @@ if (errors.length) throw new Error(errors.join("\n"));
 const frame = resolveKinetraFrame(character, "saludo", performance.now());
 for (const layer of frame.layers) {
   const image = images.get(layer.assetId);
+  const crop = layer.crop ?? { x: 0, y: 0, width: image.width, height: image.height };
   const [a, b, c, d, e, f] = layer.matrix;
   context.setTransform(a, b, c, d, e, f);
   context.globalAlpha = layer.opacity;
-  context.drawImage(image, -image.width / 2, -image.height / 2);
+  context.drawImage(
+    image,
+    crop.x, crop.y, crop.width, crop.height,
+    -crop.width / 2, -crop.height / 2, crop.width, crop.height
+  );
 }
 ```
 
-`frame.layers[n].asset` contiene los metadatos y el `src` incrustado del recurso correspondiente. El motor del juego decide cómo precargar y centrar cada textura.
+`frame.layers[n].asset` contiene los metadatos y el `src` incrustado del recurso correspondiente. Cuando varias piezas comparten un atlas, `frame.layers[n].crop` indica el rectángulo fuente. El motor del juego decide cómo precargar y centrar cada textura.
 
 ## Estructura
 

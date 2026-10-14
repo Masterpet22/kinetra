@@ -20,7 +20,7 @@ const project = {
     ]
   },
   assets: [{ id: "mano_png", name: "mano.png", type: "image/png", src: "data:image/png;base64,AA==" }],
-  layers: [{ id: "mano_capa", name: "Mano", assetId: "mano_png", source: "asset", boneId: "mano", x: 120, y: 0, scaleX: 1, scaleY: 1, rotation: 0, visible: true, z: 0 }],
+  layers: [{ id: "mano_capa", name: "Mano", assetId: "mano_png", source: "asset", boneId: "mano", x: 120, y: 0, scaleX: 1, scaleY: 1, rotation: 0, visible: true, z: 0, crop: { x: 0, y: 0, width: 32, height: 48 } }],
   clips: [{ id: "saludo", duration: 1000, loop: false, keys: { brazo: [{ t: 0, angle: 0 }, { t: 1000, angle: 90 }] } }]
 };
 
@@ -33,6 +33,7 @@ const frame = resolveKinetraFrame(project, "saludo", 500);
 assert.equal(frame.layers.length, 1);
 assert.equal(frame.layers[0].assetId, "mano_png");
 assert.equal(frame.layers[0].asset.src, "data:image/png;base64,AA==");
+assert.deepEqual(frame.layers[0].crop, { x: 0, y: 0, width: 32, height: 48 });
 assert.equal(frame.layers[0].matrix.length, 6);
 
 const invalid = structuredClone(project);

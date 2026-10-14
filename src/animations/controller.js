@@ -1,4 +1,4 @@
-import { ANIMATION_PRIORITIES, PUPPET_ANIMATION_CLIPS } from "./clips.js?v=0.10.0";
+import { ANIMATION_PRIORITIES, PUPPET_ANIMATION_CLIPS } from "./clips.js?v=0.11.0";
 import { addAnimationOffsets, isKeyframeAnimationClip, sampleKeyframeAnimationPose, TRANSFORM_PROPERTIES } from "./runtime.js";
 
 function targetFor(fighter, name) {

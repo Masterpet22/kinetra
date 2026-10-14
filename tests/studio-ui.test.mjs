@@ -15,7 +15,7 @@ for (const id of ["canvas", "preview-canvas", "inspector-panel", "timeline-scrol
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control ${id}`);
 }
 assert.doesNotMatch(html, /<iframe\b/i, "El Studio unificado no debe depender de vistas embebidas");
-assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.10\.0["']/);
+assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.11\.0["']/);
 assert.match(html, /navigator\.serviceWorker\.getRegistrations\(\)/, "El Studio debe retirar cachés heredadas antes de iniciar");
 assert.doesNotMatch(html, /window\.stop\(\)/, "La limpieza del Studio no debe abortar la navegación actual");
 assert.match(html, /id=["']timeline-zoom["']/, "El timeline debe tener zoom temporal independiente");
@@ -23,7 +23,7 @@ assert.match(css, /--left-dock:\s*270px/);
 assert.match(css, /--right-dock:\s*310px/);
 assert.match(css, /data-dock-zone=["']bottom["'][^}]*grid-column:\s*1\s*\/\s*-1/s);
 assert.match(editor, /sampleStudioAnimation/);
-assert.match(editor, /studio-format\.js\?v=0\.10\.0/, "Los módulos internos deben invalidar la caché junto con el editor");
+assert.match(editor, /studio-format\.js\?v=0\.11\.0/, "Los módulos internos deben invalidar la caché junto con el editor");
 assert.match(editor, /validateStudioProject/);
 assert.match(editor, /mode:\s*["']game["']/);
 assert.match(editor, /function restoreHistory/);
@@ -91,7 +91,12 @@ for (const id of ["part-name", "part-bone", "add-bone", "delete-bone", "bone-nam
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control genérico ${id}`);
 }
 assert.match(editor, /function importImageLayers\(/, "Las imágenes deben convertirse en recursos y capas reales");
-assert.match(editor, /project = emptyProject\(\)/, "Archivo > Nuevo debe crear un proyecto genérico vacío");
+assert.match(html, /id=["']new-project-dialog["']/, "Archivo > Nuevo debe abrir el selector de plantillas");
+for (const template of ["male", "female", "dog", "blank"]) {
+  assert.match(html, new RegExp(`data-project-template=["']${template}["']`), `Debe ofrecerse la plantilla ${template}`);
+}
+assert.match(editor, /createProjectFromTemplate\(button\.dataset\.projectTemplate\)/, "El selector debe crear la plantilla elegida");
+assert.match(editor, /function layerSourceRect\(/, "El editor debe recortar las piezas compartidas de un atlas");
 assert.match(editor, /function portableAuthoringProject\(/, "La exportación debe incrustar también los recursos de demostración");
 assert.match(editor, /function ikChainFor\(/, "La cinemática inversa debe derivarse de cualquier rig personalizado");
 assert.match(editor, /function rigTree\(/, "La jerarquía visual debe generarse desde el rig del proyecto");
@@ -122,7 +127,7 @@ assert.match(css, /--timeline-h:\s*clamp\(/, "El dock inferior debe tener una al
 assert.match(editor, /PANEL_FLOAT_SIZES/, "Cada ventana debe tener un tamaño flotante apropiado");
 assert.match(editor, /function undo\(\)/, "Deshacer debe incluir borradores y cambios confirmados");
 assert.match(html, /id=["']canvas["'][^>]*tabindex=["']0["']/, "El lienzo debe recibir el foco para los atajos de teclado");
-assert.match(html, /assets\/brand\/kinetra-logo\.png\?v=0\.10\.0/, "La cabecera debe usar el logo oficial preparado para la aplicación");
+assert.match(html, /assets\/brand\/kinetra-logo\.png\?v=0\.11\.0/, "La cabecera debe usar el logo oficial preparado para la aplicación");
 assert.doesNotMatch(css, /\.brand-logo\s*\{[^}]*background:/s, "El logo no debe recuperar una placa de fondo");
 assert.doesNotMatch(html, /<button[^>]*>Línea de tiempo<\/button>/, "Un rótulo sin acción no debe anunciarse como botón");
 assert.doesNotMatch(html, /id=["']open-curves["']/, "La línea de tiempo no debe duplicar el acceso directo al panel Curvas");

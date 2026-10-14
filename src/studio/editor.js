@@ -3,12 +3,10 @@
  * Une calibración, autoría por fotogramas clave, timeline, historial y exportación.
  */
 import {
-  PUPPET_JOINTS as JOINTS,
-  PUPPET_JOINT_PARENTS as PARENTS,
   PUPPET_PART_JOINTS as PART_JOINTS,
   PUPPET_TARGETS
-} from "../animations/rig.js?v=0.10.0";
-import { animationEase } from "../animations/runtime.js?v=0.10.0";
+} from "../animations/rig.js?v=0.11.0";
+import { animationEase } from "../animations/runtime.js?v=0.11.0";
 import {
   createStudioProject,
   normalizeStudioProject,
@@ -16,9 +14,9 @@ import {
   serializeStudioProject,
   STUDIO_EASES,
   validateStudioProject
-} from "../animations/studio-format.js?v=0.10.0";
-import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.10.0";
-import { createKinetraBundle } from "../animations/kinetra-runtime.js?v=0.10.0";
+} from "../animations/studio-format.js?v=0.11.0";
+import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.11.0";
+import { createKinetraBundle } from "../animations/kinetra-runtime.js?v=0.11.0";
 import {
   collapseHierarchicalSelection,
   constrainedTranslation,
@@ -28,8 +26,9 @@ import {
   hitScaleGizmo,
   scaleFromDrag,
   shortestAngleDelta
-} from "./gizmo.js?v=0.10.0";
-import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.10.0";
+} from "./gizmo.js?v=0.11.0";
+import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.11.0";
+import { createTemplateProject } from "./templates.js?v=0.11.0";
 
 const $ = (id) => document.getElementById(id);
 const BASE_SCALE = 0.32;
@@ -54,15 +53,6 @@ const LABELS = {
   kneeLeft: "Rodilla izquierda",
   ankleLeft: "Tobillo izquierdo"
 };
-const PRESET = [
-  ["pie_derecho", -175.526, 732.316], ["brazo_izquierdo", 161.481, -174.474, "brazo_derecho"],
-  ["mano_derecha", -291.203, 251.237], ["muslo_izquierdo", 117.315, 255.895],
-  ["torso", -41, -72.5], ["muslo_derecho", -93.789, 261.869],
-  ["pie_izquierdo", 153.763, 715.421], ["pierna_derecha", -140.026, 527.974],
-  ["pierna_izquierda", 151.263, 520.474], ["brazo_derecho", -242.955, -164.184, "brazo_izquierdo"],
-  ["antebrazo_derecho", -315.639, 62.658], ["antebrazo_izquierdo", 278.403, 24.447],
-  ["mano_izquierda", 355.423, 215.474], ["cabeza", -10.737, -498.684]
-];
 const TRANSFORM_FIELDS = {
   x: "key-x", y: "key-y", angle: "key-angle", alpha: "key-alpha",
   scaleX: "key-scale-x", scaleY: "key-scale-y"
@@ -166,40 +156,9 @@ const TUTORIALS = Object.freeze({
 });
 
 const prettyId = (id) => String(id).replaceAll("_", " ").replace(/^./, (value) => value.toUpperCase());
-const freshRig = () => ({
-  id: "humanoid",
-  name: "Humanoide",
-  bones: Object.entries(JOINTS).map(([id, pivot]) => ({
-    id,
-    name: LABELS[id] || prettyId(id),
-    parent: PARENTS[id] || null,
-    x: pivot.x,
-    y: pivot.y
-  }))
-});
-const freshParts = () => PRESET.map(([id, x, y, assetId], z) => ({
-  id,
-  name: LABELS[id] || prettyId(id),
-  x,
-  y,
-  assetId: assetId || id,
-  source: "builtin",
-  boneId: PART_JOINTS[id] || (id === "torso" ? "rig" : "rig"),
-  rotation: 0,
-  scaleX: 1,
-  scaleY: 1,
-  visible: true,
-  z
-}));
-const freshProject = () => ({ version: 3, fps: 24, assets: [], rig: freshRig(), parts: freshParts(), clip: createStudioProject() });
-const emptyProject = () => ({
-  version: 3,
-  fps: 24,
-  assets: [],
-  rig: { id: "custom", name: "Rig personalizado", bones: [] },
-  parts: [],
-  clip: createStudioProject({ rig: "custom", anatomy: "custom" })
-});
+const freshProject = () => createTemplateProject("male");
+const freshRig = () => freshProject().rig;
+const freshParts = () => freshProject().parts;
 
 function rigJoints() {
   return Object.fromEntries((project.rig?.bones || []).map((bone) => [bone.id, { x: Number(bone.x) || 0, y: Number(bone.y) || 0 }]));
@@ -656,7 +615,7 @@ function normalizeLoadedProject(candidate) {
     baseClip.animation = candidate.clips?.[0] || baseClip.animation;
     const clip = parseStudioProject(JSON.stringify(baseClip), { allowedTargets });
     return {
-      version: 3,
+      version: 4,
       fps: Number(candidate.fps || 24),
       assets: candidate.assets || [],
       rig,
@@ -680,10 +639,10 @@ function normalizeLoadedProject(candidate) {
       z,
       ...item
     }));
-    return { version: 3, fps: Number(candidate.fps || 24), assets: candidate.assets || [], rig, parts, clip };
+    return { version: 4, fps: Number(candidate.fps || 24), assets: candidate.assets || [], rig, parts, clip };
   }
   const clip = parseStudioProject(JSON.stringify(candidate), { allowedTargets: PUPPET_TARGETS });
-  return { version: 3, fps: 24, assets: [], rig: freshRig(), parts: freshParts(), clip };
+  return { version: 4, fps: 24, assets: [], rig: freshRig(), parts: freshParts(), clip };
 }
 
 function loadInitialProject() {
@@ -782,6 +741,17 @@ function ensureImages() {
     image.onload = draw;
     images[item.id] = image;
   });
+}
+
+function layerSourceRect(item, image) {
+  const crop = item.crop;
+  if (!crop) return { x: 0, y: 0, width: image?.naturalWidth || 120, height: image?.naturalHeight || 120 };
+  return {
+    x: Number(crop.x) || 0,
+    y: Number(crop.y) || 0,
+    width: Math.max(1, Number(crop.width) || 1),
+    height: Math.max(1, Number(crop.height) || 1)
+  };
 }
 
 function normalizeLayerOrder() {
@@ -898,6 +868,7 @@ function renderFigure(targetContext, at, { alpha = 1, tint = false, sampledPose 
     if (!item.visible || targetHidden(item.id)) return;
     const image = images[item.id];
     if (!image?.complete || !image.naturalWidth) return;
+    const source = layerSourceRect(item, image);
     const targetId = partBoneId(item);
     const jointId = targetId !== "rig" && targetId !== "torso" ? targetId : null;
     const matrix = jointId && state.joints[jointId]
@@ -911,12 +882,16 @@ function renderFigure(targetContext, at, { alpha = 1, tint = false, sampledPose 
     targetContext.translate(item.x - anchor.x, item.y - anchor.y);
     targetContext.rotate(item.rotation * Math.PI / 180);
     targetContext.scale(item.scaleX, item.scaleY);
-    targetContext.drawImage(image, -image.naturalWidth / 2, -image.naturalHeight / 2);
+    targetContext.drawImage(
+      image,
+      source.x, source.y, source.width, source.height,
+      -source.width / 2, -source.height / 2, source.width, source.height
+    );
     if (tint) {
       targetContext.globalCompositeOperation = "source-atop";
       targetContext.globalAlpha *= 0.45;
       targetContext.fillStyle = "#79b8ef";
-      targetContext.fillRect(-image.naturalWidth / 2, -image.naturalHeight / 2, image.naturalWidth, image.naturalHeight);
+      targetContext.fillRect(-source.width / 2, -source.height / 2, source.width, source.height);
     }
     targetContext.restore();
   });
@@ -939,6 +914,7 @@ function figureBounds(at) {
     if (!item.visible || targetHidden(item.id)) return;
     const image = images[item.id];
     if (!image?.complete || !image.naturalWidth) return;
+    const source = layerSourceRect(item, image);
     const targetId = partBoneId(item);
     const jointId = targetId !== "rig" && targetId !== "torso" ? targetId : null;
     const parentMatrix = jointId && state.joints[jointId]
@@ -952,8 +928,8 @@ function figureBounds(at) {
       ),
       scale(item.scaleX, item.scaleY)
     );
-    const halfWidth = image.naturalWidth / 2;
-    const halfHeight = image.naturalHeight / 2;
+    const halfWidth = source.width / 2;
+    const halfHeight = source.height / 2;
     include(point(matrix, -halfWidth, -halfHeight));
     include(point(matrix, halfWidth, -halfHeight));
     include(point(matrix, -halfWidth, halfHeight));
@@ -1849,16 +1825,28 @@ function removeSelectedBone() {
 }
 
 function createNewProject() {
-  if (!confirm("¿Crear un proyecto vacío? El proyecto actual quedará reemplazado en el guardado local.")) return;
-  project = emptyProject();
+  closeApplicationMenus();
+  $("new-project-dialog").showModal();
+  refreshIcons($("new-project-dialog"));
+}
+
+function createProjectFromTemplate(templateId) {
+  pause();
+  project = createTemplateProject(templateId);
+  normalizeLayerOrder();
   selectAnimationTarget("rig");
-  selectedPart = "";
+  selectedPart = project.parts.find((item) => partBoneId(item) === "rig")?.id || project.parts[0]?.id || "";
   selectedKeys.clear();
+  hiddenTargets.clear();
+  lockedTargets.clear();
+  lockedParts.clear();
   time = 0;
   clearDraft();
   clearGhost();
   ensureImages();
-  commit("Proyecto vacío creado; importa imágenes y construye el rig");
+  $("new-project-dialog").close();
+  const templateName = templateId === "female" ? "humano femenino" : templateId === "dog" ? "perro" : templateId === "blank" ? "proyecto vacío" : "humano masculino";
+  commit(`Plantilla ${templateName} creada`);
   setMode("calibrador");
 }
 
@@ -2218,11 +2206,11 @@ async function portableAuthoringProject() {
   const knownAssets = new Map((portable.assets || []).map((asset) => [asset.id, asset]));
   for (const layer of portable.parts) {
     const existing = knownAssets.get(layer.assetId);
-    if (existing?.src) {
+    if (existing?.src?.startsWith("data:")) {
       layer.source = "asset";
       continue;
     }
-    const source = `./assets/modular/man_sprites/runtime/${encodeURIComponent(layer.assetId || layer.id)}.png`;
+    const source = existing?.src || `./assets/modular/man_sprites/runtime/${encodeURIComponent(layer.assetId || layer.id)}.png`;
     const response = await fetch(source);
     if (!response.ok) throw new Error(`No se pudo incrustar el recurso ${layer.assetId}`);
     const blob = await response.blob();
@@ -2233,8 +2221,9 @@ async function portableAuthoringProject() {
       size: blob.size,
       src: await blobToDataUrl(blob)
     };
-    knownAssets.set(asset.id, asset);
-    portable.assets.push(asset);
+    if (existing) Object.assign(existing, asset);
+    else portable.assets.push(asset);
+    knownAssets.set(asset.id, existing || asset);
     layer.source = "asset";
   }
   return portable;
@@ -2360,6 +2349,11 @@ function bindControls() {
   });
   $("help-dialog-close").onclick = () => $("help-dialog").close();
   $("help-dialog").onclick = (event) => { if (event.target === $("help-dialog")) $("help-dialog").close(); };
+  $("new-project-close").onclick = () => $("new-project-dialog").close();
+  $("new-project-dialog").onclick = (event) => { if (event.target === $("new-project-dialog")) $("new-project-dialog").close(); };
+  document.querySelectorAll("[data-project-template]").forEach((button) => {
+    button.onclick = () => createProjectFromTemplate(button.dataset.projectTemplate);
+  });
   $("tutorial-close").onclick = closeTutorial;
   $("tutorial-back").onclick = () => moveTutorial(-1);
   $("tutorial-next").onclick = () => moveTutorial(1);
@@ -2566,8 +2560,9 @@ function bindCanvas() {
       let distance = Infinity;
       [...project.parts].sort((left, right) => right.z - left.z).forEach((item) => {
         const image = images[item.id];
-        const width = image?.naturalWidth || 120;
-        const height = image?.naturalHeight || 120;
+        const source = layerSourceRect(item, image);
+        const width = source.width;
+        const height = source.height;
         const score = Math.hypot((world.x - item.x) / (width / 2), (world.y - item.y) / (height / 2));
         if (score < 1.4 && score < distance) { chosen = item.id; distance = score; }
       });

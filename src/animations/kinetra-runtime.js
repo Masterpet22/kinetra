@@ -1,5 +1,5 @@
 /** Runtime portable de Kinetra v2: no depende del DOM ni del editor. */
-import { sampleKeyframeAnimationPose } from "./runtime.js?v=0.10.0";
+import { sampleKeyframeAnimationPose } from "./runtime.js?v=0.11.0";
 
 export const KINETRA_SCHEMA = "kinetra/v2";
 
@@ -64,6 +64,11 @@ export function validateKinetraProject(project) {
     layerIds.add(layer?.id);
     if (!assetIds.has(layer?.assetId) && layer?.source !== "builtin") errors.push(`layers[${index}].assetId no existe`);
     if (layer?.boneId && !boneIds.has(layer.boneId)) errors.push(`layers[${index}].boneId no existe`);
+    if (layer?.crop) {
+      const cropValid = ["x", "y", "width", "height"].every((field) => Number.isFinite(layer.crop[field]))
+        && layer.crop.x >= 0 && layer.crop.y >= 0 && layer.crop.width > 0 && layer.crop.height > 0;
+      if (!cropValid) errors.push(`layers[${index}].crop debe ser un rectángulo positivo`);
+    }
   });
   const clipIds = new Set();
   (project.clips || []).forEach((clip, index) => {
@@ -134,6 +139,7 @@ export function resolveKinetraFrame(project, clipId, time) {
         id: layer.id,
         assetId: layer.assetId,
         asset: assets.get(layer.assetId) || null,
+        crop: layer.crop ? { ...layer.crop } : null,
         opacity: layer.opacity ?? 1,
         matrix: multiplyMatrix(parent, calibration)
       };

@@ -8,7 +8,7 @@ const [html, editor] = await Promise.all([
 
 const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const attribute = (tag, name) => tag.match(new RegExp(`${name}=["']([^"']+)["']`))?.[1] || null;
-const genericActions = ["data-mode", "data-tool", "data-menu-command", "data-panel-float", "data-panel-close", "data-tutorial"];
+const genericActions = ["data-mode", "data-tool", "data-menu-command", "data-panel-float", "data-panel-close", "data-tutorial", "data-project-template"];
 const buttons = [...html.matchAll(/<button\b[^>]*>/g)].map((match) => match[0]);
 
 assert.ok(buttons.length > 30, "La auditoría debe abarcar los controles estáticos del Studio");
