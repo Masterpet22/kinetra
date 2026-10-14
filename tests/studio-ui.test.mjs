@@ -14,7 +14,7 @@ for (const id of ["canvas", "preview-canvas", "inspector-panel", "timeline-scrol
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control ${id}`);
 }
 assert.doesNotMatch(html, /<iframe\b/i, "El Studio unificado no debe depender de vistas embebidas");
-assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.7\.0["']/);
+assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.7\.1["']/);
 assert.match(html, /navigator\.serviceWorker\.getRegistrations\(\)/, "El Studio debe retirar cachés heredadas antes de iniciar");
 assert.doesNotMatch(html, /window\.stop\(\)/, "La limpieza del Studio no debe abortar la navegación actual");
 assert.match(html, /id=["']timeline-zoom["']/, "El timeline debe tener zoom temporal independiente");
@@ -22,7 +22,7 @@ assert.match(css, /--left-dock:\s*270px/);
 assert.match(css, /--right-dock:\s*310px/);
 assert.match(css, /data-dock-zone=["']bottom["'][^}]*grid-column:\s*1\s*\/\s*-1/s);
 assert.match(editor, /sampleStudioAnimation/);
-assert.match(editor, /studio-format\.js\?v=0\.7\.0/, "Los módulos internos deben invalidar la caché junto con el editor");
+assert.match(editor, /studio-format\.js\?v=0\.7\.1/, "Los módulos internos deben invalidar la caché junto con el editor");
 assert.match(editor, /validateStudioProject/);
 assert.match(editor, /mode:\s*["']game["']/);
 assert.match(editor, /function restoreHistory/);
@@ -71,6 +71,8 @@ for (const kind of ["skeleton", "tracks", "layers"]) {
   assert.match(html, new RegExp(`data-hierarchy-kind=["']${kind}["']`), `La subventana ${kind} debe tener contenido independiente`);
 }
 assert.match(editor, /timeline-scroll["']\)\.clientWidth/, "La línea de tiempo debe partir del ancho realmente disponible");
+assert.match(editor, /clientWidth\s*-\s*18/, "La línea de tiempo debe reservar el canal de la barra vertical y evitar scroll horizontal al 100 %");
+assert.match(css, /\.track-line\s*\{[^}]*min-width:\s*0/s, "Las pistas deben poder contraerse al ancho disponible");
 assert.match(editor, /new ResizeObserver\(\(\) => renderTimeline\(\)\)/, "La línea de tiempo debe reaccionar al redimensionado de su panel");
 assert.match(css, /\.workspace\s*\{[^}]*container-type:\s*inline-size/s, "La barra de herramientas debe responder al espacio del lienzo");
 assert.match(css, /\.toolbar\s*\{[^}]*flex-wrap:\s*wrap/s, "Los controles no deben quedar ocultos bajo el inspector");
@@ -88,5 +90,8 @@ assert.match(css, /--timeline-h:\s*clamp\(/, "El dock inferior debe tener una al
 assert.match(editor, /PANEL_FLOAT_SIZES/, "Cada ventana debe tener un tamaño flotante apropiado");
 assert.match(editor, /function undo\(\)/, "Deshacer debe incluir borradores y cambios confirmados");
 assert.match(html, /id=["']canvas["'][^>]*tabindex=["']0["']/, "El lienzo debe recibir el foco para los atajos de teclado");
+assert.match(html, /assets\/brand\/kinetra-logo\.png\?v=0\.7\.1/, "La cabecera debe usar el logo oficial preparado para la aplicación");
+assert.doesNotMatch(html, /<button[^>]*>Línea de tiempo<\/button>/, "Un rótulo sin acción no debe anunciarse como botón");
+assert.match(editor, /header-play["']\)\.onclick\s*=\s*\(\)\s*=>\s*playing\s*\?\s*pause\(\)\s*:\s*play\(\)/, "La reproducción global debe alternar reproducir y detener");
 
 console.log("Pruebas de interfaz de Kinetra superadas.");

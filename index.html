@@ -21,11 +21,11 @@
       ]).catch((error) => console.warn("No se pudo retirar una caché antigua", error));
     })();
   </script>
-  <link rel="stylesheet" href="./styles.css?v=0.7.0">
+  <link rel="stylesheet" href="./styles.css?v=0.7.1">
 </head>
 <body>
   <header class="studio-header">
-    <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span>Kinetra</span></div>
+    <div class="brand"><img class="brand-logo" src="./assets/brand/kinetra-logo.png?v=0.7.1" alt="Kinetra"></div>
     <nav class="app-menu-bar" aria-label="Menú de aplicación">
       <details class="app-menu">
         <summary>Archivo</summary>
@@ -241,7 +241,7 @@
         <span class="panel-window-actions"><button data-panel-float="timeline" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Línea de tiempo">↗</button><button data-panel-close="timeline" title="Ocultar panel" aria-label="Ocultar Línea de tiempo">×</button></span>
       </div>
       <div class="timeline-top">
-        <div class="timeline-tabs"><button class="timeline-tab active">Línea de tiempo</button><button class="timeline-tab" id="open-curves">Editor de curvas</button></div>
+        <div class="timeline-tabs"><span class="timeline-tab active" aria-current="page">Línea de tiempo</span><button class="timeline-tab" id="open-curves">Editor de curvas</button></div>
         <button id="first" class="tool-button" aria-label="Primer fotograma">⏮</button>
         <button id="previous-key" class="tool-button" title="Clave anterior (Mayús+←)" aria-label="Clave anterior">◆◀</button>
         <button id="play" class="tool-button" aria-label="Reproducir">▶</button>
@@ -273,6 +273,6 @@
   </main>
 
   <input id="file" type="file" accept=".json,application/json">
-  <script type="module" src="./src/studio/editor.js?v=0.7.0"></script>
+  <script type="module" src="./src/studio/editor.js?v=0.7.1"></script>
 </body>
 </html>

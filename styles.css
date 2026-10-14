@@ -42,9 +42,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   background: linear-gradient(180deg, #101d2e, #0b1625);
   box-shadow: 0 4px 18px #0007;
 }
-.brand { display: flex; align-items: center; gap: 10px; min-width: 150px; font-size: 18px; font-weight: 750; }
-.brand-mark { display: grid; place-items: center; width: 30px; height: 30px; border: 2px solid var(--blue); transform: rotate(45deg); border-radius: 5px; }
-.brand-mark::after { content: ""; width: 12px; height: 12px; border: 2px solid var(--cyan); border-radius: 2px; }
+.brand { min-width: 150px; display: flex; align-items: center; }
+.brand-logo { display: block; width: 138px; height: 44px; object-fit: contain; padding: 4px 7px; border-radius: 7px; background: linear-gradient(135deg, #fff, #edfaff); }
 .main-nav { display: flex; align-items: stretch; gap: 2px; }
 .nav-button, .header-action, .tool-button, .tab-button, .small-button {
   border: 1px solid transparent;
@@ -244,15 +243,15 @@ textarea { width: 100%; min-height: 68px; resize: vertical; }
 .timeline { min-height: 0; display: flex; flex-direction: column; background: #0c1827; }
 .timeline-top { min-height: 45px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--line); }
 .timeline-tabs { display: flex; align-self: stretch; }
-.timeline-tab { padding: 0 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #aebed2; }
+.timeline-tab { min-height: 34px; display: grid; place-items: center; padding: 0 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #aebed2; }
 .timeline-tab.active { color: #fff; border-bottom-color: var(--blue); background: #14263d; }
 .timeline-spacer { flex: 1; }
 .timeline-time { color: #91c4ff; font-weight: 700; min-width: 112px; }
 #scrub { flex: 1; min-width: 180px; }
 .timeline-zoom-control input { width: 76px; }
 .timeline-scroll { flex: 1; min-height: 0; overflow: auto; }
-.timeline-content { width: 100%; min-width: 900px; }
-.ruler-row, .track-row { display: grid; grid-template-columns: 250px minmax(650px, 1fr); }
+.timeline-content { width: 100%; min-width: 0; }
+.ruler-row, .track-row { display: grid; grid-template-columns: clamp(180px, 15vw, 250px) minmax(0, 1fr); }
 .ruler-label { position: sticky; left: 0; z-index: 4; background: #0c1827; border-right: 1px solid var(--line); }
 .ruler { position: relative; height: 27px; border-bottom: 1px solid var(--line); background: #0a1522; }
 .ruler-tick { position: absolute; bottom: 0; height: 9px; border-left: 1px solid #4c6078; color: #93a8bf; font-size: 10px; padding: 0 0 12px 4px; }
@@ -260,7 +259,7 @@ textarea { width: 100%; min-height: 68px; resize: vertical; }
 .track-label { position: sticky; left: 0; z-index: 3; display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0 10px; border-right: 1px solid var(--line); background: #0f1e30; }
 .track-label.active { background: #17375e; color: #fff; }
 .track-label button { border: 0; background: transparent; color: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.track-line { position: relative; min-width: 650px; height: 28px; background: repeating-linear-gradient(90deg, transparent 0, transparent calc(4.166% - 1px), #1c3046 calc(4.166% - 1px), #1c3046 4.166%); }
+.track-line { position: relative; min-width: 0; height: 28px; background: repeating-linear-gradient(90deg, transparent 0, transparent calc(4.166% - 1px), #1c3046 calc(4.166% - 1px), #1c3046 4.166%); }
 .track-line:hover { background-color: #10243a; }
 .key-marker { position: absolute; top: 9px; width: 10px; height: 10px; padding: 0; transform: translateX(-50%) rotate(45deg); border: 1px solid #d9ecff; border-radius: 1px; background: #72b3f5; }
 .key-marker.selected { background: var(--gold); border-color: #fff0c7; box-shadow: 0 0 0 3px #efbd6733; }
@@ -279,6 +278,11 @@ textarea { width: 100%; min-height: 68px; resize: vertical; }
   .project-title { display: none; }
   .preview-card { width: 180px; }
   .app-menu > summary { padding-inline: 6px; }
+}
+
+@media (max-width: 1450px) {
+  .studio-header { gap: 4px; padding-inline: 8px; }
+  .project-title { display: none; }
 }
 
 @media (max-width: 820px) {

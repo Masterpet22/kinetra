@@ -7,8 +7,8 @@ import {
   PUPPET_JOINT_PARENTS as PARENTS,
   PUPPET_PART_JOINTS as PART_JOINTS,
   PUPPET_TARGETS
-} from "../animations/rig.js?v=0.7.0";
-import { animationEase } from "../animations/runtime.js?v=0.7.0";
+} from "../animations/rig.js?v=0.7.1";
+import { animationEase } from "../animations/runtime.js?v=0.7.1";
 import {
   createStudioProject,
   normalizeStudioProject,
@@ -16,8 +16,8 @@ import {
   serializeStudioProject,
   STUDIO_EASES,
   validateStudioProject
-} from "../animations/studio-format.js?v=0.7.0";
-import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.7.0";
+} from "../animations/studio-format.js?v=0.7.1";
+import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.7.1";
 import {
   collapseHierarchicalSelection,
   constrainedTranslation,
@@ -27,8 +27,8 @@ import {
   hitScaleGizmo,
   scaleFromDrag,
   shortestAngleDelta
-} from "./gizmo.js?v=0.7.0";
-import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.7.0";
+} from "./gizmo.js?v=0.7.1";
+import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.7.1";
 
 const $ = (id) => document.getElementById(id);
 const BASE_SCALE = 0.32;
@@ -1439,7 +1439,7 @@ function renderRuler() {
 }
 
 function renderTimeline() {
-  const availableWidth = Math.max(900, $("timeline-scroll").clientWidth);
+  const availableWidth = Math.max(0, $("timeline-scroll").clientWidth - 18);
   $("timeline-content").style.width = `${Math.round(availableWidth * timelineZoom)}px`;
   renderRuler();
   const host = $("tracks");
@@ -1725,14 +1725,21 @@ function play() {
   if (time >= duration()) time = 0;
   playing = true;
   lastTick = performance.now();
-  $("preview-state").textContent = "●";
+  updatePlaybackButtons();
   animationFrame = requestAnimationFrame(tick);
 }
 
 function pause() {
   playing = false;
   cancelAnimationFrame(animationFrame);
-  $("preview-state").textContent = "○";
+  updatePlaybackButtons();
+}
+
+function updatePlaybackButtons() {
+  $("preview-state").textContent = playing ? "●" : "○";
+  $("header-play").textContent = playing ? "■ Detener" : "▶ Reproducir";
+  $("header-play").title = playing ? "Detener (Espacio)" : "Reproducir (Espacio)";
+  $("preview-play").textContent = playing ? "■" : "▶";
 }
 
 function tick(now) {
@@ -1793,7 +1800,7 @@ function bindControls() {
     commit("ID del proyecto actualizado");
     refresh();
   };
-  $("header-play").onclick = play;
+  $("header-play").onclick = () => playing ? pause() : play();
   $("preview-play").onclick = () => playing ? pause() : play();
   $("play").onclick = play;
   $("pause").onclick = pause;
