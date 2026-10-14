@@ -7,8 +7,8 @@ import {
   PUPPET_JOINT_PARENTS as PARENTS,
   PUPPET_PART_JOINTS as PART_JOINTS,
   PUPPET_TARGETS
-} from "../animations/rig.js?v=0.9.0";
-import { animationEase } from "../animations/runtime.js?v=0.9.0";
+} from "../animations/rig.js?v=0.10.0";
+import { animationEase } from "../animations/runtime.js?v=0.10.0";
 import {
   createStudioProject,
   normalizeStudioProject,
@@ -16,8 +16,9 @@ import {
   serializeStudioProject,
   STUDIO_EASES,
   validateStudioProject
-} from "../animations/studio-format.js?v=0.9.0";
-import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.9.0";
+} from "../animations/studio-format.js?v=0.10.0";
+import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.10.0";
+import { createKinetraBundle } from "../animations/kinetra-runtime.js?v=0.10.0";
 import {
   collapseHierarchicalSelection,
   constrainedTranslation,
@@ -27,8 +28,8 @@ import {
   hitScaleGizmo,
   scaleFromDrag,
   shortestAngleDelta
-} from "./gizmo.js?v=0.9.0";
-import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.9.0";
+} from "./gizmo.js?v=0.10.0";
+import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.10.0";
 
 const $ = (id) => document.getElementById(id);
 const BASE_SCALE = 0.32;
@@ -36,7 +37,6 @@ const STORAGE_KEY = "kinetra:project";
 const PANEL_STORAGE_KEY = "kinetra:panels";
 const PREVIEW_STORAGE_KEY = "kinetra:preview-visible";
 const THEME_STORAGE_KEY = "kinetra:theme";
-const TARGETS = [...new Set(["rig", "torso", ...Object.keys(JOINTS)])];
 const LABELS = {
   rig: "Torso",
   torso: "Pieza del torso",
@@ -54,13 +54,6 @@ const LABELS = {
   kneeLeft: "Rodilla izquierda",
   ankleLeft: "Tobillo izquierdo"
 };
-const TREE = [{ id: "rig", children: [
-  { id: "neck" },
-  { id: "shoulderRight", children: [{ id: "elbowRight", children: [{ id: "wristRight" }] }] },
-  { id: "shoulderLeft", children: [{ id: "elbowLeft", children: [{ id: "wristLeft" }] }] },
-  { id: "hipRight", children: [{ id: "kneeRight", children: [{ id: "ankleRight" }] }] },
-  { id: "hipLeft", children: [{ id: "kneeLeft", children: [{ id: "ankleLeft" }] }] }
-]}];
 const PRESET = [
   ["pie_derecho", -175.526, 732.316], ["brazo_izquierdo", 161.481, -174.474, "brazo_derecho"],
   ["mano_derecha", -291.203, 251.237], ["muslo_izquierdo", 117.315, 255.895],
@@ -82,18 +75,6 @@ const MIRROR_TARGETS = Object.freeze({
   hipRight: "hipLeft", hipLeft: "hipRight",
   kneeRight: "kneeLeft", kneeLeft: "kneeRight",
   ankleRight: "ankleLeft", ankleLeft: "ankleRight"
-});
-const IK_CHAINS = Object.freeze({
-  wristRight: { upper: "shoulderRight", middle: "elbowRight" },
-  wristLeft: { upper: "shoulderLeft", middle: "elbowLeft" },
-  ankleRight: { upper: "hipRight", middle: "kneeRight" },
-  ankleLeft: { upper: "hipLeft", middle: "kneeLeft" }
-});
-const MIDDLE_CHAINS = Object.freeze({
-  elbowRight: { upper: "shoulderRight" },
-  elbowLeft: { upper: "shoulderLeft" },
-  kneeRight: { upper: "hipRight" },
-  kneeLeft: { upper: "hipLeft" }
 });
 const PANEL_DEFAULTS = Object.freeze({
   skeleton: { visible: true, dock: "left", lastDock: "left" },
@@ -145,9 +126,11 @@ const TUTORIALS = Object.freeze({
     mode: "calibrador",
     steps: [
       { target: "#workspace-menu", title: "Estás en Ensamblaje", copy: "Aquí ajustas los sprites sobre el esqueleto antes de animarlos." },
-      { target: "[data-panel='layers'] .tree", panel: "layers", title: "Escoge una pieza", copy: "Capas selecciona el sprite que vas a calibrar y permite ocultarlo o bloquearlo." },
+      { target: "#import-layers", panel: "layers", title: "Importa las piezas", copy: "Selecciona uno o varios PNG, WebP o JPEG. Cada archivo se convierte en un recurso y una capa independiente." },
+      { target: "[data-panel='layers'] .tree", panel: "layers", title: "Organiza capas reales", copy: "Renombra, ordena, oculta, bloquea o elimina cualquier pieza importada." },
       { target: "#canvas", title: "Coloca el sprite", copy: "Arrastra la pieza directamente sobre el personaje para alinearla con su articulación." },
-      { target: "#calibration-inspector", panel: "inspector", title: "Afina la calibración", copy: "Usa valores precisos para posición, rotación y escala. También puedes voltear y ordenar la capa." }
+      { target: "#add-bone", panel: "skeleton", title: "Construye tu esqueleto", copy: "Añade huesos desde la raíz o como hijos del hueso seleccionado. La jerarquía ya no depende del humanoide de ejemplo." },
+      { target: "#calibration-inspector", panel: "inspector", title: "Vincula y calibra", copy: "Asigna cada capa a un hueso y ajusta posición, rotación, escala, nombre, padre y pivote." }
     ]
   },
   timeline: {
@@ -176,17 +159,73 @@ const TUTORIALS = Object.freeze({
     mode: "exportar",
     steps: [
       { target: "#mode-overlay", title: "Revisa el proyecto", copy: "Esta vista resume las piezas y pistas antes de crear los archivos finales." },
-      { target: "#download-project", title: "Conserva el archivo editable", copy: "El proyecto de Studio incluye calibración, metadatos y todas las pistas para continuar trabajando." },
-      { target: "#download-clip", title: "Entrega el clip al juego", copy: "El clip se habilita cuando la validación es correcta y contiene solo los datos necesarios para reproducir la animación." }
+      { target: "#download-project", title: "Exporta el personaje completo", copy: "El paquete .kinetra.json incluye imágenes, capas, rig y animación para continuar editando o cargarlo en un juego web." },
+      { target: "#download-clip", title: "Mantén proyectos heredados", copy: "El clip v1 se conserva para juegos antiguos que solo esperan el movimiento del humanoide original." }
     ]
   }
 });
 
+const prettyId = (id) => String(id).replaceAll("_", " ").replace(/^./, (value) => value.toUpperCase());
+const freshRig = () => ({
+  id: "humanoid",
+  name: "Humanoide",
+  bones: Object.entries(JOINTS).map(([id, pivot]) => ({
+    id,
+    name: LABELS[id] || prettyId(id),
+    parent: PARENTS[id] || null,
+    x: pivot.x,
+    y: pivot.y
+  }))
+});
 const freshParts = () => PRESET.map(([id, x, y, assetId], z) => ({
-  id, x, y, assetId: assetId || id, rotation: 0, scaleX: 1, scaleY: 1, visible: true, z
+  id,
+  name: LABELS[id] || prettyId(id),
+  x,
+  y,
+  assetId: assetId || id,
+  source: "builtin",
+  boneId: PART_JOINTS[id] || (id === "torso" ? "rig" : "rig"),
+  rotation: 0,
+  scaleX: 1,
+  scaleY: 1,
+  visible: true,
+  z
 }));
-const freshProject = () => ({ version: 2, fps: 24, parts: freshParts(), clip: createStudioProject() });
-const label = (id) => LABELS[id] || id.replaceAll("_", " ").replace(/^./, (value) => value.toUpperCase());
+const freshProject = () => ({ version: 3, fps: 24, assets: [], rig: freshRig(), parts: freshParts(), clip: createStudioProject() });
+const emptyProject = () => ({
+  version: 3,
+  fps: 24,
+  assets: [],
+  rig: { id: "custom", name: "Rig personalizado", bones: [] },
+  parts: [],
+  clip: createStudioProject({ rig: "custom", anatomy: "custom" })
+});
+
+function rigJoints() {
+  return Object.fromEntries((project.rig?.bones || []).map((bone) => [bone.id, { x: Number(bone.x) || 0, y: Number(bone.y) || 0 }]));
+}
+function rigParents() {
+  return Object.fromEntries((project.rig?.bones || []).map((bone) => [bone.id, bone.parent || null]));
+}
+function animationTargets() {
+  return [...new Set(["rig", "torso", ...(project.rig?.bones || []).map((bone) => bone.id)])];
+}
+function partBoneId(item) {
+  return item?.boneId || PART_JOINTS[item?.id] || (item?.id === "torso" ? "rig" : "rig");
+}
+function rigTree() {
+  const bones = project.rig?.bones || [];
+  const children = new Map([["rig", []]]);
+  bones.forEach((bone) => children.set(bone.id, []));
+  bones.forEach((bone) => (children.get(bone.parent || "rig") || children.get("rig")).push(bone.id));
+  const build = (id) => ({ id, children: (children.get(id) || []).map(build) });
+  return [build("rig")];
+}
+function label(id) {
+  if (id === "rig") return project.rig?.name || LABELS.rig;
+  const bone = project.rig?.bones?.find((item) => item.id === id);
+  return bone?.name || LABELS[id] || prettyId(id);
+}
 
 let project = freshProject();
 let mode = "animador";
@@ -494,6 +533,27 @@ function bindPanels() {
 function duration() { return project.clip.animation.duration; }
 function fps() { return Number(project.fps || 24); }
 function part() { return project.parts.find((item) => item.id === selectedPart); }
+function selectedBone() { return project.rig?.bones?.find((item) => item.id === selectedTarget) || null; }
+function isBoneDescendant(candidateId, ancestorId) {
+  const parents = rigParents();
+  let current = candidateId;
+  while (current) {
+    if (current === ancestorId) return true;
+    current = parents[current];
+  }
+  return false;
+}
+function middleChainFor(target) {
+  const parents = rigParents();
+  const hasChild = (project.rig?.bones || []).some((bone) => bone.parent === target);
+  return hasChild && parents[target] ? { upper: parents[target] } : null;
+}
+function ikChainFor(target) {
+  const parents = rigParents();
+  const middle = parents[target];
+  const upper = middle && parents[middle];
+  return upper ? { upper, middle } : null;
+}
 function selectionLabel() { return selectedTargets.size > 1 ? `${selectedTargets.size} objetivos` : label(selectedTarget); }
 function selectAnimationTarget(target, append = false) {
   if (!append) selectedTargets = new Set([target]);
@@ -501,7 +561,7 @@ function selectAnimationTarget(target, append = false) {
   else selectedTargets.add(target);
   selectedTarget = selectedTargets.has(target) ? target : [...selectedTargets].at(-1);
 }
-function committedPose(at = time) { return sampleStudioAnimation(project.clip, at, PUPPET_TARGETS); }
+function committedPose(at = time) { return sampleStudioAnimation(project.clip, at, animationTargets()); }
 function frameTransform(frame = {}) {
   return Object.fromEntries(Object.keys(TRANSFORM_FIELDS)
     .filter((property) => Object.hasOwn(frame, property))
@@ -589,13 +649,41 @@ function updateGhostLabel() {
 }
 
 function normalizeLoadedProject(candidate) {
+  if (candidate?.schema === "kinetra/v2") {
+    const rig = candidate.rig || freshRig();
+    const allowedTargets = ["rig", "torso", ...(rig.bones || []).map((bone) => bone.id)];
+    const baseClip = createStudioProject({ rig: rig.id || "custom", anatomy: "custom" });
+    baseClip.animation = candidate.clips?.[0] || baseClip.animation;
+    const clip = parseStudioProject(JSON.stringify(baseClip), { allowedTargets });
+    return {
+      version: 3,
+      fps: Number(candidate.fps || 24),
+      assets: candidate.assets || [],
+      rig,
+      parts: (candidate.layers || []).map((item, z) => ({ visible: true, rotation: 0, scaleX: 1, scaleY: 1, z, ...item })),
+      clip
+    };
+  }
   if (candidate?.clip) {
     if (!Array.isArray(candidate.parts)) throw new Error("El proyecto no contiene piezas");
-    const clip = parseStudioProject(JSON.stringify(candidate.clip), { allowedTargets: PUPPET_TARGETS });
-    return { version: 2, fps: Number(candidate.fps || 24), parts: candidate.parts, clip };
+    const rig = candidate.rig?.bones ? candidate.rig : freshRig();
+    const allowedTargets = ["rig", "torso", ...rig.bones.map((bone) => bone.id)];
+    const clip = parseStudioProject(JSON.stringify(candidate.clip), { allowedTargets });
+    const parts = candidate.parts.map((item, z) => ({
+      name: item.name || LABELS[item.id] || prettyId(item.id),
+      source: candidate.assets?.some((asset) => asset.id === item.assetId) ? "asset" : "builtin",
+      boneId: PART_JOINTS[item.id] || (item.id === "torso" ? "rig" : "rig"),
+      visible: true,
+      rotation: 0,
+      scaleX: 1,
+      scaleY: 1,
+      z,
+      ...item
+    }));
+    return { version: 3, fps: Number(candidate.fps || 24), assets: candidate.assets || [], rig, parts, clip };
   }
   const clip = parseStudioProject(JSON.stringify(candidate), { allowedTargets: PUPPET_TARGETS });
-  return { version: 2, fps: 24, parts: freshParts(), clip };
+  return { version: 3, fps: 24, assets: [], rig: freshRig(), parts: freshParts(), clip };
 }
 
 function loadInitialProject() {
@@ -647,6 +735,7 @@ function restoreHistory(index) {
   historyIndex = index;
   project = JSON.parse(undoHistory[historyIndex]);
   project.clip = normalizeStudioProject(project.clip);
+  normalizeLayerOrder();
   time = Math.min(time, duration());
   clearDraft();
   resetGhostFromProject(time);
@@ -683,13 +772,22 @@ function updateHistoryButtons() {
 
 function ensureImages() {
   project.parts.forEach((item) => {
-    if (images[item.id]?.dataset.assetId === item.assetId) return;
+    const asset = project.assets?.find((entry) => entry.id === item.assetId);
+    const source = asset?.src || `./assets/modular/man_sprites/runtime/${encodeURIComponent(item.assetId || item.id)}.png`;
+    if (images[item.id]?.dataset.source === source) return;
     const image = new Image();
     image.dataset.assetId = item.assetId;
-    image.src = `./assets/modular/man_sprites/runtime/${encodeURIComponent(item.assetId || item.id)}.png`;
+    image.dataset.source = source;
+    image.src = source;
     image.onload = draw;
     images[item.id] = image;
   });
+}
+
+function normalizeLayerOrder() {
+  [...project.parts]
+    .sort((left, right) => (Number(left.z) || 0) - (Number(right.z) || 0))
+    .forEach((item, index) => { item.z = index; });
 }
 
 const multiply = (left, right) => [
@@ -722,23 +820,30 @@ function transformMatrix(transform = {}) {
 function parentMatrixForTarget(target, state) {
   if (target === "rig") return [1, 0, 0, 1, 0, 0];
   if (target === "torso") return state.root;
-  const parent = PARENTS[target];
+  const parent = rigParents()[target];
   return parent ? state.joints[parent] : state.root;
 }
 
 function matrices(at = time, sampledPose = null) {
   const sampled = sampledPose || pose(at);
   const root = transformMatrix(sampled.rig);
+  const joints = rigJoints();
+  const parents = rigParents();
   const memo = {};
+  const resolving = new Set();
   function joint(id) {
     if (memo[id]) return memo[id];
-    const parent = PARENTS[id];
-    const current = JOINTS[id];
-    const from = parent ? JOINTS[parent] : { x: 0, y: 0 };
+    if (resolving.has(id) || !joints[id]) return root;
+    resolving.add(id);
+    const parent = parents[id];
+    const current = joints[id];
+    const from = parent ? joints[parent] || { x: 0, y: 0 } : { x: 0, y: 0 };
     const parentMatrix = parent ? joint(parent) : root;
-    return (memo[id] = multiply(multiply(parentMatrix, translate(current.x - from.x, current.y - from.y)), transformMatrix(sampled[id])));
+    memo[id] = multiply(multiply(parentMatrix, translate(current.x - from.x, current.y - from.y)), transformMatrix(sampled[id]));
+    resolving.delete(id);
+    return memo[id];
   }
-  Object.keys(JOINTS).forEach(joint);
+  Object.keys(joints).forEach(joint);
   return { joints: memo, pose: sampled, root };
 }
 
@@ -780,7 +885,8 @@ function worldToCanvasPoint(x, y) {
 
 function targetHidden(partId) {
   if (hiddenTargets.has("rig")) return true;
-  const target = PART_JOINTS[partId] || (partId === "torso" ? "torso" : null);
+  const item = project.parts.find((partItem) => partItem.id === partId);
+  const target = partBoneId(item);
   return target ? hiddenTargets.has(target) : false;
 }
 
@@ -792,12 +898,12 @@ function renderFigure(targetContext, at, { alpha = 1, tint = false, sampledPose 
     if (!item.visible || targetHidden(item.id)) return;
     const image = images[item.id];
     if (!image?.complete || !image.naturalWidth) return;
-    const jointId = PART_JOINTS[item.id];
-    const targetId = jointId || (item.id === "torso" ? "torso" : "rig");
-    const matrix = jointId
+    const targetId = partBoneId(item);
+    const jointId = targetId !== "rig" && targetId !== "torso" ? targetId : null;
+    const matrix = jointId && state.joints[jointId]
       ? state.joints[jointId]
       : multiply(state.root, targetId === "torso" ? transformMatrix(state.pose.torso) : [1, 0, 0, 1, 0, 0]);
-    const anchor = jointId ? JOINTS[jointId] : { x: 0, y: 0 };
+    const anchor = jointId ? rigJoints()[jointId] || { x: 0, y: 0 } : { x: 0, y: 0 };
     const visibility = Math.max(0, Math.min(1, 1 + (state.pose.rig?.alpha || 0) + (state.pose[targetId]?.alpha || 0)));
     targetContext.save();
     targetContext.globalAlpha *= visibility;
@@ -833,12 +939,12 @@ function figureBounds(at) {
     if (!item.visible || targetHidden(item.id)) return;
     const image = images[item.id];
     if (!image?.complete || !image.naturalWidth) return;
-    const jointId = PART_JOINTS[item.id];
-    const targetId = jointId || (item.id === "torso" ? "torso" : "rig");
-    const parentMatrix = jointId
+    const targetId = partBoneId(item);
+    const jointId = targetId !== "rig" && targetId !== "torso" ? targetId : null;
+    const parentMatrix = jointId && state.joints[jointId]
       ? state.joints[jointId]
       : multiply(state.root, targetId === "torso" ? transformMatrix(state.pose.torso) : [1, 0, 0, 1, 0, 0]);
-    const anchor = jointId ? JOINTS[jointId] : { x: 0, y: 0 };
+    const anchor = jointId ? rigJoints()[jointId] || { x: 0, y: 0 } : { x: 0, y: 0 };
     const matrix = multiply(
       multiply(
         multiply(parentMatrix, translate(item.x - anchor.x, item.y - anchor.y)),
@@ -887,8 +993,9 @@ function drawGrid(width, height, base, viewScale) {
 function drawBones(at) {
   if (!$("bones").checked) return;
   const state = matrices(at);
+  const parents = rigParents();
   Object.entries(state.joints).forEach(([id, matrix]) => {
-    const parent = PARENTS[id];
+    const parent = parents[id];
     const parentMatrix = parent ? state.joints[parent] : state.root;
     context.strokeStyle = selectedTargets.has(id) ? "#efbd67" : "#63c9ff";
     context.fillStyle = selectedTargets.has(id) ? "#ffd68e" : "#83d9ff";
@@ -963,11 +1070,11 @@ function hitTransformGizmo(clientX, clientY, state = matrices(time)) {
 
 function beginTransformInteraction(hit, state, world, canvasPoint) {
   const editableTargets = [...selectedTargets].filter((target) => !lockedTargets.has(target));
-  const targets = collapseHierarchicalSelection(editableTargets, PARENTS);
+  const targets = collapseHierarchicalSelection(editableTargets, rigParents());
   const gizmoAngle = transformGizmoAngle(state);
   if (hit.type === "translate") {
     const target = targets[0];
-    const middleChain = editableTargets.length === 1 ? MIDDLE_CHAINS[target] : null;
+    const middleChain = editableTargets.length === 1 ? middleChainFor(target) : null;
     if (middleChain && !lockedTargets.has(middleChain.upper)) {
       const upper = state.joints[middleChain.upper];
       const middle = state.joints[target];
@@ -986,7 +1093,7 @@ function beginTransformInteraction(hit, state, world, canvasPoint) {
         moved: false
       };
     }
-    const chain = editableTargets.length === 1 ? IK_CHAINS[target] : null;
+    const chain = editableTargets.length === 1 ? ikChainFor(target) : null;
     if (chain && !lockedTargets.has(chain.upper) && !lockedTargets.has(chain.middle)) {
       const upper = state.joints[chain.upper];
       const middle = state.joints[chain.middle];
@@ -1233,7 +1340,8 @@ function appendTreeNode(node, depth, search, host) {
 
 function renderLayers(search, host) {
   [...project.parts].sort((left, right) => right.z - left.z).forEach((item) => {
-    if (!label(item.id).toLocaleLowerCase().includes(search)) return;
+    const itemLabel = item.name || label(item.id);
+    if (!itemLabel.toLocaleLowerCase().includes(search)) return;
     const row = document.createElement("div");
     row.className = `tree-row${selectedPart === item.id ? " active" : ""}`;
     const icon = document.createElement("span");
@@ -1241,7 +1349,7 @@ function renderLayers(search, host) {
     icon.append(createIcon("layers-3"));
     const button = document.createElement("button");
     button.className = "tree-select";
-    button.textContent = label(item.id);
+    button.textContent = itemLabel;
     button.onclick = () => { selectedPart = item.id; refresh(); };
     const toggle = document.createElement("button");
     toggle.className = "tree-toggle";
@@ -1268,13 +1376,13 @@ function renderTree() {
     host.replaceChildren();
     if (kind === "layers") renderLayers(search, host);
     else if (kind === "tracks") {
-      TARGETS.filter((target) => (project.clip.animation.keys[target] || []).length || !search)
+      animationTargets().filter((target) => (project.clip.animation.keys[target] || []).length || !search)
         .filter((target) => label(target).toLocaleLowerCase().includes(search))
         .forEach((target) => appendTreeNode({ id: target }, 0, search, host));
-    } else TREE.forEach((node) => appendTreeNode(node, 0, search, host));
+    } else rigTree().forEach((node) => appendTreeNode(node, 0, search, host));
     const description = kind === "layers"
-      ? `${project.parts.length} capas · ${project.clip.anatomy}`
-      : `${project.clip.rig} · ${Object.keys(project.clip.animation.keys).length} pistas`;
+      ? `${project.parts.length} capas reales · ${(project.assets || []).length} recursos importados`
+      : `${project.rig?.name || project.clip.rig} · ${(project.rig?.bones || []).length} huesos · ${Object.keys(project.clip.animation.keys).length} pistas`;
     panel.querySelector("[data-hierarchy-meta]").textContent = description;
     refreshIcons(panel);
   });
@@ -1284,21 +1392,40 @@ function renderInspector() {
   const calibration = mode === "calibrador";
   $("animation-inspector").hidden = calibration;
   $("calibration-inspector").hidden = !calibration;
-  $("selected-name").textContent = calibration ? label(selectedPart) : selectionLabel();
+  const currentPart = part();
+  $("selected-name").textContent = calibration ? currentPart?.name || "Sin capas" : selectionLabel();
   $("selected-type").textContent = calibration
-    ? `Pieza · Capa ${part()?.z ?? 0}`
+    ? currentPart
+      ? `Capa ${currentPart.z + 1} · Hueso: ${label(partBoneId(currentPart))}`
+      : "Importa una imagen para crear la primera capa"
     : selectedTargets.size > 1
       ? `Selección múltiple · Principal: ${label(selectedTarget)}`
       : `Hueso · Objetivo: ${selectedTarget}`;
   if (calibration) {
-    const current = part();
-    if (!current) return;
-    $("part-x").value = current.x;
-    $("part-y").value = current.y;
-    $("part-rotation").value = current.rotation;
-    $("part-scale").value = Math.abs(current.scaleX);
-    ["part-x", "part-y", "part-rotation", "part-scale", "flip-part", "layer-up", "layer-down"]
-      .forEach((id) => { $(id).disabled = lockedParts.has(current.id); });
+    const current = currentPart;
+    $("part-name").value = current?.name || "";
+    $("part-bone").replaceChildren(...animationTargets()
+      .filter((target) => target !== "torso")
+      .map((target) => new Option(label(target), target, false, current && partBoneId(current) === target)));
+    $("part-x").value = current?.x ?? 0;
+    $("part-y").value = current?.y ?? 0;
+    $("part-rotation").value = current?.rotation ?? 0;
+    $("part-scale").value = Math.abs(current?.scaleX ?? 1);
+    ["part-name", "part-bone", "part-x", "part-y", "part-rotation", "part-scale", "flip-part", "layer-up", "layer-down", "remove-part"]
+      .forEach((id) => { $(id).disabled = !current || lockedParts.has(current.id); });
+
+    const bone = selectedBone();
+    $("bone-name").value = bone?.name || project.rig?.name || "Rig";
+    $("bone-x").value = bone?.x ?? 0;
+    $("bone-y").value = bone?.y ?? 0;
+    $("bone-parent").replaceChildren(
+      new Option("Rig (raíz)", ""),
+      ...(project.rig?.bones || [])
+        .filter((candidate) => candidate.id !== bone?.id && !isBoneDescendant(candidate.id, bone?.id))
+        .map((candidate) => new Option(candidate.name || candidate.id, candidate.id, false, bone?.parent === candidate.id))
+    );
+    ["bone-name", "bone-parent", "bone-x", "bone-y", "inspector-delete-bone"]
+      .forEach((id) => { $(id).disabled = !bone; });
     return;
   }
   const sampled = pose()[selectedTarget] || {};
@@ -1418,7 +1545,7 @@ function goToAdjacentKey(direction) {
     : times.find((at) => at > time + 0.5);
   if (next === undefined) return status(direction < 0 ? "No hay una clave anterior" : "No hay una clave siguiente");
   time = next;
-  const targets = TARGETS.filter((target) => exactKey(target, next));
+  const targets = animationTargets().filter((target) => exactKey(target, next));
   selectedKeys = new Set(targets.map((target) => `${target}:${next}`));
   if (targets.length && !targets.includes(selectedTarget)) selectAnimationTarget(targets[0]);
   setGhostFromCommitted(next);
@@ -1587,28 +1714,152 @@ function renderTimeline() {
   renderRuler();
   const host = $("tracks");
   host.replaceChildren();
-  TARGETS.forEach((target) => host.append(makeTrackRow(target)));
+  animationTargets().forEach((target) => host.append(makeTrackRow(target)));
   host.append(makeEventRow(), makeSpriteRow());
   updateTimeDisplays();
   refreshIcons($("timeline-content"));
 }
 
 function gameValidationErrors() {
-  return validateStudioProject(normalizeStudioProject(project.clip), { mode: "game", allowedTargets: PUPPET_TARGETS });
+  return validateStudioProject(normalizeStudioProject(project.clip), { mode: "game", allowedTargets: animationTargets() });
+}
+
+function safeId(value, fallback) {
+  const normalized = String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return normalized || fallback;
+}
+
+function uniqueId(base, used) {
+  let candidate = base;
+  let index = 2;
+  while (used.has(candidate)) candidate = `${base}_${index++}`;
+  return candidate;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error(`No se pudo leer ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function importImageLayers(files) {
+  const accepted = [...files].filter((file) => /^image\/(png|webp|jpeg)$/.test(file.type));
+  if (!accepted.length) return status("Selecciona imágenes PNG, WebP o JPEG");
+  const total = accepted.reduce((sum, file) => sum + file.size, 0);
+  if (total > 24 * 1024 * 1024) return status("Las imágenes superan 24 MB; reduce su tamaño antes de importarlas");
+  const usedAssets = new Set((project.assets || []).map((asset) => asset.id));
+  const usedLayers = new Set(project.parts.map((item) => item.id));
+  const anchorId = selectedTarget !== "torso" && animationTargets().includes(selectedTarget) ? selectedTarget : "rig";
+  const anchor = anchorId === "rig" ? { x: 0, y: 0 } : rigJoints()[anchorId] || { x: 0, y: 0 };
+  let lastLayer = null;
+  for (const file of accepted) {
+    const base = safeId(file.name.replace(/\.[^.]+$/, ""), "capa");
+    const assetId = uniqueId(`asset_${base}`, usedAssets);
+    usedAssets.add(assetId);
+    const layerId = uniqueId(base, usedLayers);
+    usedLayers.add(layerId);
+    const src = await readFileAsDataUrl(file);
+    project.assets.push({ id: assetId, name: file.name, type: file.type, size: file.size, src });
+    lastLayer = {
+      id: layerId,
+      name: file.name.replace(/\.[^.]+$/, ""),
+      assetId,
+      source: "asset",
+      boneId: anchorId,
+      x: anchor.x,
+      y: anchor.y,
+      rotation: 0,
+      scaleX: 1,
+      scaleY: 1,
+      visible: true,
+      z: project.parts.length
+    };
+    project.parts.push(lastLayer);
+  }
+  normalizeLayerOrder();
+  selectedPart = lastLayer.id;
+  ensureImages();
+  commit(`${accepted.length} imagen(es) importadas como capas reales`);
+  setMode("calibrador");
+  showRightTab("layers");
+}
+
+function removeSelectedLayer() {
+  const current = part();
+  if (!current) return;
+  if (!confirm(`¿Eliminar la capa “${current.name || current.id}”?`)) return;
+  project.parts = project.parts.filter((item) => item.id !== current.id);
+  normalizeLayerOrder();
+  delete images[current.id];
+  if (current.source === "asset" && !project.parts.some((item) => item.assetId === current.assetId)) {
+    project.assets = project.assets.filter((asset) => asset.id !== current.assetId);
+  }
+  lockedParts.delete(current.id);
+  selectedPart = project.parts.at(-1)?.id || "";
+  commit("Capa eliminada");
+  refresh();
+}
+
+function addBone() {
+  const parent = selectedTarget !== "rig" && selectedBone() ? selectedTarget : null;
+  const parentBone = parent ? project.rig.bones.find((bone) => bone.id === parent) : null;
+  const used = new Set(project.rig.bones.map((bone) => bone.id));
+  const id = uniqueId("hueso", used);
+  project.rig.bones.push({
+    id,
+    name: `Hueso ${project.rig.bones.length + 1}`,
+    parent,
+    x: (parentBone?.x || 0),
+    y: (parentBone?.y || 0) + 140
+  });
+  project.rig.id = "custom";
+  project.rig.name = project.rig.name === "Humanoide" ? "Rig personalizado" : project.rig.name;
+  project.clip.rig = "custom";
+  project.clip.anatomy = "custom";
+  selectAnimationTarget(id);
+  commit("Hueso añadido al rig");
+  refresh();
+}
+
+function removeSelectedBone() {
+  const bone = selectedBone();
+  if (!bone) return status("Selecciona un hueso; el rig raíz no se puede eliminar");
+  if (!confirm(`¿Eliminar el hueso “${bone.name || bone.id}”? Sus hijos se vincularán a su padre.`)) return;
+  project.rig.bones.forEach((candidate) => {
+    if (candidate.parent === bone.id) candidate.parent = bone.parent || null;
+  });
+  project.parts.forEach((item) => {
+    if (partBoneId(item) === bone.id) item.boneId = bone.parent || "rig";
+  });
+  project.rig.bones = project.rig.bones.filter((candidate) => candidate.id !== bone.id);
+  project.rig.id = "custom";
+  project.clip.rig = "custom";
+  project.clip.anatomy = "custom";
+  delete project.clip.animation.keys[bone.id];
+  project.clip.animation.requires = project.clip.animation.requires.filter((target) => target !== bone.id);
+  hiddenTargets.delete(bone.id);
+  lockedTargets.delete(bone.id);
+  selectAnimationTarget(bone.parent || "rig");
+  commit("Hueso eliminado y dependencias reasignadas");
+  refresh();
 }
 
 function createNewProject() {
-  if (!confirm("¿Crear un proyecto nuevo? El proyecto actual quedará reemplazado en el guardado local.")) return;
-  project = freshProject();
+  if (!confirm("¿Crear un proyecto vacío? El proyecto actual quedará reemplazado en el guardado local.")) return;
+  project = emptyProject();
   selectAnimationTarget("rig");
-  selectedPart = "torso";
+  selectedPart = "";
   selectedKeys.clear();
   time = 0;
   clearDraft();
   clearGhost();
   ensureImages();
-  commit("Proyecto nuevo creado");
-  setMode("animador");
+  commit("Proyecto vacío creado; importa imágenes y construye el rig");
+  setMode("calibrador");
 }
 
 function applyPreviewVisibility() {
@@ -1722,11 +1973,11 @@ function renderModeOverlay() {
   if (overlay.hidden) return;
   if (mode === "exportar") {
     const errors = gameValidationErrors();
-    overlay.innerHTML = `<h2>Exportar</h2><p class="muted">El proyecto conserva calibración y clip. El clip para el juego solo se descarga cuando supera el contrato.</p><div class="summary-grid"><div class="summary-card"><strong>Proyecto de Studio</strong><span>${project.parts.length} piezas · ${Object.keys(project.clip.animation.keys).length} pistas</span><div class="button-row"><button id="download-project" class="small-button primary">Descargar proyecto</button></div></div><div class="summary-card"><strong>Candidato para el juego</strong><span>${errors.length ? `${errors.length} observaciones` : "Validación superada"}</span><div class="button-row"><button id="download-clip" class="small-button primary" ${errors.length ? "disabled" : ""}>Exportar clip</button></div></div></div>${errors.length ? `<h3>Falta resolver</h3><ul class="validation-list">${errors.map((error) => `<li>${error}</li>`).join("")}</ul>` : ""}`;
+    overlay.innerHTML = `<h2>Exportar</h2><p class="muted">Kinetra v2 conserva rig, capas, imágenes y animación en un paquete JSON autocontenido para aplicaciones web. El clip heredado mantiene compatibilidad con juegos que ya usan cronicas-studio/v1.</p><div class="summary-grid"><div class="summary-card"><strong>Paquete Kinetra v2</strong><span>${project.rig.bones.length} huesos · ${project.parts.length} capas · ${project.assets.length} recursos importados</span><div class="button-row"><button id="download-project" class="small-button primary">Exportar .kinetra.json</button></div></div><div class="summary-card"><strong>Clip heredado v1</strong><span>${errors.length ? `${errors.length} observaciones` : "Validación superada"}</span><div class="button-row"><button id="download-clip" class="small-button" ${errors.length ? "disabled" : ""}>Exportar solo movimiento</button></div></div></div>${errors.length ? `<h3>Falta resolver para el clip v1</h3><ul class="validation-list">${errors.map((error) => `<li>${error}</li>`).join("")}</ul>` : ""}`;
     $("download-project").onclick = exportProject;
     $("download-clip").onclick = exportClip;
   } else {
-    overlay.innerHTML = `<h2>Proyecto</h2><div class="summary-grid"><div class="summary-card"><strong>${project.clip.animation.label}</strong><span>ID: ${project.clip.animation.id}<br>Rig: ${project.clip.rig}<br>Anatomía: ${project.clip.anatomy}<br>Estado: ${project.clip.animation.status}</span></div><div class="summary-card"><strong>Persistencia</strong><span>Guardado local versionado y exportación explícita. No se almacenan credenciales.</span></div></div><div class="button-row"><button id="new-project" class="small-button danger">Crear proyecto nuevo</button></div>`;
+    overlay.innerHTML = `<h2>Proyecto</h2><div class="summary-grid"><div class="summary-card"><strong>${project.clip.animation.label}</strong><span>ID: ${project.clip.animation.id}<br>Rig: ${project.rig.name}<br>${project.rig.bones.length} huesos · ${project.parts.length} capas<br>Estado: ${project.clip.animation.status}</span></div><div class="summary-card"><strong>Kinetra v2</strong><span>Los recursos importados, la jerarquía y las animaciones viajan juntos en la exportación para web.</span></div></div><div class="button-row"><button id="new-project" class="small-button danger">Crear proyecto nuevo</button></div>`;
     $("new-project").onclick = createNewProject;
   }
 }
@@ -1881,7 +2132,7 @@ function mirrorCurrentPose() {
 function duplicateCurrentKey() {
   if (hasDraft()) return status("Guarda o descarta el borrador antes de duplicar");
   const at = Math.round(time);
-  const source = TARGETS.map((target) => [target, exactKey(target, at)]).filter(([, frame]) => frame);
+  const source = animationTargets().map((target) => [target, exactKey(target, at)]).filter(([, frame]) => frame);
   if (!source.length) return status("No hay claves guardadas en el tiempo actual");
   const next = snapTime(at + 1000 / fps());
   if (next === at) return status("No hay espacio para duplicar antes del final");
@@ -1953,15 +2204,58 @@ function download(name, contents) {
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
-function exportProject() {
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error("No se pudo incrustar un recurso"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function portableAuthoringProject() {
+  const portable = structuredClone(project);
+  const knownAssets = new Map((portable.assets || []).map((asset) => [asset.id, asset]));
+  for (const layer of portable.parts) {
+    const existing = knownAssets.get(layer.assetId);
+    if (existing?.src) {
+      layer.source = "asset";
+      continue;
+    }
+    const source = `./assets/modular/man_sprites/runtime/${encodeURIComponent(layer.assetId || layer.id)}.png`;
+    const response = await fetch(source);
+    if (!response.ok) throw new Error(`No se pudo incrustar el recurso ${layer.assetId}`);
+    const blob = await response.blob();
+    const asset = {
+      id: layer.assetId,
+      name: `${layer.assetId}.png`,
+      type: blob.type || "image/png",
+      size: blob.size,
+      src: await blobToDataUrl(blob)
+    };
+    knownAssets.set(asset.id, asset);
+    portable.assets.push(asset);
+    layer.source = "asset";
+  }
+  return portable;
+}
+
+async function exportProject() {
   project.clip = normalizeStudioProject(project.clip);
-  download("kinetra-proyecto.json", JSON.stringify(project, null, 2));
-  status("Proyecto exportado");
+  try {
+    status("Preparando paquete portable…");
+    const bundle = createKinetraBundle(await portableAuthoringProject());
+    const name = `${project.clip.animation.id.replace(/[^a-z0-9_-]/gi, "_")}.kinetra.json`;
+    download(name, JSON.stringify(bundle, null, 2));
+    status("Proyecto Kinetra v2 exportado con rig, capas e imágenes incrustadas");
+  } catch (error) {
+    status(error.message);
+  }
 }
 
 function exportClip() {
   try {
-    const contents = serializeStudioProject(project.clip, { mode: "game", allowedTargets: PUPPET_TARGETS });
+    const contents = serializeStudioProject(project.clip, { mode: "game", allowedTargets: animationTargets() });
     const name = `${project.clip.animation.id.replace(/[^a-z0-9_-]/gi, "_")}.json`;
     download(name, contents);
     status("Clip candidato exportado");
@@ -2036,6 +2330,7 @@ function bindControls() {
   const menuCommands = {
     new: createNewProject,
     open: () => $("file").click(),
+    "import-images": () => $("image-files").click(),
     save: () => saveLocal(hasDraft() ? "Proyecto guardado; el borrador del fotograma sigue pendiente" : "Proyecto guardado en este navegador"),
     "export-project": exportProject,
     "export-clip": exportClip,
@@ -2077,6 +2372,58 @@ function bindControls() {
   $("save-local").onclick = () => {
     saveLocal(hasDraft() ? "Proyecto guardado; el borrador del fotograma sigue pendiente" : "Proyecto guardado en este navegador");
   };
+  $("import-layers").onclick = () => $("image-files").click();
+  $("delete-layer").onclick = removeSelectedLayer;
+  $("remove-part").onclick = removeSelectedLayer;
+  $("add-bone").onclick = addBone;
+  $("inspector-add-bone").onclick = addBone;
+  $("delete-bone").onclick = removeSelectedBone;
+  $("inspector-delete-bone").onclick = removeSelectedBone;
+  $("image-files").onchange = async () => {
+    try {
+      await importImageLayers($("image-files").files);
+    } catch (error) {
+      status(`No se pudieron importar las imágenes: ${error.message}`);
+    } finally {
+      $("image-files").value = "";
+    }
+  };
+  $("part-name").onchange = () => {
+    if (!part()) return;
+    part().name = $("part-name").value.trim() || part().id;
+    commit("Capa renombrada");
+    refresh();
+  };
+  $("part-bone").onchange = () => {
+    if (!part()) return;
+    part().boneId = $("part-bone").value || "rig";
+    commit("Capa vinculada al hueso");
+    refresh();
+  };
+  $("bone-name").onchange = () => {
+    const bone = selectedBone();
+    if (!bone) return;
+    bone.name = $("bone-name").value.trim() || bone.id;
+    commit("Hueso renombrado");
+    refresh();
+  };
+  $("bone-parent").onchange = () => {
+    const bone = selectedBone();
+    if (!bone) return;
+    bone.parent = $("bone-parent").value || null;
+    commit("Jerarquía del rig actualizada");
+    refresh();
+  };
+  const updateBonePivot = () => {
+    const bone = selectedBone();
+    if (!bone) return;
+    bone.x = Number($("bone-x").value) || 0;
+    bone.y = Number($("bone-y").value) || 0;
+    commit("Pivote del hueso actualizado");
+    refresh();
+  };
+  $("bone-x").onchange = updateBonePivot;
+  $("bone-y").onchange = updateBonePivot;
   $("project-name").onchange = () => {
     project.clip.animation.id = $("project-name").value.trim() || "nuevo_movimiento";
     commit("ID del proyecto actualizado");
@@ -2135,6 +2482,7 @@ function bindControls() {
   ["part-x", "part-y", "part-rotation", "part-scale"].forEach((id) => {
     $(id).onchange = () => {
       const current = part();
+      if (!current) return status("Importa o selecciona una capa para calibrarla");
       if (lockedParts.has(current.id)) return status(`${label(current.id)} está bloqueado`);
       current.x = Number($("part-x").value);
       current.y = Number($("part-y").value);
@@ -2147,16 +2495,25 @@ function bindControls() {
     };
   });
   $("flip-part").onclick = () => {
-    if (lockedParts.has(part().id)) return status(`${label(part().id)} está bloqueado`);
-    part().scaleX *= -1;
+    const current = part();
+    if (!current) return status("Importa o selecciona una capa para voltearla");
+    if (lockedParts.has(current.id)) return status(`${current.name || current.id} está bloqueado`);
+    current.scaleX *= -1;
     commit("Pieza volteada");
     refresh();
   };
   const moveLayer = (delta) => {
     const current = part();
-    if (lockedParts.has(current.id)) return status(`${label(current.id)} está bloqueado`);
-    const other = project.parts.find((item) => item.z === current.z + delta);
-    if (other) { other.z = current.z; current.z += delta; commit("Orden de capas actualizado"); refresh(); }
+    if (!current) return status("Importa o selecciona una capa para ordenarla");
+    if (lockedParts.has(current.id)) return status(`${current.name || current.id} está bloqueado`);
+    normalizeLayerOrder();
+    const ordered = [...project.parts].sort((left, right) => left.z - right.z);
+    const index = ordered.indexOf(current);
+    const other = ordered[index + delta];
+    if (!other) return status(delta > 0 ? "La capa ya está al frente" : "La capa ya está al fondo");
+    [current.z, other.z] = [other.z, current.z];
+    commit("Orden de capas actualizado");
+    refresh();
   };
   $("layer-up").onclick = () => moveLayer(1);
   $("layer-down").onclick = () => moveLayer(-1);
@@ -2173,8 +2530,9 @@ function bindControls() {
     if (!file) return;
     try {
       project = normalizeLoadedProject(JSON.parse(await file.text()));
+      normalizeLayerOrder();
       selectAnimationTarget("rig");
-      selectedPart = "torso";
+      selectedPart = project.parts.find((item) => item.id === "torso")?.id || project.parts[0]?.id || "";
       selectedKeys.clear();
       time = 0;
       clearDraft();
@@ -2408,6 +2766,7 @@ function bindKeyboard() {
 function initialize() {
   project = loadInitialProject();
   project.clip = normalizeStudioProject(project.clip);
+  normalizeLayerOrder();
   STUDIO_EASES.forEach((ease) => {
     const option = document.createElement("option");
     option.value = ease;

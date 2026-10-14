@@ -1,10 +1,10 @@
 {
   "name": "kinetra",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/studio-format.test.mjs && node tests/gizmo.test.mjs && node tests/ik.test.mjs && node tests/studio-ui.test.mjs && node tests/button-audit.test.mjs",
+    "test": "node tests/studio-format.test.mjs && node tests/kinetra-v2.test.mjs && node tests/gizmo.test.mjs && node tests/ik.test.mjs && node tests/studio-ui.test.mjs && node tests/button-audit.test.mjs",
     "serve": "npx --yes serve ."
   }
 }

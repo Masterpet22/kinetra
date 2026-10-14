@@ -15,7 +15,7 @@ for (const id of ["canvas", "preview-canvas", "inspector-panel", "timeline-scrol
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control ${id}`);
 }
 assert.doesNotMatch(html, /<iframe\b/i, "El Studio unificado no debe depender de vistas embebidas");
-assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.9\.0["']/);
+assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.10\.0["']/);
 assert.match(html, /navigator\.serviceWorker\.getRegistrations\(\)/, "El Studio debe retirar cachés heredadas antes de iniciar");
 assert.doesNotMatch(html, /window\.stop\(\)/, "La limpieza del Studio no debe abortar la navegación actual");
 assert.match(html, /id=["']timeline-zoom["']/, "El timeline debe tener zoom temporal independiente");
@@ -23,7 +23,7 @@ assert.match(css, /--left-dock:\s*270px/);
 assert.match(css, /--right-dock:\s*310px/);
 assert.match(css, /data-dock-zone=["']bottom["'][^}]*grid-column:\s*1\s*\/\s*-1/s);
 assert.match(editor, /sampleStudioAnimation/);
-assert.match(editor, /studio-format\.js\?v=0\.9\.0/, "Los módulos internos deben invalidar la caché junto con el editor");
+assert.match(editor, /studio-format\.js\?v=0\.10\.0/, "Los módulos internos deben invalidar la caché junto con el editor");
 assert.match(editor, /validateStudioProject/);
 assert.match(editor, /mode:\s*["']game["']/);
 assert.match(editor, /function restoreHistory/);
@@ -53,7 +53,7 @@ assert.match(editor, /function mirrorCurrentPose\(/);
 assert.match(editor, /function resetSelectedTransform\(/);
 assert.match(editor, /function hitTransformGizmo\(/, "Los controles dibujados deben tener detección de impacto");
 assert.match(editor, /constrainedWorldDelta\(/, "Las flechas deben restringir el movimiento a su eje");
-assert.match(editor, /collapseHierarchicalSelection\(editableTargets, PARENTS\)/, "Una selección padre-hijo no debe acumular el desplazamiento en cada nivel");
+assert.match(editor, /collapseHierarchicalSelection\(editableTargets, rigParents\(\)\)/, "Una selección padre-hijo no debe acumular el desplazamiento en cada nivel");
 assert.match(editor, /shortestAngleDelta\(interaction\.startPointerAngle, pointerAngle\)/, "El anillo debe rotar según el ángulo del puntero");
 assert.match(editor, /scaleFromDrag\(/, "Las manijas deben controlar la escala");
 assert.match(editor, /let selectedTargets = new Set\(\["rig"\]\)/, "El editor debe conservar una selección múltiple de objetivos");
@@ -85,6 +85,17 @@ for (const theme of ["noche", "grafito", "aurora"]) {
 }
 assert.match(editor, /function applyTheme\(/, "El tema elegido debe aplicarse y persistirse");
 assert.match(editor, /function figureBounds\(/, "La vista previa debe encuadrar los límites reales del personaje");
+assert.match(html, /id=["']image-files["'][^>]*multiple/, "Debe permitirse importar varias imágenes como capas");
+assert.match(html, /data-menu-command=["']import-images["']/, "Archivo debe ofrecer importación de imágenes");
+for (const id of ["part-name", "part-bone", "add-bone", "delete-bone", "bone-name", "bone-parent", "bone-x", "bone-y"]) {
+  assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control genérico ${id}`);
+}
+assert.match(editor, /function importImageLayers\(/, "Las imágenes deben convertirse en recursos y capas reales");
+assert.match(editor, /project = emptyProject\(\)/, "Archivo > Nuevo debe crear un proyecto genérico vacío");
+assert.match(editor, /function portableAuthoringProject\(/, "La exportación debe incrustar también los recursos de demostración");
+assert.match(editor, /function ikChainFor\(/, "La cinemática inversa debe derivarse de cualquier rig personalizado");
+assert.match(editor, /function rigTree\(/, "La jerarquía visual debe generarse desde el rig del proyecto");
+assert.match(editor, /createKinetraBundle/, "La exportación debe producir un paquete Kinetra v2 para runtimes web");
 assert.match(editor, /document\.addEventListener\(["']click["']/, "Los menús deben cerrarse al hacer clic fuera");
 assert.match(html, /unpkg\.com\/lucide@1\.57\.0/, "La interfaz debe usar una versión fija de Lucide");
 assert.match(editor, /window\.lucide\?\.createIcons/, "Los iconos dinámicos deben usar Lucide");
@@ -111,7 +122,7 @@ assert.match(css, /--timeline-h:\s*clamp\(/, "El dock inferior debe tener una al
 assert.match(editor, /PANEL_FLOAT_SIZES/, "Cada ventana debe tener un tamaño flotante apropiado");
 assert.match(editor, /function undo\(\)/, "Deshacer debe incluir borradores y cambios confirmados");
 assert.match(html, /id=["']canvas["'][^>]*tabindex=["']0["']/, "El lienzo debe recibir el foco para los atajos de teclado");
-assert.match(html, /assets\/brand\/kinetra-logo\.png\?v=0\.9\.0/, "La cabecera debe usar el logo oficial preparado para la aplicación");
+assert.match(html, /assets\/brand\/kinetra-logo\.png\?v=0\.10\.0/, "La cabecera debe usar el logo oficial preparado para la aplicación");
 assert.doesNotMatch(css, /\.brand-logo\s*\{[^}]*background:/s, "El logo no debe recuperar una placa de fondo");
 assert.doesNotMatch(html, /<button[^>]*>Línea de tiempo<\/button>/, "Un rótulo sin acción no debe anunciarse como botón");
 assert.doesNotMatch(html, /id=["']open-curves["']/, "La línea de tiempo no debe duplicar el acceso directo al panel Curvas");

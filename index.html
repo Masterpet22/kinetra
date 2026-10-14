@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kinetra · Editor de animación por marionetas</title>
   <meta name="description" content="Editor web para ensamblar y animar personajes 2D mediante sprites y esqueletos articulados.">
-  <link rel="icon" href="./assets/favicon.png?v=0.20.0" type="image/png">
+  <link rel="icon" href="./assets/favicon.png?v=0.10.0" type="image/png">
   <script>
     // Retira trabajadores antiguos sin detener ni recargar la navegación actual.
     (() => {
@@ -27,18 +27,19 @@
       if (["noche", "grafito", "aurora"].includes(theme)) document.documentElement.dataset.theme = theme;
     } catch {}
   </script>
-  <link rel="stylesheet" href="./styles.css?v=0.9.0">
+  <link rel="stylesheet" href="./styles.css?v=0.10.0">
   <script defer src="https://unpkg.com/lucide@1.57.0/dist/umd/lucide.min.js"></script>
 </head>
 <body>
   <header class="studio-header">
-    <div class="brand" aria-label="Kinetra"><span class="brand-mark"><img class="brand-logo" src="./assets/brand/kinetra-logo.png?v=0.9.0" alt=""></span><span class="brand-name">Kinetra</span></div>
+    <div class="brand" aria-label="Kinetra"><span class="brand-mark"><img class="brand-logo" src="./assets/brand/kinetra-logo.png?v=0.10.0" alt=""></span><span class="brand-name">Kinetra</span></div>
     <nav class="app-menu-bar" aria-label="Menú de aplicación">
       <details class="app-menu">
         <summary>Archivo</summary>
         <div class="app-menu-popover">
           <button data-menu-command="new"><span><i data-lucide="file-plus-2"></i> Nuevo proyecto</span></button>
           <button data-menu-command="open"><span><i data-lucide="folder-open"></i> Abrir JSON…</span></button>
+          <button data-menu-command="import-images"><span><i data-lucide="images"></i> Importar imágenes como capas…</span></button>
           <button data-menu-command="save"><span><i data-lucide="save"></i> Guardar localmente</span></button>
           <hr>
           <button data-mode="proyecto"><span><i data-lucide="layout-dashboard"></i> Resumen del proyecto</span></button>
@@ -128,6 +129,7 @@
         <input class="search" data-hierarchy-search type="search" placeholder="Buscar articulación…">
         <div class="tree" data-hierarchy-tree></div>
       </div>
+      <div class="tree-actions"><button id="add-bone" class="small-button"><i data-lucide="plus"></i> Hueso</button><button id="delete-bone" class="small-button danger"><i data-lucide="trash-2"></i></button></div>
       <div class="tree-meta" data-hierarchy-meta>Rig humanoide · Proyecto local</div>
     </aside>
 
@@ -140,6 +142,7 @@
     <aside class="panel left-panel hierarchy-panel" data-panel="layers" data-hierarchy-kind="layers">
       <div class="panel-window-bar" data-panel-handle="layers"><span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="layers"></span><span class="panel-window-actions"><button data-panel-float="layers" aria-label="Desacoplar o acoplar Capas"><i data-lucide="external-link"></i></button><button data-panel-close="layers" aria-label="Ocultar Capas"><i data-lucide="x"></i></button></span></div>
       <div class="panel-body"><input class="search" data-hierarchy-search type="search" placeholder="Buscar capa…"><div class="tree" data-hierarchy-tree></div></div>
+      <div class="tree-actions"><button id="import-layers" class="small-button primary"><i data-lucide="image-plus"></i> Importar</button><button id="delete-layer" class="small-button danger"><i data-lucide="trash-2"></i></button></div>
       <div class="tree-meta" data-hierarchy-meta></div>
     </aside>
 
@@ -232,14 +235,24 @@
 
           <div id="calibration-inspector" hidden>
             <section class="inspector-section">
-              <h2>Transformación de calibración</h2>
+              <h2>Capa seleccionada</h2>
+              <div class="stack-field"><label for="part-name">Nombre</label><input id="part-name" type="text" maxlength="80"></div>
+              <div class="stack-field"><label for="part-bone">Hueso vinculado</label><select id="part-bone"></select></div>
               <div class="field-grid">
                 <div><label for="part-x">Posición X</label><input id="part-x" type="number" step=".5"></div>
                 <div><label for="part-y">Posición Y</label><input id="part-y" type="number" step=".5"></div>
                 <div><label for="part-rotation">Rotación</label><input id="part-rotation" type="number" step="1"></div>
                 <div><label for="part-scale">Escala</label><input id="part-scale" type="number" min=".1" max="4" step=".05"></div>
               </div>
-              <div class="button-row"><button id="flip-part" class="small-button">Voltear X</button><button id="layer-up" class="small-button">Subir capa</button><button id="layer-down" class="small-button">Bajar capa</button></div>
+              <div class="button-row"><button id="flip-part" class="small-button">Voltear X</button><button id="layer-up" class="small-button">Subir capa</button><button id="layer-down" class="small-button">Bajar capa</button><button id="remove-part" class="small-button danger">Eliminar capa</button></div>
+            </section>
+            <section class="inspector-section">
+              <h2>Constructor de rig</h2>
+              <div class="stack-field"><label for="bone-name">Nombre del hueso</label><input id="bone-name" type="text" maxlength="80"></div>
+              <div class="stack-field"><label for="bone-parent">Hueso padre</label><select id="bone-parent"></select></div>
+              <div class="field-grid"><div><label for="bone-x">Pivote X</label><input id="bone-x" type="number" step="1"></div><div><label for="bone-y">Pivote Y</label><input id="bone-y" type="number" step="1"></div></div>
+              <p class="muted">Selecciona un hueso en Esqueleto para editar su pivote y jerarquía.</p>
+              <div class="button-row"><button id="inspector-add-bone" class="small-button primary">Añadir hijo</button><button id="inspector-delete-bone" class="small-button danger">Eliminar hueso</button></div>
             </section>
           </div>
 
@@ -310,6 +323,7 @@
   </div>
 
   <input id="file" type="file" accept=".json,application/json">
-  <script type="module" src="./src/studio/editor.js?v=0.9.0"></script>
+  <input id="image-files" type="file" accept="image/png,image/webp,image/jpeg" multiple>
+  <script type="module" src="./src/studio/editor.js?v=0.10.0"></script>
 </body>
 </html>
