@@ -7,8 +7,8 @@ import {
   PUPPET_JOINT_PARENTS as PARENTS,
   PUPPET_PART_JOINTS as PART_JOINTS,
   PUPPET_TARGETS
-} from "../animations/rig.js?v=0.2.0";
-import { animationEase } from "../animations/runtime.js?v=0.2.0";
+} from "../animations/rig.js?v=0.3.0";
+import { animationEase } from "../animations/runtime.js?v=0.3.0";
 import {
   createStudioProject,
   normalizeStudioProject,
@@ -16,8 +16,8 @@ import {
   serializeStudioProject,
   STUDIO_EASES,
   validateStudioProject
-} from "../animations/studio-format.js?v=0.2.0";
-import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.2.0";
+} from "../animations/studio-format.js?v=0.3.0";
+import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.3.0";
 import {
   constrainedTranslation,
   GIZMO_METRICS,
@@ -26,7 +26,8 @@ import {
   hitScaleGizmo,
   scaleFromDrag,
   shortestAngleDelta
-} from "./gizmo.js?v=0.2.0";
+} from "./gizmo.js?v=0.3.0";
+import { solveTwoBoneIk } from "./ik.js?v=0.3.0";
 
 const $ = (id) => document.getElementById(id);
 const BASE_SCALE = 0.32;
@@ -78,6 +79,12 @@ const MIRROR_TARGETS = Object.freeze({
   kneeRight: "kneeLeft", kneeLeft: "kneeRight",
   ankleRight: "ankleLeft", ankleLeft: "ankleRight"
 });
+const IK_CHAINS = Object.freeze({
+  wristRight: { upper: "shoulderRight", middle: "elbowRight" },
+  wristLeft: { upper: "shoulderLeft", middle: "elbowLeft" },
+  ankleRight: { upper: "hipRight", middle: "kneeRight" },
+  ankleLeft: { upper: "hipLeft", middle: "kneeLeft" }
+});
 
 const freshParts = () => PRESET.map(([id, x, y, assetId], z) => ({
   id, x, y, assetId: assetId || id, rotation: 0, scaleX: 1, scaleY: 1, visible: true, z
@@ -91,6 +98,7 @@ let leftTab = "skeleton";
 let rightTab = "inspector";
 let tool = "select";
 let selectedTarget = "rig";
+let selectedTargets = new Set(["rig"]);
 let selectedPart = "torso";
 let selectedKeys = new Set();
 let keyClipboard = [];
@@ -124,6 +132,13 @@ function status(message) { $("status").textContent = message; }
 function duration() { return project.clip.animation.duration; }
 function fps() { return Number(project.fps || 24); }
 function part() { return project.parts.find((item) => item.id === selectedPart); }
+function selectionLabel() { return selectedTargets.size > 1 ? `${selectedTargets.size} objetivos` : label(selectedTarget); }
+function selectAnimationTarget(target, append = false) {
+  if (!append) selectedTargets = new Set([target]);
+  else if (selectedTargets.has(target) && selectedTargets.size > 1) selectedTargets.delete(target);
+  else selectedTargets.add(target);
+  selectedTarget = selectedTargets.has(target) ? target : [...selectedTargets].at(-1);
+}
 function committedPose(at = time) { return sampleStudioAnimation(project.clip, at, PUPPET_TARGETS); }
 function frameTransform(frame = {}) {
   return Object.fromEntries(Object.keys(TRANSFORM_FIELDS)
@@ -191,6 +206,7 @@ function updateDraftUI() {
     : "Sin cambios pendientes";
   $("set-key")?.classList.toggle("dirty", dirty);
   if ($("discard-key-draft")) $("discard-key-draft").disabled = !dirty;
+  updateHistoryButtons();
 }
 
 function setGhostFromCommitted(at) {
@@ -278,8 +294,28 @@ function restoreHistory(index) {
   updateHistoryButtons();
 }
 
+function undo() {
+  if (hasDraft()) {
+    clearDraft();
+    selectedKeys.clear();
+    refresh();
+    status("Cambios sin guardar deshechos");
+    return;
+  }
+  if (historyIndex <= 0) return status("No hay cambios anteriores");
+  restoreHistory(historyIndex - 1);
+  status("Cambio deshecho");
+}
+
+function redo() {
+  if (hasDraft()) return status("Guarda o descarta el borrador antes de rehacer");
+  if (historyIndex >= undoHistory.length - 1) return status("No hay cambios para rehacer");
+  restoreHistory(historyIndex + 1);
+  status("Cambio rehecho");
+}
+
 function updateHistoryButtons() {
-  $("undo").disabled = historyIndex <= 0;
+  $("undo").disabled = !hasDraft() && historyIndex <= 0;
   $("redo").disabled = historyIndex >= undoHistory.length - 1;
 }
 
@@ -442,8 +478,8 @@ function drawBones(at) {
   Object.entries(state.joints).forEach(([id, matrix]) => {
     const parent = PARENTS[id];
     const parentMatrix = parent ? state.joints[parent] : state.root;
-    context.strokeStyle = selectedTarget === id ? "#efbd67" : "#63c9ff";
-    context.fillStyle = selectedTarget === id ? "#ffd68e" : "#83d9ff";
+    context.strokeStyle = selectedTargets.has(id) ? "#efbd67" : "#63c9ff";
+    context.fillStyle = selectedTargets.has(id) ? "#ffd68e" : "#83d9ff";
     context.lineWidth = 3 / (BASE_SCALE * zoom);
     context.beginPath();
     context.moveTo(parentMatrix[4], parentMatrix[5]);
@@ -462,6 +498,14 @@ function targetMatrix(state, target = selectedTarget) {
 }
 
 function transformGizmoCenter(state, target = selectedTarget) {
+  if (selectedTargets.size > 1 && target === selectedTarget) {
+    const points = [...selectedTargets].map((item) => targetMatrix(state, item));
+    const world = {
+      x: points.reduce((sum, matrix) => sum + matrix[4], 0) / points.length,
+      y: points.reduce((sum, matrix) => sum + matrix[5], 0) / points.length
+    };
+    return { world, canvas: worldToCanvasPoint(world.x, world.y) };
+  }
   const matrix = targetMatrix(state, target);
   return {
     world: { x: matrix[4], y: matrix[5] },
@@ -470,6 +514,7 @@ function transformGizmoCenter(state, target = selectedTarget) {
 }
 
 function transformGizmoAngle(state, target = selectedTarget) {
+  if (selectedTargets.size > 1 && target === selectedTarget) return 0;
   const matrix = tool === "select" ? parentMatrixForTarget(target, state) : targetMatrix(state, target);
   return Math.atan2(matrix[1], matrix[0]);
 }
@@ -478,6 +523,12 @@ function rotateCanvasDelta(dx, dy, angle) {
   const cosine = Math.cos(angle);
   const sine = Math.sin(angle);
   return { x: cosine * dx + sine * dy, y: -sine * dx + cosine * dy };
+}
+
+function constrainedWorldDelta(delta, axis, angle) {
+  const local = rotateCanvasDelta(delta.x, delta.y, angle);
+  const constrained = constrainedTranslation(local, axis);
+  return rotateCanvasDelta(constrained.x, constrained.y, -angle);
 }
 
 function hitTransformGizmo(clientX, clientY, state = matrices(time)) {
@@ -499,39 +550,66 @@ function hitTransformGizmo(clientX, clientY, state = matrices(time)) {
 }
 
 function beginTransformInteraction(hit, state, world, canvasPoint) {
-  const target = selectedTarget;
-  const sampled = state.pose[target] || {};
+  const targets = [...selectedTargets].filter((target) => !lockedTargets.has(target));
+  const gizmoAngle = transformGizmoAngle(state);
   if (hit.type === "translate") {
+    const target = targets[0];
+    const chain = targets.length === 1 ? IK_CHAINS[target] : null;
+    if (chain && !lockedTargets.has(chain.upper) && !lockedTargets.has(chain.middle)) {
+      const upper = state.joints[chain.upper];
+      const middle = state.joints[chain.middle];
+      const end = state.joints[target];
+      return {
+        type: "ik",
+        axis: hit.axis,
+        target,
+        start: world,
+        gizmoAngle,
+        chain,
+        points: {
+          root: { x: upper[4], y: upper[5] },
+          joint: { x: middle[4], y: middle[5] },
+          end: { x: end[4], y: end[5] }
+        },
+        upperAngle: state.pose[chain.upper]?.angle || 0,
+        middleAngle: state.pose[chain.middle]?.angle || 0,
+        moved: false
+      };
+    }
     return {
       type: "translate",
       axis: hit.axis,
-      target,
       start: world,
-      x: sampled.x || 0,
-      y: sampled.y || 0,
-      parentMatrix: parentMatrixForTarget(target, state),
+      gizmoAngle,
+      targets: targets.map((target) => ({
+        target,
+        x: state.pose[target]?.x || 0,
+        y: state.pose[target]?.y || 0,
+        parentMatrix: parentMatrixForTarget(target, state)
+      })),
       moved: false
     };
   }
   if (hit.type === "rotate") {
-    const center = transformGizmoCenter(state, target).world;
+    const center = transformGizmoCenter(state).world;
     return {
       type: "rotate",
-      target,
       center,
       startPointerAngle: Math.atan2(world.y - center.y, world.x - center.x) * 180 / Math.PI,
-      angle: sampled.angle || 0,
+      targets: targets.map((target) => ({ target, angle: state.pose[target]?.angle || 0 })),
       moved: false
     };
   }
   return {
     type: "scale",
-    target,
     startCanvas: canvasPoint,
-    gizmoAngle: transformGizmoAngle(state, target),
+    gizmoAngle,
     handle: hit.handle,
-    scaleX: sampled.scaleX || 0,
-    scaleY: sampled.scaleY || 0,
+    targets: targets.map((target) => ({
+      target,
+      scaleX: state.pose[target]?.scaleX || 0,
+      scaleY: state.pose[target]?.scaleY || 0
+    })),
     moved: false
   };
 }
@@ -560,11 +638,11 @@ function cursorForGizmoHit(hit) {
 function drawTransformGizmo(at) {
   if (mode !== "animador" || tool === "pan") return;
   const state = matrices(at);
-  const matrix = targetMatrix(state);
+  const center = transformGizmoCenter(state).world;
   const orientation = transformGizmoAngle(state);
   const inverseViewScale = 1 / (BASE_SCALE * zoom);
   context.save();
-  context.translate(matrix[4], matrix[5]);
+  context.translate(center.x, center.y);
   context.rotate(orientation);
   context.scale(inverseViewScale, inverseViewScale);
   context.lineWidth = 2;
@@ -653,7 +731,8 @@ function draw() {
   $("zoom-label").textContent = `${Math.round(zoom * 100)} %`;
   $("zoom").value = Math.round(zoom * 100);
   const pending = hasDraft() ? ` · Borrador ${draftTime} ms` : "";
-  $("canvas-status").textContent = `Zoom: ${Math.round(zoom * 100)} % · ${label(mode)} · ${Math.round(time)} ms${pending}`;
+  const selection = mode === "animador" ? ` · ${selectionLabel()}` : "";
+  $("canvas-status").textContent = `Zoom: ${Math.round(zoom * 100)} % · ${label(mode)} · ${Math.round(time)} ms${selection}${pending}`;
   updateGhostLabel();
   drawPreview();
 }
@@ -666,7 +745,7 @@ function appendTreeNode(node, depth, search) {
   const visible = label(node.id).toLocaleLowerCase().includes(search) || (node.children || []).some((child) => label(child.id).toLocaleLowerCase().includes(search));
   if (!visible) return;
   const row = document.createElement("div");
-  row.className = `tree-row${selectedTarget === node.id ? " active" : ""}`;
+  row.className = `tree-row${selectedTargets.has(node.id) ? " active" : ""}`;
   row.style.paddingLeft = `${depth * 17}px`;
   const icon = document.createElement("span");
   icon.className = "tree-icon";
@@ -674,7 +753,12 @@ function appendTreeNode(node, depth, search) {
   const button = document.createElement("button");
   button.className = "tree-select";
   button.textContent = label(node.id);
-  button.onclick = () => { selectedTarget = node.id; selectedKeys.clear(); refresh(); };
+  button.onclick = (event) => {
+    selectAnimationTarget(node.id, event.shiftKey);
+    selectedKeys.clear();
+    refresh();
+    status(event.shiftKey ? `${selectionLabel()} seleccionados` : `${label(node.id)} seleccionado`);
+  };
   const toggle = document.createElement("button");
   toggle.className = "tree-toggle";
   toggle.textContent = hiddenTargets.has(node.id) ? "○" : "◉";
@@ -739,8 +823,12 @@ function renderInspector() {
   const calibration = mode === "calibrador" || mode === "sprites";
   $("animation-inspector").hidden = calibration;
   $("calibration-inspector").hidden = !calibration;
-  $("selected-name").textContent = label(calibration ? selectedPart : selectedTarget);
-  $("selected-type").textContent = calibration ? `Pieza · Capa ${part()?.z ?? 0}` : `Hueso · Objetivo: ${selectedTarget}`;
+  $("selected-name").textContent = calibration ? label(selectedPart) : selectionLabel();
+  $("selected-type").textContent = calibration
+    ? `Pieza · Capa ${part()?.z ?? 0}`
+    : selectedTargets.size > 1
+      ? `Selección múltiple · Principal: ${label(selectedTarget)}`
+      : `Hueso · Objetivo: ${selectedTarget}`;
   if (calibration) {
     const current = part();
     if (!current) return;
@@ -843,7 +931,7 @@ function selectKey(target, at, append = false) {
   if (!append) selectedKeys.clear();
   const key = `${target}:${at}`;
   if (append && selectedKeys.has(key)) selectedKeys.delete(key); else selectedKeys.add(key);
-  selectedTarget = target;
+  selectAnimationTarget(target, append);
   time = at;
   setGhostFromCommitted(at);
   refresh();
@@ -871,7 +959,7 @@ function goToAdjacentKey(direction) {
   time = next;
   const targets = TARGETS.filter((target) => exactKey(target, next));
   selectedKeys = new Set(targets.map((target) => `${target}:${next}`));
-  if (targets.length && !targets.includes(selectedTarget)) selectedTarget = targets[0];
+  if (targets.length && !targets.includes(selectedTarget)) selectAnimationTarget(targets[0]);
   setGhostFromCommitted(next);
   refresh();
   status(`Clave ${direction < 0 ? "anterior" : "siguiente"}: ${next} ms`);
@@ -899,10 +987,10 @@ function makeTrackRow(target) {
   const row = document.createElement("div");
   row.className = "track-row";
   const trackLabel = document.createElement("div");
-  trackLabel.className = `track-label${selectedTarget === target ? " active" : ""}`;
+  trackLabel.className = `track-label${selectedTargets.has(target) ? " active" : ""}`;
   const button = document.createElement("button");
   button.textContent = label(target);
-  button.onclick = () => { selectedTarget = target; refresh(); };
+  button.onclick = (event) => { selectAnimationTarget(target, event.shiftKey); refresh(); };
   trackLabel.append(button);
   const line = document.createElement("div");
   line.className = "track-line";
@@ -920,7 +1008,7 @@ function makeTrackRow(target) {
       marker.setPointerCapture(event.pointerId);
       if (!event.shiftKey && !selectedKeys.has(identity)) selectedKeys.clear();
       selectedKeys.add(identity);
-      selectedTarget = target;
+      selectAnimationTarget(target, event.shiftKey);
       time = frame.t;
       marker.classList.add("selected");
       updateTimeDisplays();
@@ -1060,7 +1148,7 @@ function renderModeOverlay() {
     $("new-project").onclick = () => {
       if (!confirm("¿Crear un proyecto nuevo? El proyecto actual quedará reemplazado en el guardado local.")) return;
       project = freshProject();
-      selectedTarget = "rig";
+      selectAnimationTarget("rig");
       selectedPart = "torso";
       selectedKeys.clear();
       time = 0;
@@ -1347,8 +1435,8 @@ function bindControls() {
   document.querySelectorAll("[data-right-tab]").forEach((button) => { button.onclick = () => showRightTab(button.dataset.rightTab); });
   document.querySelectorAll("[data-tool]").forEach((button) => { button.onclick = () => setTool(button.dataset.tool); });
   $("search").oninput = renderTree;
-  $("undo").onclick = () => restoreHistory(historyIndex - 1);
-  $("redo").onclick = () => restoreHistory(historyIndex + 1);
+  $("undo").onclick = undo;
+  $("redo").onclick = redo;
   $("save-local").onclick = () => {
     saveLocal(hasDraft() ? "Proyecto guardado; el borrador del fotograma sigue pendiente" : "Proyecto guardado en este navegador");
   };
@@ -1451,7 +1539,7 @@ function bindControls() {
     if (!file) return;
     try {
       project = normalizeLoadedProject(JSON.parse(await file.text()));
-      selectedTarget = "rig";
+      selectAnimationTarget("rig");
       selectedPart = "torso";
       selectedKeys.clear();
       time = 0;
@@ -1474,6 +1562,7 @@ function bindCanvas() {
     draw();
   };
   canvas.onpointerdown = (event) => {
+    canvas.focus({ preventScroll: true });
     canvas.setPointerCapture(event.pointerId);
     const world = toWorld(event.clientX, event.clientY);
     if (tool === "pan") {
@@ -1498,22 +1587,29 @@ function bindCanvas() {
       return;
     }
     const state = matrices(time);
+    const chosen = nearestCanvasTarget(event.clientX, event.clientY, state);
+    if (event.shiftKey && tool === "select" && chosen) {
+      selectAnimationTarget(chosen, true);
+      selectedKeys.clear();
+      refresh();
+      status(`${selectionLabel()} seleccionados · arrastra el manipulador para moverlos juntos`);
+      return;
+    }
     const gizmoHit = hitTransformGizmo(event.clientX, event.clientY, state);
     if (gizmoHit) {
-      if (lockedTargets.has(selectedTarget)) return status(`${label(selectedTarget)} está bloqueado`);
+      if (![...selectedTargets].some((target) => !lockedTargets.has(target))) return status("Todos los objetivos seleccionados están bloqueados");
       interaction = beginTransformInteraction(gizmoHit, state, world, toCanvasPoint(event.clientX, event.clientY));
       canvas.style.cursor = cursorForGizmoHit(gizmoHit);
       status(gizmoHit.type === "translate"
-        ? `Moviendo ${label(selectedTarget)}${gizmoHit.axis === "free" ? " libremente" : ` sobre el eje ${gizmoHit.axis.toUpperCase()}`}`
+        ? `Moviendo ${selectionLabel()}${gizmoHit.axis === "free" ? " libremente" : ` sobre el eje ${gizmoHit.axis.toUpperCase()}`}`
         : gizmoHit.type === "rotate"
-          ? `Rotando ${label(selectedTarget)} desde el anillo`
-          : `Escalando ${label(selectedTarget)} desde la manija`);
+          ? `Rotando ${selectionLabel()} desde el anillo`
+          : `Escalando ${selectionLabel()} desde la manija`);
       return;
     }
 
-    const chosen = nearestCanvasTarget(event.clientX, event.clientY, state);
     if (!chosen) return;
-    selectedTarget = chosen;
+    selectAnimationTarget(chosen);
     selectedKeys.clear();
     if (tool === "select" && !lockedTargets.has(chosen)) {
       interaction = beginTransformInteraction(
@@ -1547,26 +1643,48 @@ function bindCanvas() {
       interaction.moved = true;
       draw();
     } else if (interaction.type === "translate") {
-      const local = localDelta(
-        interaction.parentMatrix,
-        world.x - interaction.start.x,
-        world.y - interaction.start.y
-      );
-      const delta = constrainedTranslation(local, interaction.axis);
-      const current = ensureDraftFrame(interaction.target);
-      setDraftFrame(interaction.target, {
-        ...current,
-        x: interaction.x + delta.x,
-        y: interaction.y + delta.y
+      const worldDelta = constrainedWorldDelta({
+        x: world.x - interaction.start.x,
+        y: world.y - interaction.start.y
+      }, interaction.axis, interaction.gizmoAngle);
+      interaction.targets.forEach((item) => {
+        const delta = localDelta(item.parentMatrix, worldDelta.x, worldDelta.y);
+        const current = ensureDraftFrame(item.target);
+        setDraftFrame(item.target, {
+          ...current,
+          x: item.x + delta.x,
+          y: item.y + delta.y
+        });
       });
+      interaction.moved = true;
+      draw();
+      renderInspector();
+    } else if (interaction.type === "ik") {
+      const delta = constrainedWorldDelta({
+        x: world.x - interaction.start.x,
+        y: world.y - interaction.start.y
+      }, interaction.axis, interaction.gizmoAngle);
+      const target = {
+        x: interaction.points.end.x + delta.x,
+        y: interaction.points.end.y + delta.y
+      };
+      const solved = solveTwoBoneIk(interaction.points.root, interaction.points.joint, interaction.points.end, target);
+      if (!solved) return status("La cadena no tiene longitud suficiente para aplicar cinemática inversa");
+      const upperFrame = ensureDraftFrame(interaction.chain.upper);
+      const middleFrame = ensureDraftFrame(interaction.chain.middle);
+      setDraftFrame(interaction.chain.upper, { ...upperFrame, angle: interaction.upperAngle + solved.upperDelta });
+      setDraftFrame(interaction.chain.middle, { ...middleFrame, angle: interaction.middleAngle + solved.lowerDelta });
       interaction.moved = true;
       draw();
       renderInspector();
     } else if (interaction.type === "rotate") {
       const pointerAngle = Math.atan2(world.y - interaction.center.y, world.x - interaction.center.x) * 180 / Math.PI;
-      const angle = Math.max(-360, Math.min(360, interaction.angle + shortestAngleDelta(interaction.startPointerAngle, pointerAngle)));
-      const current = ensureDraftFrame(interaction.target);
-      setDraftFrame(interaction.target, { ...current, angle });
+      const delta = shortestAngleDelta(interaction.startPointerAngle, pointerAngle);
+      interaction.targets.forEach((item) => {
+        const angle = Math.max(-360, Math.min(360, item.angle + delta));
+        const current = ensureDraftFrame(item.target);
+        setDraftFrame(item.target, { ...current, angle });
+      });
       interaction.moved = true;
       draw();
       renderInspector();
@@ -1577,14 +1695,16 @@ function bindCanvas() {
         point.y - interaction.startCanvas.y,
         interaction.gizmoAngle
       );
-      const nextScale = scaleFromDrag(
-        { scaleX: interaction.scaleX, scaleY: interaction.scaleY },
-        canvasDelta,
-        interaction.handle,
-        { uniform: event.shiftKey }
-      );
-      const current = ensureDraftFrame(interaction.target);
-      setDraftFrame(interaction.target, { ...current, ...nextScale });
+      interaction.targets.forEach((item) => {
+        const nextScale = scaleFromDrag(
+          { scaleX: item.scaleX, scaleY: item.scaleY },
+          canvasDelta,
+          interaction.handle,
+          { uniform: event.shiftKey }
+        );
+        const current = ensureDraftFrame(item.target);
+        setDraftFrame(item.target, { ...current, ...nextScale });
+      });
       interaction.moved = true;
       draw();
       renderInspector();
@@ -1597,7 +1717,7 @@ function bindCanvas() {
     canvas.style.cursor = "";
     refresh();
     if (completed?.moved && completed.type !== "piece") {
-      const action = completed.type === "translate" ? "Posición" : completed.type === "rotate" ? "Rotación" : "Escala";
+      const action = completed.type === "translate" ? "Posición" : completed.type === "ik" ? "Cadena IK" : completed.type === "rotate" ? "Rotación" : "Escala";
       status(`${action} actualizada en borrador; pulsa Guardar fotograma`);
     }
   };
@@ -1608,12 +1728,14 @@ function bindCanvas() {
 function bindKeyboard() {
   window.addEventListener("keydown", (event) => {
     const editing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "");
-    if (event.ctrlKey && event.key.toLowerCase() === "z") { event.preventDefault(); restoreHistory(historyIndex - 1); return; }
-    if (event.ctrlKey && event.key.toLowerCase() === "y") { event.preventDefault(); restoreHistory(historyIndex + 1); return; }
     if (editing) return;
-    if (event.ctrlKey && event.key.toLowerCase() === "c") { event.preventDefault(); copySelectedKeys(); }
-    else if (event.ctrlKey && event.key.toLowerCase() === "v") { event.preventDefault(); pasteKeys(); }
-    else if (event.ctrlKey && event.key.toLowerCase() === "d") { event.preventDefault(); copySelectedKeys(); pasteKeys(time + 1000 / fps()); }
+    const command = event.ctrlKey || event.metaKey;
+    if (command && event.key.toLowerCase() === "z" && event.shiftKey) { event.preventDefault(); redo(); return; }
+    if (command && event.key.toLowerCase() === "z") { event.preventDefault(); undo(); return; }
+    if (command && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); return; }
+    if (command && event.key.toLowerCase() === "c") { event.preventDefault(); copySelectedKeys(); }
+    else if (command && event.key.toLowerCase() === "v") { event.preventDefault(); pasteKeys(); }
+    else if (command && event.key.toLowerCase() === "d") { event.preventDefault(); copySelectedKeys(); pasteKeys(time + 1000 / fps()); }
     else if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); deleteSelectedKeys(); }
     else if (event.key === " ") { event.preventDefault(); playing ? pause() : play(); }
     else if (event.key.toLowerCase() === "v") setTool("select");
@@ -1624,7 +1746,7 @@ function bindKeyboard() {
     else if (event.shiftKey && event.key === "ArrowLeft") { event.preventDefault(); goToAdjacentKey(-1); }
     else if (event.key === "ArrowRight") setTime(time + 1000 / fps(), true);
     else if (event.key === "ArrowLeft") setTime(time - 1000 / fps(), true);
-  });
+  }, { capture: true });
 }
 
 function initialize() {

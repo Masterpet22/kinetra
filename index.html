@@ -21,7 +21,7 @@
       ]).catch((error) => console.warn("No se pudo retirar una caché antigua", error));
     })();
   </script>
-  <link rel="stylesheet" href="./styles.css?v=0.2.0">
+  <link rel="stylesheet" href="./styles.css?v=0.3.0">
 </head>
 <body>
   <header class="studio-header">
@@ -61,7 +61,7 @@
     <section class="workspace">
       <div class="toolbar">
         <div class="tool-group">
-          <button class="tool-button active" data-tool="select" title="Seleccionar y mover objetivo (V)">↖</button>
+          <button class="tool-button active" data-tool="select" title="Seleccionar y mover objetivo (V) · Mayús para selección múltiple">↖</button>
           <button class="tool-button" data-tool="pan" title="Mover vista (H)">✥</button>
           <button class="tool-button" data-tool="rotate" title="Rotar (R)">↻</button>
           <button class="tool-button" data-tool="scale" title="Escalar objetivo (S)">⤢</button>
@@ -84,7 +84,7 @@
         </div>
       </div>
       <div id="viewport" class="viewport">
-        <canvas id="canvas" aria-label="Lienzo del personaje y su esqueleto"></canvas>
+        <canvas id="canvas" tabindex="0" aria-label="Lienzo del personaje y su esqueleto"></canvas>
         <section class="preview-card" aria-label="Vista previa">
           <div class="preview-title"><span>Vista previa</span><span id="preview-state">○</span></div>
           <canvas id="preview-canvas"></canvas>
@@ -200,6 +200,6 @@
   </main>
 
   <input id="file" type="file" accept=".json,application/json">
-  <script type="module" src="./src/studio/editor.js?v=0.2.0"></script>
+  <script type="module" src="./src/studio/editor.js?v=0.3.0"></script>
 </body>
 </html>
