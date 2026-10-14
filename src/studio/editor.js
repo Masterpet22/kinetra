@@ -7,8 +7,8 @@ import {
   PUPPET_JOINT_PARENTS as PARENTS,
   PUPPET_PART_JOINTS as PART_JOINTS,
   PUPPET_TARGETS
-} from "../animations/rig.js?v=0.1.0";
-import { animationEase } from "../animations/runtime.js?v=0.1.0";
+} from "../animations/rig.js?v=0.2.0";
+import { animationEase } from "../animations/runtime.js?v=0.2.0";
 import {
   createStudioProject,
   normalizeStudioProject,
@@ -16,8 +16,17 @@ import {
   serializeStudioProject,
   STUDIO_EASES,
   validateStudioProject
-} from "../animations/studio-format.js?v=0.1.0";
-import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.1.0";
+} from "../animations/studio-format.js?v=0.2.0";
+import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.2.0";
+import {
+  constrainedTranslation,
+  GIZMO_METRICS,
+  hitMoveGizmo,
+  hitRotateGizmo,
+  hitScaleGizmo,
+  scaleFromDrag,
+  shortestAngleDelta
+} from "./gizmo.js?v=0.2.0";
 
 const $ = (id) => document.getElementById(id);
 const BASE_SCALE = 0.32;
@@ -360,6 +369,17 @@ function toWorld(clientX, clientY) {
   return { x: (clientX - box.left - base.x) / viewScale, y: (clientY - box.top - base.y) / viewScale };
 }
 
+function toCanvasPoint(clientX, clientY) {
+  const box = canvas.getBoundingClientRect();
+  return { x: clientX - box.left, y: clientY - box.top };
+}
+
+function worldToCanvasPoint(x, y) {
+  const base = origin();
+  const viewScale = BASE_SCALE * zoom;
+  return { x: base.x + x * viewScale, y: base.y + y * viewScale };
+}
+
 function targetHidden(partId) {
   if (hiddenTargets.has("rig")) return true;
   const target = PART_JOINTS[partId] || (partId === "torso" ? "torso" : null);
@@ -441,13 +461,111 @@ function targetMatrix(state, target = selectedTarget) {
   return state.joints[target] || state.root;
 }
 
+function transformGizmoCenter(state, target = selectedTarget) {
+  const matrix = targetMatrix(state, target);
+  return {
+    world: { x: matrix[4], y: matrix[5] },
+    canvas: worldToCanvasPoint(matrix[4], matrix[5])
+  };
+}
+
+function transformGizmoAngle(state, target = selectedTarget) {
+  const matrix = tool === "select" ? parentMatrixForTarget(target, state) : targetMatrix(state, target);
+  return Math.atan2(matrix[1], matrix[0]);
+}
+
+function rotateCanvasDelta(dx, dy, angle) {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  return { x: cosine * dx + sine * dy, y: -sine * dx + cosine * dy };
+}
+
+function hitTransformGizmo(clientX, clientY, state = matrices(time)) {
+  if (mode !== "animador" || tool === "pan") return null;
+  const pointer = toCanvasPoint(clientX, clientY);
+  const center = transformGizmoCenter(state).canvas;
+  const delta = rotateCanvasDelta(pointer.x - center.x, pointer.y - center.y, transformGizmoAngle(state));
+  const { x: dx, y: dy } = delta;
+  if (tool === "select") {
+    const axis = hitMoveGizmo(dx, dy);
+    return axis ? { type: "translate", axis } : null;
+  }
+  if (tool === "rotate") return hitRotateGizmo(dx, dy) ? { type: "rotate" } : null;
+  if (tool === "scale") {
+    const handle = hitScaleGizmo(dx, dy);
+    return handle ? { type: "scale", handle } : null;
+  }
+  return null;
+}
+
+function beginTransformInteraction(hit, state, world, canvasPoint) {
+  const target = selectedTarget;
+  const sampled = state.pose[target] || {};
+  if (hit.type === "translate") {
+    return {
+      type: "translate",
+      axis: hit.axis,
+      target,
+      start: world,
+      x: sampled.x || 0,
+      y: sampled.y || 0,
+      parentMatrix: parentMatrixForTarget(target, state),
+      moved: false
+    };
+  }
+  if (hit.type === "rotate") {
+    const center = transformGizmoCenter(state, target).world;
+    return {
+      type: "rotate",
+      target,
+      center,
+      startPointerAngle: Math.atan2(world.y - center.y, world.x - center.x) * 180 / Math.PI,
+      angle: sampled.angle || 0,
+      moved: false
+    };
+  }
+  return {
+    type: "scale",
+    target,
+    startCanvas: canvasPoint,
+    gizmoAngle: transformGizmoAngle(state, target),
+    handle: hit.handle,
+    scaleX: sampled.scaleX || 0,
+    scaleY: sampled.scaleY || 0,
+    moved: false
+  };
+}
+
+function nearestCanvasTarget(clientX, clientY, state) {
+  const pointer = toCanvasPoint(clientX, clientY);
+  const candidates = [["rig", state.root], ...Object.entries(state.joints)];
+  let result = null;
+  candidates.forEach(([target, matrix]) => {
+    const point = worldToCanvasPoint(matrix[4], matrix[5]);
+    const distance = Math.hypot(pointer.x - point.x, pointer.y - point.y);
+    if (distance <= 22 && (!result || distance < result.distance)) result = { target, distance };
+  });
+  return result?.target || null;
+}
+
+function cursorForGizmoHit(hit) {
+  if (!hit) return "default";
+  if (hit.type === "rotate") return "crosshair";
+  if (hit.type === "scale") return hit.handle.xSign === hit.handle.ySign ? "nwse-resize" : "nesw-resize";
+  if (hit.axis === "x") return "ew-resize";
+  if (hit.axis === "y") return "ns-resize";
+  return "move";
+}
+
 function drawTransformGizmo(at) {
   if (mode !== "animador" || tool === "pan") return;
   const state = matrices(at);
   const matrix = targetMatrix(state);
+  const orientation = transformGizmoAngle(state);
   const inverseViewScale = 1 / (BASE_SCALE * zoom);
   context.save();
   context.translate(matrix[4], matrix[5]);
+  context.rotate(orientation);
   context.scale(inverseViewScale, inverseViewScale);
   context.lineWidth = 2;
   context.fillStyle = "#ffffff";
@@ -459,7 +577,7 @@ function drawTransformGizmo(at) {
   if (tool === "rotate") {
     context.strokeStyle = "#efbd67";
     context.beginPath();
-    context.arc(0, 0, 31, -Math.PI * 0.85, Math.PI * 0.85);
+    context.arc(0, 0, GIZMO_METRICS.rotateRadius, -Math.PI * 0.85, Math.PI * 0.85);
     context.stroke();
     context.fillStyle = "#efbd67";
     context.beginPath();
@@ -470,8 +588,9 @@ function drawTransformGizmo(at) {
     context.fill();
   } else if (tool === "scale") {
     context.strokeStyle = "#b58cff";
-    context.strokeRect(-24, -24, 48, 48);
-    [[-24, -24], [24, -24], [-24, 24], [24, 24]].forEach(([x, y]) => {
+    const half = GIZMO_METRICS.scaleHalfSize;
+    context.strokeRect(-half, -half, half * 2, half * 2);
+    [[-half, -half], [half, -half], [-half, half], [half, half]].forEach(([x, y]) => {
       context.fillStyle = "#b58cff";
       context.fillRect(x - 4, y - 4, 8, 8);
     });
@@ -992,6 +1111,7 @@ function setMode(next) {
 
 function setTool(next) {
   tool = next;
+  canvas.style.cursor = "";
   document.querySelectorAll("[data-tool]").forEach((button) => button.classList.toggle("active", button.dataset.tool === next));
   $("viewport").classList.remove("select", "pan", "rotate", "scale");
   $("viewport").classList.add(next);
@@ -1378,45 +1498,44 @@ function bindCanvas() {
       return;
     }
     const state = matrices(time);
-    let chosen = "rig";
-    let distance = Math.hypot(world.x - state.root[4], world.y - state.root[5]);
-    Object.entries(state.joints).forEach(([id, matrix]) => {
-      const score = Math.hypot(world.x - matrix[4], world.y - matrix[5]);
-      if (score < distance) { chosen = id; distance = score; }
-    });
-    if (distance < 60) {
-      selectedTarget = chosen;
-      selectedKeys.clear();
-      if (!lockedTargets.has(chosen)) {
-        const sampled = state.pose[chosen] || {};
-        if (tool === "select") {
-          interaction = {
-            type: "translate",
-            target: chosen,
-            start: world,
-            x: sampled.x || 0,
-            y: sampled.y || 0,
-            parentMatrix: parentMatrixForTarget(chosen, state),
-            moved: false
-          };
-        } else if (tool === "rotate") {
-          interaction = { type: "rotate", target: chosen, startX: world.x, angle: sampled.angle || 0, moved: false };
-        } else if (tool === "scale") {
-          interaction = {
-            type: "scale",
-            target: chosen,
-            start: world,
-            scaleX: sampled.scaleX || 0,
-            scaleY: sampled.scaleY || 0,
-            moved: false
-          };
-        }
-      }
-      refresh();
+    const gizmoHit = hitTransformGizmo(event.clientX, event.clientY, state);
+    if (gizmoHit) {
+      if (lockedTargets.has(selectedTarget)) return status(`${label(selectedTarget)} está bloqueado`);
+      interaction = beginTransformInteraction(gizmoHit, state, world, toCanvasPoint(event.clientX, event.clientY));
+      canvas.style.cursor = cursorForGizmoHit(gizmoHit);
+      status(gizmoHit.type === "translate"
+        ? `Moviendo ${label(selectedTarget)}${gizmoHit.axis === "free" ? " libremente" : ` sobre el eje ${gizmoHit.axis.toUpperCase()}`}`
+        : gizmoHit.type === "rotate"
+          ? `Rotando ${label(selectedTarget)} desde el anillo`
+          : `Escalando ${label(selectedTarget)} desde la manija`);
+      return;
     }
+
+    const chosen = nearestCanvasTarget(event.clientX, event.clientY, state);
+    if (!chosen) return;
+    selectedTarget = chosen;
+    selectedKeys.clear();
+    if (tool === "select" && !lockedTargets.has(chosen)) {
+      interaction = beginTransformInteraction(
+        { type: "translate", axis: "free" },
+        state,
+        world,
+        toCanvasPoint(event.clientX, event.clientY)
+      );
+    }
+    refresh();
+    if (tool !== "select") status(`${label(chosen)} seleccionado; arrastra ${tool === "rotate" ? "el anillo" : "una manija"} para transformarlo`);
   };
   canvas.onpointermove = (event) => {
-    if (!interaction) return;
+    if (!interaction) {
+      if (tool === "pan") canvas.style.cursor = "grab";
+      else if (mode === "animador") {
+        const state = matrices(time);
+        const hit = hitTransformGizmo(event.clientX, event.clientY, state);
+        canvas.style.cursor = cursorForGizmoHit(hit);
+      }
+      return;
+    }
     const world = toWorld(event.clientX, event.clientY);
     if (interaction.type === "pan") {
       offsetX = interaction.offsetX + event.clientX - interaction.x;
@@ -1428,11 +1547,12 @@ function bindCanvas() {
       interaction.moved = true;
       draw();
     } else if (interaction.type === "translate") {
-      const delta = localDelta(
+      const local = localDelta(
         interaction.parentMatrix,
         world.x - interaction.start.x,
         world.y - interaction.start.y
       );
+      const delta = constrainedTranslation(local, interaction.axis);
       const current = ensureDraftFrame(interaction.target);
       setDraftFrame(interaction.target, {
         ...current,
@@ -1443,18 +1563,28 @@ function bindCanvas() {
       draw();
       renderInspector();
     } else if (interaction.type === "rotate") {
-      const angle = Math.max(-360, Math.min(360, interaction.angle + (world.x - interaction.startX) * 0.45));
+      const pointerAngle = Math.atan2(world.y - interaction.center.y, world.x - interaction.center.x) * 180 / Math.PI;
+      const angle = Math.max(-360, Math.min(360, interaction.angle + shortestAngleDelta(interaction.startPointerAngle, pointerAngle)));
       const current = ensureDraftFrame(interaction.target);
       setDraftFrame(interaction.target, { ...current, angle });
       interaction.moved = true;
       draw();
       renderInspector();
     } else if (interaction.type === "scale") {
-      const amount = (world.x - interaction.start.x - (world.y - interaction.start.y)) * 0.0025;
-      const scaleX = Math.max(-0.9, Math.min(4, interaction.scaleX + amount));
-      const scaleY = Math.max(-0.9, Math.min(4, interaction.scaleY + amount));
+      const point = toCanvasPoint(event.clientX, event.clientY);
+      const canvasDelta = rotateCanvasDelta(
+        point.x - interaction.startCanvas.x,
+        point.y - interaction.startCanvas.y,
+        interaction.gizmoAngle
+      );
+      const nextScale = scaleFromDrag(
+        { scaleX: interaction.scaleX, scaleY: interaction.scaleY },
+        canvasDelta,
+        interaction.handle,
+        { uniform: event.shiftKey }
+      );
       const current = ensureDraftFrame(interaction.target);
-      setDraftFrame(interaction.target, { ...current, scaleX, scaleY });
+      setDraftFrame(interaction.target, { ...current, ...nextScale });
       interaction.moved = true;
       draw();
       renderInspector();
@@ -1464,6 +1594,7 @@ function bindCanvas() {
     const completed = interaction;
     if (completed?.moved && completed.type === "piece") commit("Pieza desplazada");
     interaction = null;
+    canvas.style.cursor = "";
     refresh();
     if (completed?.moved && completed.type !== "piece") {
       const action = completed.type === "translate" ? "Posición" : completed.type === "rotate" ? "Rotación" : "Escala";
@@ -1471,6 +1602,7 @@ function bindCanvas() {
     }
   };
   canvas.onpointercancel = canvas.onpointerup;
+  canvas.onpointerleave = () => { if (!interaction) canvas.style.cursor = ""; };
 }
 
 function bindKeyboard() {
