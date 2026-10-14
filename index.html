@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kinetra · Editor de animación por marionetas</title>
+  <meta name="description" content="Editor web para ensamblar y animar personajes 2D mediante sprites y esqueletos articulados.">
+  <link rel="icon" href="./assets/favicon.png?v=0.20.0" type="image/png">
+  <script>
+    // Retira trabajadores antiguos sin detener ni recargar la navegación actual.
+    (() => {
+      if (!("serviceWorker" in navigator)) return;
+      const scope = new URL("./", window.location.href).href;
+      Promise.all([
+        navigator.serviceWorker.getRegistrations().then((registrations) => Promise.all(
+          registrations.filter((registration) => registration.scope === scope).map((registration) => registration.unregister())
+        )),
+        "caches" in window
+          ? caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith("kinetra-assets-")).map((key) => caches.delete(key))))
+          : Promise.resolve()
+      ]).catch((error) => console.warn("No se pudo retirar una caché antigua", error));
+    })();
+  </script>
+  <link rel="stylesheet" href="./styles.css?v=0.1.0">
+</head>
+<body>
+  <header class="studio-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span>Kinetra</span></div>
+    <nav class="main-nav" aria-label="Herramientas del Studio">
+      <button class="nav-button active" data-mode="animador">Animador</button>
+      <button class="nav-button" data-mode="calibrador">Calibrador</button>
+      <button class="nav-button" data-mode="sprites">Sprites</button>
+      <button class="nav-button" data-mode="exportar">Exportar</button>
+      <button class="nav-button" data-mode="proyecto">Proyecto</button>
+    </nav>
+    <div class="header-spacer"></div>
+    <label class="project-title">Proyecto <input id="project-name" value="nuevo_movimiento" maxlength="80" aria-label="ID del proyecto"></label>
+    <div class="header-actions">
+      <button id="undo" class="header-action" title="Deshacer (Ctrl+Z)" aria-label="Deshacer">↶</button>
+      <button id="redo" class="header-action" title="Rehacer (Ctrl+Y)" aria-label="Rehacer">↷</button>
+      <button id="header-play" class="header-action" title="Reproducir (Espacio)">▶ Reproducir</button>
+      <button id="open-file" class="header-action">Abrir JSON</button>
+      <button id="save-local" class="header-action primary">▣ Guardar</button>
+    </div>
+  </header>
+
+  <main class="studio-shell">
+    <aside class="panel left-panel">
+      <div class="panel-tabs" role="tablist" aria-label="Organización">
+        <button class="tab-button active" data-left-tab="skeleton">Esqueleto</button>
+        <button class="tab-button" data-left-tab="tracks">Pistas</button>
+        <button class="tab-button" data-left-tab="layers">Capas</button>
+      </div>
+      <div class="panel-body">
+        <input id="search" class="search" type="search" placeholder="Buscar articulación…">
+        <div id="tree" class="tree"></div>
+      </div>
+      <div id="tree-meta" class="tree-meta">Rig humanoide · Proyecto local</div>
+    </aside>
+
+    <section class="workspace">
+      <div class="toolbar">
+        <div class="tool-group">
+          <button class="tool-button active" data-tool="select" title="Seleccionar y mover objetivo (V)">↖</button>
+          <button class="tool-button" data-tool="pan" title="Mover vista (H)">✥</button>
+          <button class="tool-button" data-tool="rotate" title="Rotar (R)">↻</button>
+          <button class="tool-button" data-tool="scale" title="Escalar objetivo (S)">⤢</button>
+          <button id="fit" class="tool-button" title="Centrar">▣</button>
+        </div>
+        <div class="tool-group">
+          <select id="view" class="tool-select" aria-label="Vista"><option>Vista: Frontal</option></select>
+          <label class="inline-control"><input id="grid" type="checkbox" checked> Cuadrícula</label>
+          <label class="inline-control"><input id="bones" type="checkbox" checked> Huesos</label>
+          <label class="inline-control"><input id="ghost" type="checkbox" checked> Vista fantasma</label>
+          <label class="inline-control">Opacidad <input id="ghost-alpha" class="opacity-slider" type="range" min="5" max="70" value="28"></label>
+          <output id="ghost-label" class="ghost-label">Sin referencia</output>
+        </div>
+        <div class="tool-group">
+          <button id="zoomout" class="tool-button" aria-label="Alejar">−</button>
+          <input id="zoom" class="zoom-slider" type="range" min="40" max="220" value="100" aria-label="Zoom">
+          <output id="zoom-label" class="zoom-output">100 %</output>
+          <button id="zoomin" class="tool-button" aria-label="Acercar">+</button>
+          <button id="fullscreen" class="tool-button" title="Pantalla completa">⛶</button>
+        </div>
+      </div>
+      <div id="viewport" class="viewport">
+        <canvas id="canvas" aria-label="Lienzo del personaje y su esqueleto"></canvas>
+        <section class="preview-card" aria-label="Vista previa">
+          <div class="preview-title"><span>Vista previa</span><span id="preview-state">○</span></div>
+          <canvas id="preview-canvas"></canvas>
+          <div class="preview-footer"><span id="preview-duration">1000 ms · 24 fps</span><button id="preview-play" class="small-button" aria-label="Reproducir vista previa">▶</button></div>
+        </section>
+        <div id="canvas-status" class="canvas-status">Zoom: 100 % · Animación · 0 ms</div>
+        <section id="mode-overlay" class="mode-overlay" hidden></section>
+      </div>
+    </section>
+
+    <aside class="panel right-panel">
+      <div class="panel-tabs" role="tablist" aria-label="Panel derecho">
+        <button class="tab-button active" data-right-tab="inspector">Inspector</button>
+        <button class="tab-button" data-right-tab="presets">Presets</button>
+        <button class="tab-button" data-right-tab="curves">Curvas</button>
+      </div>
+      <div class="right-tabs-content">
+        <div id="inspector-panel">
+          <section class="inspector-section selection-card">
+            <div class="selection-icon">⚮</div>
+            <div><div id="selected-name" class="selection-name">Torso</div><div id="selected-type" class="selection-type">Hueso · Objetivo: rig</div></div>
+          </section>
+
+          <div id="animation-inspector">
+            <section class="inspector-section">
+              <h2>Transformación relativa</h2>
+              <div class="field-grid">
+                <div><label for="key-x">Posición X</label><input id="key-x" type="number" step=".5"></div>
+                <div><label for="key-y">Posición Y</label><input id="key-y" type="number" step=".5"></div>
+                <div><label for="key-angle">Rotación</label><input id="key-angle" type="number" step="1"></div>
+                <div><label for="key-alpha">Opacidad Δ</label><input id="key-alpha" type="number" min="-1" max="0" step=".05"></div>
+                <div><label for="key-scale-x">Escala X Δ</label><input id="key-scale-x" type="number" step=".01"></div>
+                <div><label for="key-scale-y">Escala Y Δ</label><input id="key-scale-y" type="number" step=".01"></div>
+              </div>
+              <div class="stack-field"><label for="key-ease">Interpolación hacia esta clave</label><select id="key-ease"></select></div>
+              <p id="draft-status" class="draft-status">Sin cambios pendientes</p>
+              <div class="button-row">
+                <button id="set-key" class="small-button primary">Guardar fotograma</button>
+                <button id="discard-key-draft" class="small-button">Descartar cambios</button>
+                <button id="duplicate-key" class="small-button">Duplicar</button>
+                <button id="reset-transform" class="small-button">Restablecer</button>
+                <button id="mirror-pose" class="small-button">Reflejar pose</button>
+                <button id="delete-key" class="small-button danger">Eliminar</button>
+              </div>
+            </section>
+            <section class="inspector-section">
+              <h2>Propiedades de animación</h2>
+              <div class="stack-field"><label for="clip-label">Nombre visible</label><input id="clip-label" type="text" maxlength="100"></div>
+              <div class="stack-field"><label for="clip-description">Descripción</label><textarea id="clip-description" maxlength="300"></textarea></div>
+              <div class="field-grid">
+                <div><label for="clip-category">Categoría</label><input id="clip-category" type="text"></div>
+                <div><label for="clip-state">Estado</label><select id="clip-state"><option value="idle">Reposo</option><option value="locomotion">Locomoción</option><option value="action">Acción</option><option value="hit">Daño</option><option value="defeated">Derrota</option></select></div>
+              </div>
+            </section>
+            <section class="inspector-section">
+              <h2>Evento de sprite</h2>
+              <div class="field-grid"><div><label for="event-slot">Ranura</label><input id="event-slot" value="handRight"></div><div><label for="event-variant">Variante</label><input id="event-variant" value="grip"></div></div>
+              <div class="button-row"><button id="add-event" class="small-button">Insertar en el tiempo actual</button></div>
+              <p class="muted">El evento se exporta por ID; no incrusta imágenes ni prendas.</p>
+            </section>
+          </div>
+
+          <div id="calibration-inspector" hidden>
+            <section class="inspector-section">
+              <h2>Transformación de calibración</h2>
+              <div class="field-grid">
+                <div><label for="part-x">Posición X</label><input id="part-x" type="number" step=".5"></div>
+                <div><label for="part-y">Posición Y</label><input id="part-y" type="number" step=".5"></div>
+                <div><label for="part-rotation">Rotación</label><input id="part-rotation" type="number" step="1"></div>
+                <div><label for="part-scale">Escala</label><input id="part-scale" type="number" min=".1" max="4" step=".05"></div>
+              </div>
+              <div class="button-row"><button id="flip-part" class="small-button">Voltear X</button><button id="layer-up" class="small-button">Subir capa</button><button id="layer-down" class="small-button">Bajar capa</button></div>
+            </section>
+          </div>
+
+          <section class="inspector-section"><h2>Estado</h2><p id="status" class="status">Listo</p></section>
+        </div>
+
+        <div id="presets-panel" hidden>
+          <section class="inspector-section"><h2>Curvas permitidas</h2><div id="preset-grid" class="preset-grid"></div><p class="muted">Cada preset corresponde a una curva comprendida por Studio y por el runtime del juego.</p></section>
+        </div>
+        <div id="curves-panel" hidden>
+          <section class="inspector-section"><h2>Vista de interpolación</h2><canvas id="curve-canvas"></canvas><p id="curve-label" class="muted">Linear</p></section>
+        </div>
+      </div>
+    </aside>
+
+    <section class="timeline">
+      <div class="timeline-top">
+        <div class="timeline-tabs"><button class="timeline-tab active">Línea de tiempo</button><button class="timeline-tab" id="open-curves">Editor de curvas</button></div>
+        <button id="first" class="tool-button" aria-label="Primer fotograma">⏮</button>
+        <button id="previous-key" class="tool-button" title="Clave anterior (Mayús+←)" aria-label="Clave anterior">◆◀</button>
+        <button id="play" class="tool-button" aria-label="Reproducir">▶</button>
+        <button id="pause" class="tool-button" aria-label="Detener">■</button>
+        <button id="next-key" class="tool-button" title="Clave siguiente (Mayús+→)" aria-label="Clave siguiente">▶◆</button>
+        <button id="last" class="tool-button" aria-label="Último fotograma">⏭</button>
+        <span id="clock" class="timeline-time">0.00 / 1.00 s</span>
+        <input id="scrub" type="range" min="0" max="1000" value="0" step="1" aria-label="Tiempo">
+        <label class="inline-control">FPS <select id="fps"><option>12</option><option selected>24</option><option>30</option><option>60</option></select></label>
+        <label class="inline-control">Duración <input id="duration" type="number" min="100" max="60000" step="50" value="1000" style="width:82px"></label>
+        <label class="inline-control"><input id="loop" type="checkbox"> Bucle</label>
+        <label class="inline-control timeline-zoom-control">Zoom tiempo <input id="timeline-zoom" type="range" min="100" max="250" value="100" step="10"></label>
+        <button id="copy-keys" class="tool-button" title="Copiar claves">C</button>
+        <button id="paste-keys" class="tool-button" title="Pegar claves">V</button>
+      </div>
+      <div id="timeline-scroll" class="timeline-scroll">
+        <div id="timeline-content" class="timeline-content">
+          <div class="ruler-row"><div class="ruler-label"></div><div id="ruler" class="ruler"></div></div>
+          <div id="tracks"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <input id="file" type="file" accept=".json,application/json">
+  <script type="module" src="./src/studio/editor.js?v=0.1.0"></script>
+</body>
+</html>
