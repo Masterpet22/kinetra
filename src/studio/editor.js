@@ -7,8 +7,8 @@ import {
   PUPPET_JOINT_PARENTS as PARENTS,
   PUPPET_PART_JOINTS as PART_JOINTS,
   PUPPET_TARGETS
-} from "../animations/rig.js?v=0.8.0";
-import { animationEase } from "../animations/runtime.js?v=0.8.0";
+} from "../animations/rig.js?v=0.9.0";
+import { animationEase } from "../animations/runtime.js?v=0.9.0";
 import {
   createStudioProject,
   normalizeStudioProject,
@@ -16,8 +16,8 @@ import {
   serializeStudioProject,
   STUDIO_EASES,
   validateStudioProject
-} from "../animations/studio-format.js?v=0.8.0";
-import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.8.0";
+} from "../animations/studio-format.js?v=0.9.0";
+import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.9.0";
 import {
   collapseHierarchicalSelection,
   constrainedTranslation,
@@ -27,14 +27,15 @@ import {
   hitScaleGizmo,
   scaleFromDrag,
   shortestAngleDelta
-} from "./gizmo.js?v=0.8.0";
-import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.8.0";
+} from "./gizmo.js?v=0.9.0";
+import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.9.0";
 
 const $ = (id) => document.getElementById(id);
 const BASE_SCALE = 0.32;
 const STORAGE_KEY = "kinetra:project";
 const PANEL_STORAGE_KEY = "kinetra:panels";
 const PREVIEW_STORAGE_KEY = "kinetra:preview-visible";
+const THEME_STORAGE_KEY = "kinetra:theme";
 const TARGETS = [...new Set(["rig", "torso", ...Object.keys(JOINTS)])];
 const LABELS = {
   rig: "Torso",
@@ -121,29 +122,63 @@ const PANEL_FLOAT_SIZES = Object.freeze({
 });
 const WORKSPACE_LABELS = Object.freeze({ animador: "Animador", calibrador: "Ensamblaje", exportar: "Exportación", proyecto: "Proyecto" });
 const HELP_TOPICS = Object.freeze({
-  animador: {
-    title: "Tutorial del Animador",
-    body: `<p>El Animador crea poses y movimiento con fotogramas clave.</p><ol><li>Selecciona uno o varios puntos del esqueleto. Usa <kbd>Mayús</kbd> para sumar puntos.</li><li>Elige mover, rotar o escalar y manipula el control sobre el lienzo.</li><li>Revisa el borrador en el Inspector y pulsa <strong>Guardar fotograma</strong>.</li><li>Desplázate en el tiempo y repite para interpolar el movimiento.</li></ol><p class="help-tip">Las manos y los pies usan cinemática inversa; los codos y rodillas conservan su cadena.</p>`
-  },
-  calibrador: {
-    title: "Tutorial de Ensamblaje",
-    body: `<p>Ensamblaje reúne la calibración y la organización de sprites en un solo espacio.</p><ol><li>Abre <strong>Capas</strong> y selecciona una pieza.</li><li>Arrástrala en el lienzo o ajusta posición, rotación y escala en el Inspector.</li><li>Usa Voltear X y el orden de capas para corregir orientación y solapamiento.</li><li>Bloquea u oculta piezas desde Capas cuando termines.</li></ol>`
-  },
-  timeline: {
-    title: "Tutorial de línea de tiempo",
-    body: `<p>La línea de tiempo organiza claves, eventos y referencias.</p><ol><li>Haz clic en una pista para seleccionar su objetivo.</li><li>Arrastra una clave para cambiar su tiempo.</li><li>Usa anterior/siguiente para recorrer claves y el control de zoom para ampliar el tiempo.</li><li>Copia y pega claves para reutilizar poses.</li></ol>`
-  },
-  paneles: {
-    title: "Tutorial de paneles",
-    body: `<p>Cada módulo puede funcionar como pestaña acoplada o ventana flotante.</p><ol><li>Activa módulos desde <strong>Ventana</strong>.</li><li>Arrastra el asa de su cabecera para moverlos.</li><li>Suéltalos en un borde resaltado para acoplarlos.</li><li>Usa Restablecer disposición para volver al escritorio inicial.</li></ol>`
-  },
-  exportar: {
-    title: "Tutorial de exportación",
-    body: `<p>La exportación separa el proyecto editable del clip destinado al juego.</p><ol><li>Abre <strong>Archivo → Preparar exportación</strong>.</li><li>Corrige las observaciones de validación si aparecen.</li><li>Exporta el proyecto para conservar calibración y metadatos.</li><li>Exporta el clip cuando la validación para el runtime sea correcta.</li></ol>`
-  },
   shortcuts: {
     title: "Atajos de teclado",
     body: `<div class="shortcut-grid"><kbd>V</kbd><span>Seleccionar y mover</span><kbd>H</kbd><span>Desplazar la vista</span><kbd>R</kbd><span>Rotar</span><kbd>S</kbd><span>Escalar</span><kbd>Espacio</kbd><span>Reproducir o detener</span><kbd>Ctrl Z</kbd><span>Deshacer</span><kbd>Ctrl Y</kbd><span>Rehacer</span><kbd>Ctrl C / V</kbd><span>Copiar o pegar claves</span><kbd>Mayús ← / →</kbd><span>Clave anterior o siguiente</span><kbd>Supr</kbd><span>Eliminar claves seleccionadas</span></div>`
+  }
+});
+const TUTORIALS = Object.freeze({
+  animador: {
+    label: "Animador",
+    mode: "animador",
+    steps: [
+      { target: "#workspace-menu", title: "Estás en el Animador", copy: "Este selector cambia de espacio sin separar el proyecto. El Animador modifica poses y crea fotogramas clave." },
+      { target: "[data-panel='skeleton'] .tree", panel: "skeleton", title: "Selecciona articulaciones", copy: "Haz clic en una articulación. Con Mayús o el botón de suma puedes mantener varios puntos seleccionados." },
+      { target: ".toolbar .tool-group:first-child", title: "Elige una transformación", copy: "Mover, rotar y escalar cambian la pose. La herramienta activa también puede elegirse con V, R o S." },
+      { target: "#canvas", title: "Manipula el personaje", copy: "Arrastra el control del lienzo. Muñecas y tobillos resuelven la cadena completa; codos y rodillas conservan conectada la extremidad." },
+      { target: "#set-key", panel: "inspector", title: "Guarda el fotograma", copy: "La pose queda como borrador hasta pulsar Guardar fotograma. Así puedes corregirla o deshacerla antes de confirmarla." },
+      { target: "[data-panel='timeline']", panel: "timeline", title: "Construye el movimiento", copy: "Cambia el tiempo, crea otra pose y guarda una nueva clave. Kinetra interpolará el movimiento entre ambas." }
+    ]
+  },
+  calibrador: {
+    label: "Ensamblaje",
+    mode: "calibrador",
+    steps: [
+      { target: "#workspace-menu", title: "Estás en Ensamblaje", copy: "Aquí ajustas los sprites sobre el esqueleto antes de animarlos." },
+      { target: "[data-panel='layers'] .tree", panel: "layers", title: "Escoge una pieza", copy: "Capas selecciona el sprite que vas a calibrar y permite ocultarlo o bloquearlo." },
+      { target: "#canvas", title: "Coloca el sprite", copy: "Arrastra la pieza directamente sobre el personaje para alinearla con su articulación." },
+      { target: "#calibration-inspector", panel: "inspector", title: "Afina la calibración", copy: "Usa valores precisos para posición, rotación y escala. También puedes voltear y ordenar la capa." }
+    ]
+  },
+  timeline: {
+    label: "Línea de tiempo",
+    mode: "animador",
+    steps: [
+      { target: "[data-panel='timeline']", panel: "timeline", title: "Mapa de la animación", copy: "Cada fila corresponde a una articulación; los diamantes representan fotogramas clave." },
+      { target: "#scrub", title: "Recorre el tiempo", copy: "Arrastra este control para revisar cualquier instante de la animación." },
+      { target: "#play", title: "Reproduce y detén", copy: "El mismo botón alterna reproducción y detención para ahorrar espacio." },
+      { target: "#timeline-zoom", title: "Ajusta la escala temporal", copy: "Amplía el tiempo cuando necesites separar y editar claves cercanas." },
+      { target: "#copy-keys", title: "Reutiliza poses", copy: "Selecciona claves, cópialas y pégalas en otro instante para acelerar el trabajo." }
+    ]
+  },
+  paneles: {
+    label: "Paneles",
+    mode: "animador",
+    steps: [
+      { target: "#window-menu > summary", title: "Activa cada módulo", copy: "El menú Ventana muestra u oculta Esqueleto, Capas, Inspector, Curvas, Línea de tiempo y Vista previa." },
+      { target: "[data-panel='skeleton'] .panel-window-bar", panel: "skeleton", title: "Mueve una ventana", copy: "Arrastra el asa de la cabecera para convertir el panel en ventana flotante o llevarlo a otro borde." },
+      { target: "[data-panel-float='skeleton']", title: "Desacopla con un clic", copy: "Este botón alterna entre ventana flotante y panel acoplado." },
+      { target: "[data-panel-close='skeleton']", title: "Oculta sin perder", copy: "Cerrar solo oculta el módulo. Puedes recuperarlo en cualquier momento desde Ventana." }
+    ]
+  },
+  exportar: {
+    label: "Exportación",
+    mode: "exportar",
+    steps: [
+      { target: "#mode-overlay", title: "Revisa el proyecto", copy: "Esta vista resume las piezas y pistas antes de crear los archivos finales." },
+      { target: "#download-project", title: "Conserva el archivo editable", copy: "El proyecto de Studio incluye calibración, metadatos y todas las pistas para continuar trabajando." },
+      { target: "#download-clip", title: "Entrega el clip al juego", copy: "El clip se habilita cuando la validación es correcta y contiene solo los datos necesarios para reproducir la animación." }
+    ]
   }
 });
 
@@ -187,6 +222,10 @@ let dockActive = initialPanelLayout.active;
 let panelDrag = null;
 let panelZ = 120;
 let previewVisible = localStorage.getItem(PREVIEW_STORAGE_KEY) !== "false";
+let theme = ["noche", "grafito", "aurora"].includes(localStorage.getItem(THEME_STORAGE_KEY))
+  ? localStorage.getItem(THEME_STORAGE_KEY)
+  : "noche";
+let tutorialRun = null;
 
 const canvas = $("canvas");
 const context = canvas.getContext("2d");
@@ -778,6 +817,56 @@ function renderFigure(targetContext, at, { alpha = 1, tint = false, sampledPose 
   targetContext.restore();
 }
 
+function figureBounds(at) {
+  const state = matrices(at);
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const include = ({ x, y }) => {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  };
+  project.parts.forEach((item) => {
+    if (!item.visible || targetHidden(item.id)) return;
+    const image = images[item.id];
+    if (!image?.complete || !image.naturalWidth) return;
+    const jointId = PART_JOINTS[item.id];
+    const targetId = jointId || (item.id === "torso" ? "torso" : "rig");
+    const parentMatrix = jointId
+      ? state.joints[jointId]
+      : multiply(state.root, targetId === "torso" ? transformMatrix(state.pose.torso) : [1, 0, 0, 1, 0, 0]);
+    const anchor = jointId ? JOINTS[jointId] : { x: 0, y: 0 };
+    const matrix = multiply(
+      multiply(
+        multiply(parentMatrix, translate(item.x - anchor.x, item.y - anchor.y)),
+        rotate(item.rotation)
+      ),
+      scale(item.scaleX, item.scaleY)
+    );
+    const halfWidth = image.naturalWidth / 2;
+    const halfHeight = image.naturalHeight / 2;
+    include(point(matrix, -halfWidth, -halfHeight));
+    include(point(matrix, halfWidth, -halfHeight));
+    include(point(matrix, -halfWidth, halfHeight));
+    include(point(matrix, halfWidth, halfHeight));
+  });
+  if (!Number.isFinite(minX)) {
+    [state.root, ...Object.values(state.joints)].forEach((matrix) => include({ x: matrix[4], y: matrix[5] }));
+    minX -= 90;
+    maxX += 90;
+    minY -= 90;
+    maxY += 90;
+  }
+  return { minX, minY, maxX, maxY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) };
+}
+
+function themeColor(name, fallback) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
 function drawGrid(width, height, base, viewScale) {
   if (!$("grid").checked) return;
   const left = -base.x / viewScale;
@@ -1037,13 +1126,19 @@ function drawPreview() {
   const width = previewCanvas.clientWidth;
   const height = previewCanvas.clientHeight;
   previewContext.clearRect(0, 0, width, height);
-  previewContext.fillStyle = "#091522";
+  previewContext.fillStyle = themeColor("--preview-bg", "#091522");
   previewContext.fillRect(0, 0, width, height);
+  const at = mode === "animador" ? time : 0;
+  const bounds = figureBounds(at);
+  const margin = 12;
+  const fit = Math.min((width - margin * 2) / bounds.width, (height - margin * 2) / bounds.height);
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+  const centerY = (bounds.minY + bounds.maxY) / 2;
   previewContext.save();
-  previewContext.translate(width / 2, height / 2 - 8);
-  previewContext.scale(0.105, 0.105);
-  previewContext.translate(0, -85);
-  renderFigure(previewContext, mode === "animador" ? time : 0);
+  previewContext.translate(width / 2, height / 2);
+  previewContext.scale(fit, fit);
+  previewContext.translate(-centerX, -centerY);
+  renderFigure(previewContext, at);
   previewContext.restore();
 }
 
@@ -1053,8 +1148,8 @@ function draw() {
   const height = canvas.clientHeight;
   context.clearRect(0, 0, width, height);
   const gradient = context.createRadialGradient(width / 2, height / 2, 20, width / 2, height / 2, Math.max(width, height));
-  gradient.addColorStop(0, "#0d2236");
-  gradient.addColorStop(1, "#06111d");
+  gradient.addColorStop(0, themeColor("--canvas-center", "#0d2236"));
+  gradient.addColorStop(1, themeColor("--canvas-edge", "#06111d"));
   context.fillStyle = gradient;
   context.fillRect(0, 0, width, height);
   const base = origin();
@@ -1523,6 +1618,14 @@ function applyPreviewVisibility() {
   if (previewVisible) requestAnimationFrame(drawPreview);
 }
 
+function applyTheme(next, persist = true) {
+  theme = ["noche", "grafito", "aurora"].includes(next) ? next : "noche";
+  document.documentElement.dataset.theme = theme;
+  document.querySelectorAll("[data-theme-choice]").forEach((input) => { input.checked = input.value === theme; });
+  if (persist) localStorage.setItem(THEME_STORAGE_KEY, theme);
+  draw();
+}
+
 function openHelpDialog(topic) {
   const content = HELP_TOPICS[topic];
   if (!content) return;
@@ -1530,6 +1633,87 @@ function openHelpDialog(topic) {
   $("help-dialog-title").textContent = content.title;
   $("help-dialog-body").innerHTML = content.body;
   $("help-dialog").showModal();
+}
+
+function currentTutorialStep() {
+  if (!tutorialRun) return null;
+  return TUTORIALS[tutorialRun.topic]?.steps[tutorialRun.index] || null;
+}
+
+function positionTutorial() {
+  const step = currentTutorialStep();
+  if (!step) return;
+  const target = document.querySelector(step.target) || $("workspace-menu");
+  const rect = target.getBoundingClientRect();
+  const padding = 7;
+  const spotlight = $("tutorial-spotlight");
+  spotlight.style.left = `${Math.max(3, rect.left - padding)}px`;
+  spotlight.style.top = `${Math.max(3, rect.top - padding)}px`;
+  spotlight.style.width = `${Math.min(innerWidth - 6, rect.width + padding * 2)}px`;
+  spotlight.style.height = `${Math.min(innerHeight - 6, rect.height + padding * 2)}px`;
+
+  const card = $("tutorial-card");
+  const cardRect = card.getBoundingClientRect();
+  const gap = 16;
+  let left = Math.min(Math.max(12, rect.left), innerWidth - cardRect.width - 12);
+  let top = rect.bottom + gap;
+  if (top + cardRect.height > innerHeight - 12) top = rect.top - cardRect.height - gap;
+  if (top < 12) {
+    top = Math.min(Math.max(12, rect.top), innerHeight - cardRect.height - 12);
+    left = rect.right + gap;
+    if (left + cardRect.width > innerWidth - 12) left = rect.left - cardRect.width - gap;
+    left = Math.min(Math.max(12, left), innerWidth - cardRect.width - 12);
+  }
+  card.style.left = `${left}px`;
+  card.style.top = `${top}px`;
+}
+
+function renderTutorialStep() {
+  const tutorial = tutorialRun && TUTORIALS[tutorialRun.topic];
+  const step = currentTutorialStep();
+  if (!tutorial || !step) return;
+  if (step.panel) showRightTab(step.panel);
+  closeApplicationMenus();
+  $("tutorial-overlay").hidden = false;
+  $("tutorial-progress").textContent = `${tutorial.label} · ${tutorialRun.index + 1} de ${tutorial.steps.length}`;
+  $("tutorial-title").textContent = step.title;
+  $("tutorial-copy").textContent = step.copy;
+  $("tutorial-back").disabled = tutorialRun.index === 0;
+  const last = tutorialRun.index === tutorial.steps.length - 1;
+  $("tutorial-next").innerHTML = last
+    ? `Finalizar <i data-lucide="check"></i>`
+    : `Siguiente <i data-lucide="arrow-right"></i>`;
+  refreshIcons($("tutorial-next"));
+  requestAnimationFrame(() => {
+    const target = document.querySelector(step.target);
+    target?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    requestAnimationFrame(positionTutorial);
+  });
+  $("tutorial-next").focus();
+}
+
+function startTutorial(topic) {
+  const tutorial = TUTORIALS[topic];
+  if (!tutorial) return;
+  closeApplicationMenus();
+  if ($("help-dialog").open) $("help-dialog").close();
+  setMode(tutorial.mode);
+  tutorialRun = { topic, index: 0 };
+  renderTutorialStep();
+}
+
+function moveTutorial(direction) {
+  if (!tutorialRun) return;
+  const steps = TUTORIALS[tutorialRun.topic].steps;
+  const next = tutorialRun.index + direction;
+  if (next >= steps.length) return closeTutorial();
+  tutorialRun.index = Math.max(0, next);
+  renderTutorialStep();
+}
+
+function closeTutorial() {
+  tutorialRun = null;
+  $("tutorial-overlay").hidden = true;
 }
 
 function renderModeOverlay() {
@@ -1842,6 +2026,13 @@ function bindControls() {
       draw();
     };
   });
+  document.querySelectorAll("[data-theme-choice]").forEach((input) => {
+    input.onchange = () => {
+      applyTheme(input.value);
+      closeApplicationMenus();
+      status(`Tema ${input.parentElement.textContent.trim()} activado`);
+    };
+  });
   const menuCommands = {
     new: createNewProject,
     open: () => $("file").click(),
@@ -1870,10 +2061,13 @@ function bindControls() {
     if (!event.target.closest(".app-menu")) closeApplicationMenus();
   });
   document.querySelectorAll("[data-tutorial]").forEach((button) => {
-    button.onclick = () => openHelpDialog(button.dataset.tutorial);
+    button.onclick = () => startTutorial(button.dataset.tutorial);
   });
   $("help-dialog-close").onclick = () => $("help-dialog").close();
   $("help-dialog").onclick = (event) => { if (event.target === $("help-dialog")) $("help-dialog").close(); };
+  $("tutorial-close").onclick = closeTutorial;
+  $("tutorial-back").onclick = () => moveTutorial(-1);
+  $("tutorial-next").onclick = () => moveTutorial(1);
   $("preview-toggle").onchange = () => {
     previewVisible = $("preview-toggle").checked;
     applyPreviewVisibility();
@@ -2183,6 +2377,12 @@ function bindCanvas() {
 
 function bindKeyboard() {
   window.addEventListener("keydown", (event) => {
+    if (tutorialRun) {
+      if (event.key === "Escape") { event.preventDefault(); closeTutorial(); }
+      else if (event.key === "ArrowRight") { event.preventDefault(); moveTutorial(1); }
+      else if (event.key === "ArrowLeft") { event.preventDefault(); moveTutorial(-1); }
+      return;
+    }
     const editing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "");
     if (editing) return;
     const command = event.ctrlKey || event.metaKey;
@@ -2219,11 +2419,15 @@ function initialize() {
   bindControls();
   bindCanvas();
   bindKeyboard();
+  applyTheme(theme, false);
   applyPreviewVisibility();
   updatePlaybackButtons();
   const timelineResize = new ResizeObserver(() => renderTimeline());
   timelineResize.observe($("timeline-scroll"));
-  window.addEventListener("resize", draw);
+  window.addEventListener("resize", () => {
+    draw();
+    if (tutorialRun) positionTutorial();
+  });
   window.addEventListener("load", () => refreshIcons());
   resetGhostFromProject(0);
   checkpoint();

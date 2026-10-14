@@ -21,12 +21,18 @@
       ]).catch((error) => console.warn("No se pudo retirar una caché antigua", error));
     })();
   </script>
-  <link rel="stylesheet" href="./styles.css?v=0.8.0">
+  <script>
+    try {
+      const theme = localStorage.getItem("kinetra:theme");
+      if (["noche", "grafito", "aurora"].includes(theme)) document.documentElement.dataset.theme = theme;
+    } catch {}
+  </script>
+  <link rel="stylesheet" href="./styles.css?v=0.9.0">
   <script defer src="https://unpkg.com/lucide@1.57.0/dist/umd/lucide.min.js"></script>
 </head>
 <body>
   <header class="studio-header">
-    <div class="brand"><img class="brand-logo" src="./assets/brand/kinetra-logo.png?v=0.8.0" alt="Kinetra"></div>
+    <div class="brand" aria-label="Kinetra"><span class="brand-mark"><img class="brand-logo" src="./assets/brand/kinetra-logo.png?v=0.9.0" alt=""></span><span class="brand-name">Kinetra</span></div>
     <nav class="app-menu-bar" aria-label="Menú de aplicación">
       <details class="app-menu">
         <summary>Archivo</summary>
@@ -57,9 +63,14 @@
           <hr>
           <button data-menu-command="fit"><span><i data-lucide="scan"></i> Centrar vista</span></button>
           <button data-menu-command="fullscreen"><span><i data-lucide="maximize-2"></i> Pantalla completa</span></button>
+          <hr>
+          <small class="menu-section-label">Tema de color</small>
+          <label><input type="radio" name="theme" value="noche" data-theme-choice> Noche</label>
+          <label><input type="radio" name="theme" value="grafito" data-theme-choice> Grafito</label>
+          <label><input type="radio" name="theme" value="aurora" data-theme-choice> Aurora</label>
         </div>
       </details>
-      <details class="app-menu">
+      <details class="app-menu" id="window-menu">
         <summary>Ventana</summary>
         <div class="app-menu-popover app-menu-windows">
           <label><input type="checkbox" data-panel-toggle="skeleton" checked> Esqueleto</label>
@@ -75,13 +86,6 @@
           <small>Arrastra el asa de una ventana para moverla o acoplarla a otro borde.</small>
         </div>
       </details>
-      <details class="app-menu workspace-menu" id="workspace-menu">
-        <summary><i data-lucide="panels-top-left"></i><span id="workspace-menu-label">Animador</span></summary>
-        <div class="app-menu-popover">
-          <button data-mode="animador"><span><i data-lucide="film"></i> Animador</span></button>
-          <button data-mode="calibrador"><span><i data-lucide="bone"></i> Ensamblaje</span></button>
-        </div>
-      </details>
       <details class="app-menu">
         <summary>Ayuda</summary>
         <div class="app-menu-popover help-menu-popover">
@@ -95,6 +99,15 @@
         </div>
       </details>
     </nav>
+    <div class="workspace-switcher">
+      <details class="app-menu workspace-menu" id="workspace-menu">
+        <summary><i data-lucide="panels-top-left"></i><span id="workspace-menu-label">Animador</span><i data-lucide="chevron-down"></i></summary>
+        <div class="app-menu-popover">
+          <button data-mode="animador"><span><i data-lucide="film"></i> Animador</span></button>
+          <button data-mode="calibrador"><span><i data-lucide="bone"></i> Ensamblaje</span></button>
+        </div>
+      </details>
+    </div>
     <div class="header-spacer"></div>
     <label class="project-title">Proyecto <input id="project-name" value="nuevo_movimiento" maxlength="80" aria-label="ID del proyecto"></label>
     <div class="header-actions">
@@ -282,11 +295,21 @@
   </main>
 
   <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-dialog-title">
-    <div class="help-dialog-header"><div><span class="eyebrow">Ayuda de Kinetra</span><h2 id="help-dialog-title">Tutorial</h2></div><button id="help-dialog-close" class="icon-button" aria-label="Cerrar ayuda"><i data-lucide="x"></i></button></div>
+    <div class="help-dialog-header"><div><span class="eyebrow">Referencia de Kinetra</span><h2 id="help-dialog-title">Atajos de teclado</h2></div><button id="help-dialog-close" class="icon-button" aria-label="Cerrar ayuda"><i data-lucide="x"></i></button></div>
     <div id="help-dialog-body" class="help-dialog-body"></div>
   </dialog>
 
+  <div id="tutorial-overlay" class="tutorial-overlay" hidden aria-live="polite">
+    <div id="tutorial-spotlight" class="tutorial-spotlight"></div>
+    <section id="tutorial-card" class="tutorial-card" role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
+      <div class="tutorial-card-header"><span id="tutorial-progress" class="eyebrow"></span><button id="tutorial-close" class="icon-button" aria-label="Cerrar tutorial"><i data-lucide="x"></i></button></div>
+      <h2 id="tutorial-title"></h2>
+      <p id="tutorial-copy"></p>
+      <div class="tutorial-actions"><button id="tutorial-back" class="small-button"><i data-lucide="arrow-left"></i> Anterior</button><button id="tutorial-next" class="small-button primary">Siguiente <i data-lucide="arrow-right"></i></button></div>
+    </section>
+  </div>
+
   <input id="file" type="file" accept=".json,application/json">
-  <script type="module" src="./src/studio/editor.js?v=0.8.0"></script>
+  <script type="module" src="./src/studio/editor.js?v=0.9.0"></script>
 </body>
 </html>

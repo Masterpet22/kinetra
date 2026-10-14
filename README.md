@@ -24,6 +24,13 @@ El espacio de trabajo usa un sistema modular inspirado en aplicaciones como GIMP
 
 Cada herramienta usa un tamaño flotante apropiado y el dock inferior mantiene una altura limitada. La composición de pestañas, los acoplamientos, tamaños y posiciones internas se conservan en el navegador.
 
+## Apariencia y ayuda
+
+- El selector central cambia entre los espacios `Animador` y `Ensamblaje`.
+- El menú `Ver` ofrece los temas Noche, Grafito y Aurora; la elección se conserva en el navegador.
+- `Ayuda` inicia recorridos guiados que cambian al espacio correspondiente y resaltan cada control explicado. Los atajos de teclado se mantienen como referencia rápida independiente.
+- La Vista previa calcula el encuadre usando los límites transformados de todos los sprites visibles para mantener al personaje completo y centrado.
+
 ## Uso
 
 Abre la versión publicada en [GitHub Pages](https://masterpet22.github.io/kinetra/) o sirve el repositorio mediante un servidor HTTP local:
