@@ -46,6 +46,26 @@ export function constrainedTranslation(delta, axis) {
   };
 }
 
+/**
+ * Elimina de una transformación grupal los objetivos que ya heredarán el
+ * movimiento de otro objetivo seleccionado situado por encima en el rig.
+ */
+export function collapseHierarchicalSelection(targets, parents, rootTarget = "rig") {
+  const selected = new Set(targets);
+  return targets.filter((target) => {
+    let parent = target === rootTarget
+      ? null
+      : target === "torso"
+        ? rootTarget
+        : parents[target] ?? rootTarget;
+    while (parent) {
+      if (selected.has(parent)) return false;
+      parent = parent === rootTarget ? null : parents[parent] ?? rootTarget;
+    }
+    return true;
+  });
+}
+
 export function scaleFromDrag(initial, delta, handle, { uniform = false, sensitivity = 0.01 } = {}) {
   let x = delta.x * handle.xSign * sensitivity;
   let y = delta.y * handle.ySign * sensitivity;

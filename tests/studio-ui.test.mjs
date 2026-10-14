@@ -14,14 +14,14 @@ for (const id of ["canvas", "preview-canvas", "tree", "inspector-panel", "timeli
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control ${id}`);
 }
 assert.doesNotMatch(html, /<iframe\b/i, "El Studio unificado no debe depender de vistas embebidas");
-assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.4\.0["']/);
+assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.4\.1["']/);
 assert.match(html, /navigator\.serviceWorker\.getRegistrations\(\)/, "El Studio debe retirar cachés heredadas antes de iniciar");
 assert.doesNotMatch(html, /window\.stop\(\)/, "La limpieza del Studio no debe abortar la navegación actual");
 assert.match(html, /id=["']timeline-zoom["']/, "El timeline debe tener zoom temporal independiente");
 assert.match(css, /grid-template-columns:\s*270px\s+minmax\(480px,\s*1fr\)\s+310px/);
 assert.match(css, /\.timeline\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/s);
 assert.match(editor, /sampleStudioAnimation/);
-assert.match(editor, /studio-format\.js\?v=0\.4\.0/, "Los módulos internos deben invalidar la caché junto con el editor");
+assert.match(editor, /studio-format\.js\?v=0\.4\.1/, "Los módulos internos deben invalidar la caché junto con el editor");
 assert.match(editor, /validateStudioProject/);
 assert.match(editor, /mode:\s*["']game["']/);
 assert.match(editor, /function restoreHistory/);
@@ -51,6 +51,7 @@ assert.match(editor, /function mirrorCurrentPose\(/);
 assert.match(editor, /function resetSelectedTransform\(/);
 assert.match(editor, /function hitTransformGizmo\(/, "Los controles dibujados deben tener detección de impacto");
 assert.match(editor, /constrainedWorldDelta\(/, "Las flechas deben restringir el movimiento a su eje");
+assert.match(editor, /collapseHierarchicalSelection\(editableTargets, PARENTS\)/, "Una selección padre-hijo no debe acumular el desplazamiento en cada nivel");
 assert.match(editor, /shortestAngleDelta\(interaction\.startPointerAngle, pointerAngle\)/, "El anillo debe rotar según el ángulo del puntero");
 assert.match(editor, /scaleFromDrag\(/, "Las manijas deben controlar la escala");
 assert.match(editor, /let selectedTargets = new Set\(\["rig"\]\)/, "El editor debe conservar una selección múltiple de objetivos");

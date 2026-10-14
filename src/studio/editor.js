@@ -7,8 +7,8 @@ import {
   PUPPET_JOINT_PARENTS as PARENTS,
   PUPPET_PART_JOINTS as PART_JOINTS,
   PUPPET_TARGETS
-} from "../animations/rig.js?v=0.4.0";
-import { animationEase } from "../animations/runtime.js?v=0.4.0";
+} from "../animations/rig.js?v=0.4.1";
+import { animationEase } from "../animations/runtime.js?v=0.4.1";
 import {
   createStudioProject,
   normalizeStudioProject,
@@ -16,9 +16,10 @@ import {
   serializeStudioProject,
   STUDIO_EASES,
   validateStudioProject
-} from "../animations/studio-format.js?v=0.4.0";
-import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.4.0";
+} from "../animations/studio-format.js?v=0.4.1";
+import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.4.1";
 import {
+  collapseHierarchicalSelection,
   constrainedTranslation,
   GIZMO_METRICS,
   hitMoveGizmo,
@@ -26,8 +27,8 @@ import {
   hitScaleGizmo,
   scaleFromDrag,
   shortestAngleDelta
-} from "./gizmo.js?v=0.4.0";
-import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.4.0";
+} from "./gizmo.js?v=0.4.1";
+import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.4.1";
 
 const $ = (id) => document.getElementById(id);
 const BASE_SCALE = 0.32;
@@ -693,11 +694,12 @@ function hitTransformGizmo(clientX, clientY, state = matrices(time)) {
 }
 
 function beginTransformInteraction(hit, state, world, canvasPoint) {
-  const targets = [...selectedTargets].filter((target) => !lockedTargets.has(target));
+  const editableTargets = [...selectedTargets].filter((target) => !lockedTargets.has(target));
+  const targets = collapseHierarchicalSelection(editableTargets, PARENTS);
   const gizmoAngle = transformGizmoAngle(state);
   if (hit.type === "translate") {
     const target = targets[0];
-    const middleChain = targets.length === 1 ? MIDDLE_CHAINS[target] : null;
+    const middleChain = editableTargets.length === 1 ? MIDDLE_CHAINS[target] : null;
     if (middleChain && !lockedTargets.has(middleChain.upper)) {
       const upper = state.joints[middleChain.upper];
       const middle = state.joints[target];
@@ -716,7 +718,7 @@ function beginTransformInteraction(hit, state, world, canvasPoint) {
         moved: false
       };
     }
-    const chain = targets.length === 1 ? IK_CHAINS[target] : null;
+    const chain = editableTargets.length === 1 ? IK_CHAINS[target] : null;
     if (chain && !lockedTargets.has(chain.upper) && !lockedTargets.has(chain.middle)) {
       const upper = state.joints[chain.upper];
       const middle = state.joints[chain.middle];

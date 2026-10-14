@@ -1,6 +1,6 @@
 /** Kinetra: muestreador puro para el editor y adaptadores de runtimes. */
-import { sampleKeyframeAnimationPose } from "./runtime.js?v=0.4.0";
-import { assertValidStudioProject, normalizeStudioProject, STUDIO_SCHEMA } from "./studio-format.js?v=0.4.0";
+import { sampleKeyframeAnimationPose } from "./runtime.js?v=0.4.1";
+import { assertValidStudioProject, normalizeStudioProject, STUDIO_SCHEMA } from "./studio-format.js?v=0.4.1";
 
 export { STUDIO_SCHEMA };
 

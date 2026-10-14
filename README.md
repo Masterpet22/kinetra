@@ -6,6 +6,7 @@ Kinetra es un editor web estático para ensamblar y animar personajes 2D constru
 
 - Haz clic en una articulación para seleccionarla. Usa el botón `+ / ✓` de la jerarquía o `Mayús` + clic en el lienzo para añadir o retirar puntos de la selección.
 - Arrastra el centro o las flechas para mover la selección completa; las flechas restringen el movimiento a un eje.
+- Si la selección contiene una cadena completa, cada descendiente hereda una sola vez el movimiento de su ancestro; el desplazamiento no se acumula entre cadera, rodilla y tobillo.
 - Al arrastrar una muñeca o un tobillo, Kinetra resuelve automáticamente el hombro/codo o la cadera/rodilla mediante cinemática inversa.
 - Al arrastrar un codo o una rodilla, rota su hueso superior y conserva conectada toda la extremidad.
 - El anillo rota y las manijas de esquina escalan; mantén `Mayús` durante el escalado para conservar la proporción.

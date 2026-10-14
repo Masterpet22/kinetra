@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  collapseHierarchicalSelection,
   constrainedTranslation,
   hitMoveGizmo,
   hitRotateGizmo,
@@ -22,6 +23,17 @@ assert.deepEqual(constrainedTranslation({ x: 12, y: 7 }, "x"), { x: 12, y: 0 });
 assert.deepEqual(constrainedTranslation({ x: 12, y: 7 }, "y"), { x: 0, y: 7 });
 assert.equal(shortestAngleDelta(170, -170), 20);
 assert.equal(shortestAngleDelta(-170, 170), -20);
+
+const parents = { shoulderRight: null, elbowRight: "shoulderRight", wristRight: "elbowRight", hipLeft: null };
+assert.deepEqual(
+  collapseHierarchicalSelection(["shoulderRight", "elbowRight", "wristRight"], parents),
+  ["shoulderRight"]
+);
+assert.deepEqual(
+  collapseHierarchicalSelection(["elbowRight", "wristRight", "hipLeft"], parents),
+  ["elbowRight", "hipLeft"]
+);
+assert.deepEqual(collapseHierarchicalSelection(["rig", "wristRight"], parents), ["rig"]);
 
 assert.deepEqual(
   scaleFromDrag({ scaleX: 0, scaleY: 0 }, { x: 20, y: -10 }, { xSign: 1, ySign: -1 }),
