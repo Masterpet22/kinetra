@@ -47,3 +47,24 @@ export function solveTwoBoneIk(root, joint, end, target) {
 
   return { upperDelta, lowerDelta, joint: solvedJoint, end: solvedEnd };
 }
+
+/**
+ * Convierte el arrastre de una articulación intermedia en una rotación del
+ * hueso superior. Conserva la longitud del hueso y, por jerarquía, arrastra
+ * también el resto de la extremidad sin separar sus piezas.
+ */
+export function solveJointRotation(root, joint, target) {
+  const boneLength = distance(root, joint);
+  const targetDistance = distance(root, target);
+  if (boneLength < 1e-6 || targetDistance < 1e-6) return null;
+
+  const currentAngle = angleBetween(root, joint);
+  const desiredAngle = angleBetween(root, target);
+  return {
+    angleDelta: angleDelta(currentAngle, desiredAngle),
+    joint: {
+      x: root.x + Math.cos(desiredAngle) * boneLength,
+      y: root.y + Math.sin(desiredAngle) * boneLength
+    }
+  };
+}

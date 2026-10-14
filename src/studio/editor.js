@@ -7,8 +7,8 @@ import {
   PUPPET_JOINT_PARENTS as PARENTS,
   PUPPET_PART_JOINTS as PART_JOINTS,
   PUPPET_TARGETS
-} from "../animations/rig.js?v=0.3.0";
-import { animationEase } from "../animations/runtime.js?v=0.3.0";
+} from "../animations/rig.js?v=0.4.0";
+import { animationEase } from "../animations/runtime.js?v=0.4.0";
 import {
   createStudioProject,
   normalizeStudioProject,
@@ -16,8 +16,8 @@ import {
   serializeStudioProject,
   STUDIO_EASES,
   validateStudioProject
-} from "../animations/studio-format.js?v=0.3.0";
-import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.3.0";
+} from "../animations/studio-format.js?v=0.4.0";
+import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.4.0";
 import {
   constrainedTranslation,
   GIZMO_METRICS,
@@ -26,12 +26,13 @@ import {
   hitScaleGizmo,
   scaleFromDrag,
   shortestAngleDelta
-} from "./gizmo.js?v=0.3.0";
-import { solveTwoBoneIk } from "./ik.js?v=0.3.0";
+} from "./gizmo.js?v=0.4.0";
+import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.4.0";
 
 const $ = (id) => document.getElementById(id);
 const BASE_SCALE = 0.32;
 const STORAGE_KEY = "kinetra:project";
+const PANEL_STORAGE_KEY = "kinetra:panels";
 const TARGETS = [...new Set(["rig", "torso", ...Object.keys(JOINTS)])];
 const LABELS = {
   rig: "Torso",
@@ -85,6 +86,17 @@ const IK_CHAINS = Object.freeze({
   ankleRight: { upper: "hipRight", middle: "kneeRight" },
   ankleLeft: { upper: "hipLeft", middle: "kneeLeft" }
 });
+const MIDDLE_CHAINS = Object.freeze({
+  elbowRight: { upper: "shoulderRight" },
+  elbowLeft: { upper: "shoulderLeft" },
+  kneeRight: { upper: "hipRight" },
+  kneeLeft: { upper: "hipLeft" }
+});
+const PANEL_DEFAULTS = Object.freeze({
+  left: { visible: true, floating: false },
+  right: { visible: true, floating: false },
+  timeline: { visible: true, floating: false }
+});
 
 const freshParts = () => PRESET.map(([id, x, y, assetId], z) => ({
   id, x, y, assetId: assetId || id, rotation: 0, scaleX: 1, scaleY: 1, visible: true, z
@@ -121,6 +133,9 @@ let draftTime = null;
 let draftFrames = new Map();
 let ghostPose = null;
 let ghostTime = null;
+let panelStates = loadPanelStates();
+let panelDrag = null;
+let panelZ = 120;
 
 const canvas = $("canvas");
 const context = canvas.getContext("2d");
@@ -129,6 +144,134 @@ const previewContext = previewCanvas.getContext("2d");
 const images = {};
 
 function status(message) { $("status").textContent = message; }
+
+function loadPanelStates() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(PANEL_STORAGE_KEY) || "{}");
+    return Object.fromEntries(Object.entries(PANEL_DEFAULTS).map(([id, defaults]) => [id, {
+      ...defaults,
+      ...(stored[id] || {})
+    }]));
+  } catch {
+    return structuredClone(PANEL_DEFAULTS);
+  }
+}
+
+function savePanelStates() {
+  localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(panelStates));
+}
+
+function applyPanelLayout() {
+  const shell = document.querySelector(".studio-shell");
+  Object.entries(panelStates).forEach(([id, state]) => {
+    const panel = document.querySelector(`[data-panel="${id}"]`);
+    const detached = !state.visible || state.floating;
+    panel.classList.toggle("panel-hidden", !state.visible);
+    panel.classList.toggle("floating-panel", state.visible && state.floating);
+    shell.classList.toggle(`panel-${id}-detached`, detached);
+    if (state.floating) {
+      panel.style.left = `${Number.isFinite(state.left) ? state.left : 18}px`;
+      panel.style.top = `${Number.isFinite(state.top) ? state.top : 72}px`;
+      panel.style.width = `${Number.isFinite(state.width) ? state.width : id === "timeline" ? 760 : 310}px`;
+      panel.style.height = `${Number.isFinite(state.height) ? state.height : id === "timeline" ? 300 : 520}px`;
+    } else {
+      panel.style.removeProperty("left");
+      panel.style.removeProperty("top");
+      panel.style.removeProperty("width");
+      panel.style.removeProperty("height");
+      panel.style.removeProperty("z-index");
+    }
+    document.querySelectorAll(`[data-panel-toggle="${id}"]`).forEach((toggle) => { toggle.checked = state.visible; });
+    document.querySelectorAll(`[data-panel-float="${id}"]`).forEach((button) => {
+      button.textContent = state.floating ? "↙" : "↗";
+      button.title = state.floating ? "Volver a acoplar panel" : "Desacoplar panel";
+    });
+  });
+  requestAnimationFrame(draw);
+}
+
+function setPanelVisible(id, visible) {
+  panelStates[id].visible = visible;
+  applyPanelLayout();
+  savePanelStates();
+}
+
+function setPanelFloating(id, floating) {
+  const panel = document.querySelector(`[data-panel="${id}"]`);
+  if (floating && !panelStates[id].floating) {
+    const rect = panel.getBoundingClientRect();
+    Object.assign(panelStates[id], {
+      visible: true,
+      floating: true,
+      left: Math.max(8, rect.left),
+      top: Math.max(8, rect.top),
+      width: Math.max(230, rect.width),
+      height: Math.max(170, rect.height)
+    });
+  } else panelStates[id].floating = floating;
+  applyPanelLayout();
+  savePanelStates();
+}
+
+function bindPanels() {
+  document.querySelectorAll("[data-panel-toggle]").forEach((toggle) => {
+    toggle.onchange = () => setPanelVisible(toggle.dataset.panelToggle, toggle.checked);
+  });
+  document.querySelectorAll("[data-panel-close]").forEach((button) => {
+    button.onclick = () => setPanelVisible(button.dataset.panelClose, false);
+  });
+  document.querySelectorAll("[data-panel-float]").forEach((button) => {
+    button.onclick = () => {
+      const id = button.dataset.panelFloat;
+      setPanelFloating(id, !panelStates[id].floating);
+    };
+  });
+  document.querySelectorAll("[data-panel]").forEach((panel) => {
+    panel.addEventListener("pointerdown", () => {
+      if (panel.classList.contains("floating-panel")) panel.style.zIndex = String(++panelZ);
+    });
+  });
+  document.querySelectorAll("[data-panel-handle]").forEach((handle) => {
+    handle.onpointerdown = (event) => {
+      if (event.button !== 0 || event.target.closest("button")) return;
+      const id = handle.dataset.panelHandle;
+      const panel = document.querySelector(`[data-panel="${id}"]`);
+      const rect = panel.getBoundingClientRect();
+      if (!panelStates[id].floating) setPanelFloating(id, true);
+      panel.style.zIndex = String(++panelZ);
+      panelDrag = { id, startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top };
+      handle.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    };
+    handle.onpointermove = (event) => {
+      if (!panelDrag || panelDrag.id !== handle.dataset.panelHandle) return;
+      const state = panelStates[panelDrag.id];
+      const panel = document.querySelector(`[data-panel="${panelDrag.id}"]`);
+      const maxLeft = Math.max(8, window.innerWidth - panel.offsetWidth - 8);
+      const maxTop = Math.max(8, window.innerHeight - panel.offsetHeight - 8);
+      state.left = Math.max(8, Math.min(maxLeft, panelDrag.left + event.clientX - panelDrag.startX));
+      state.top = Math.max(8, Math.min(maxTop, panelDrag.top + event.clientY - panelDrag.startY));
+      panel.style.left = `${state.left}px`;
+      panel.style.top = `${state.top}px`;
+    };
+    handle.onpointerup = () => {
+      if (!panelDrag || panelDrag.id !== handle.dataset.panelHandle) return;
+      const panel = document.querySelector(`[data-panel="${panelDrag.id}"]`);
+      panelStates[panelDrag.id].width = panel.offsetWidth;
+      panelStates[panelDrag.id].height = panel.offsetHeight;
+      panelDrag = null;
+      savePanelStates();
+    };
+    handle.onpointercancel = handle.onpointerup;
+  });
+  $("reset-panels").onclick = () => {
+    panelStates = structuredClone(PANEL_DEFAULTS);
+    applyPanelLayout();
+    savePanelStates();
+    status("Disposición de paneles restablecida");
+  };
+  applyPanelLayout();
+}
 function duration() { return project.clip.animation.duration; }
 function fps() { return Number(project.fps || 24); }
 function part() { return project.parts.find((item) => item.id === selectedPart); }
@@ -554,6 +697,25 @@ function beginTransformInteraction(hit, state, world, canvasPoint) {
   const gizmoAngle = transformGizmoAngle(state);
   if (hit.type === "translate") {
     const target = targets[0];
+    const middleChain = targets.length === 1 ? MIDDLE_CHAINS[target] : null;
+    if (middleChain && !lockedTargets.has(middleChain.upper)) {
+      const upper = state.joints[middleChain.upper];
+      const middle = state.joints[target];
+      return {
+        type: "joint",
+        axis: hit.axis,
+        target,
+        start: world,
+        gizmoAngle,
+        chain: middleChain,
+        points: {
+          root: { x: upper[4], y: upper[5] },
+          joint: { x: middle[4], y: middle[5] }
+        },
+        upperAngle: state.pose[middleChain.upper]?.angle || 0,
+        moved: false
+      };
+    }
     const chain = targets.length === 1 ? IK_CHAINS[target] : null;
     if (chain && !lockedTargets.has(chain.upper) && !lockedTargets.has(chain.middle)) {
       const upper = state.joints[chain.upper];
@@ -750,6 +912,18 @@ function appendTreeNode(node, depth, search) {
   const icon = document.createElement("span");
   icon.className = "tree-icon";
   icon.textContent = node.children?.length ? "◇" : "○";
+  const multi = document.createElement("button");
+  multi.className = "tree-multi";
+  multi.textContent = selectedTargets.has(node.id) ? "✓" : "+";
+  multi.title = selectedTargets.has(node.id) ? "Quitar de la selección múltiple" : "Añadir a la selección múltiple";
+  multi.setAttribute("aria-label", `${selectedTargets.has(node.id) ? "Quitar" : "Añadir"} ${label(node.id)} ${selectedTargets.has(node.id) ? "de" : "a"} la selección múltiple`);
+  multi.setAttribute("aria-pressed", String(selectedTargets.has(node.id)));
+  multi.onclick = () => {
+    selectAnimationTarget(node.id, true);
+    selectedKeys.clear();
+    refresh();
+    status(`${selectionLabel()} seleccionados`);
+  };
   const button = document.createElement("button");
   button.className = "tree-select";
   button.textContent = label(node.id);
@@ -773,7 +947,7 @@ function appendTreeNode(node, depth, search) {
     selectedKeys.clear();
     refresh();
   };
-  row.append(icon, button, toggle, lock);
+  row.append(icon, multi, button, toggle, lock);
   $("tree").append(row);
   (node.children || []).forEach((child) => appendTreeNode(child, depth + 1, search));
 }
@@ -1677,6 +1851,22 @@ function bindCanvas() {
       interaction.moved = true;
       draw();
       renderInspector();
+    } else if (interaction.type === "joint") {
+      const delta = constrainedWorldDelta({
+        x: world.x - interaction.start.x,
+        y: world.y - interaction.start.y
+      }, interaction.axis, interaction.gizmoAngle);
+      const target = {
+        x: interaction.points.joint.x + delta.x,
+        y: interaction.points.joint.y + delta.y
+      };
+      const solved = solveJointRotation(interaction.points.root, interaction.points.joint, target);
+      if (!solved) return status("La articulación no puede rotar desde esa posición");
+      const upperFrame = ensureDraftFrame(interaction.chain.upper);
+      setDraftFrame(interaction.chain.upper, { ...upperFrame, angle: interaction.upperAngle + solved.angleDelta });
+      interaction.moved = true;
+      draw();
+      renderInspector();
     } else if (interaction.type === "rotate") {
       const pointerAngle = Math.atan2(world.y - interaction.center.y, world.x - interaction.center.x) * 180 / Math.PI;
       const delta = shortestAngleDelta(interaction.startPointerAngle, pointerAngle);
@@ -1717,7 +1907,7 @@ function bindCanvas() {
     canvas.style.cursor = "";
     refresh();
     if (completed?.moved && completed.type !== "piece") {
-      const action = completed.type === "translate" ? "Posición" : completed.type === "ik" ? "Cadena IK" : completed.type === "rotate" ? "Rotación" : "Escala";
+      const action = completed.type === "translate" ? "Posición" : completed.type === "ik" ? "Cadena IK" : completed.type === "joint" ? "Articulación" : completed.type === "rotate" ? "Rotación" : "Escala";
       status(`${action} actualizada en borrador; pulsa Guardar fotograma`);
     }
   };
@@ -1759,6 +1949,7 @@ function initialize() {
     $("key-ease").append(option);
   });
   ensureImages();
+  bindPanels();
   bindControls();
   bindCanvas();
   bindKeyboard();

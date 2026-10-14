@@ -14,14 +14,14 @@ for (const id of ["canvas", "preview-canvas", "tree", "inspector-panel", "timeli
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control ${id}`);
 }
 assert.doesNotMatch(html, /<iframe\b/i, "El Studio unificado no debe depender de vistas embebidas");
-assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.3\.0["']/);
+assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.4\.0["']/);
 assert.match(html, /navigator\.serviceWorker\.getRegistrations\(\)/, "El Studio debe retirar cachés heredadas antes de iniciar");
 assert.doesNotMatch(html, /window\.stop\(\)/, "La limpieza del Studio no debe abortar la navegación actual");
 assert.match(html, /id=["']timeline-zoom["']/, "El timeline debe tener zoom temporal independiente");
 assert.match(css, /grid-template-columns:\s*270px\s+minmax\(480px,\s*1fr\)\s+310px/);
 assert.match(css, /\.timeline\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/s);
 assert.match(editor, /sampleStudioAnimation/);
-assert.match(editor, /studio-format\.js\?v=0\.3\.0/, "Los módulos internos deben invalidar la caché junto con el editor");
+assert.match(editor, /studio-format\.js\?v=0\.4\.0/, "Los módulos internos deben invalidar la caché junto con el editor");
 assert.match(editor, /validateStudioProject/);
 assert.match(editor, /mode:\s*["']game["']/);
 assert.match(editor, /function restoreHistory/);
@@ -56,6 +56,13 @@ assert.match(editor, /scaleFromDrag\(/, "Las manijas deben controlar la escala")
 assert.match(editor, /let selectedTargets = new Set\(\["rig"\]\)/, "El editor debe conservar una selección múltiple de objetivos");
 assert.match(editor, /event\.shiftKey && tool === "select"/, "Mayús debe añadir o retirar articulaciones de la selección");
 assert.match(editor, /solveTwoBoneIk\(/, "Las extremidades deben usar cinemática inversa al arrastrar manos o pies");
+assert.match(editor, /solveJointRotation\(/, "Los codos y rodillas deben rotar desde su hueso superior sin romper la cadena");
+assert.match(editor, /className = "tree-multi"/, "El árbol debe ofrecer un control explícito de selección múltiple");
+for (const panel of ["left", "right", "timeline"]) {
+  assert.match(html, new RegExp(`data-panel=["']${panel}["']`), `Debe existir el panel móvil ${panel}`);
+  assert.match(html, new RegExp(`data-panel-toggle=["']${panel}["']`), `El panel ${panel} debe poder activarse`);
+}
+assert.match(editor, /function bindPanels\(/, "Los paneles deben poder desacoplarse y moverse");
 assert.match(editor, /function undo\(\)/, "Deshacer debe incluir borradores y cambios confirmados");
 assert.match(html, /id=["']canvas["'][^>]*tabindex=["']0["']/, "El lienzo debe recibir el foco para los atajos de teclado");
 
