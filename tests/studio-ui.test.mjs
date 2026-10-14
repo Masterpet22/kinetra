@@ -14,14 +14,15 @@ for (const id of ["canvas", "preview-canvas", "tree", "inspector-panel", "timeli
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control ${id}`);
 }
 assert.doesNotMatch(html, /<iframe\b/i, "El Studio unificado no debe depender de vistas embebidas");
-assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.4\.1["']/);
+assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.5\.0["']/);
 assert.match(html, /navigator\.serviceWorker\.getRegistrations\(\)/, "El Studio debe retirar cachés heredadas antes de iniciar");
 assert.doesNotMatch(html, /window\.stop\(\)/, "La limpieza del Studio no debe abortar la navegación actual");
 assert.match(html, /id=["']timeline-zoom["']/, "El timeline debe tener zoom temporal independiente");
-assert.match(css, /grid-template-columns:\s*270px\s+minmax\(480px,\s*1fr\)\s+310px/);
-assert.match(css, /\.timeline\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/s);
+assert.match(css, /--left-dock:\s*270px/);
+assert.match(css, /--right-dock:\s*310px/);
+assert.match(css, /data-dock-zone=["']bottom["'][^}]*grid-column:\s*1\s*\/\s*-1/s);
 assert.match(editor, /sampleStudioAnimation/);
-assert.match(editor, /studio-format\.js\?v=0\.4\.1/, "Los módulos internos deben invalidar la caché junto con el editor");
+assert.match(editor, /studio-format\.js\?v=0\.5\.0/, "Los módulos internos deben invalidar la caché junto con el editor");
 assert.match(editor, /validateStudioProject/);
 assert.match(editor, /mode:\s*["']game["']/);
 assert.match(editor, /function restoreHistory/);
@@ -64,6 +65,12 @@ for (const panel of ["left", "right", "timeline"]) {
   assert.match(html, new RegExp(`data-panel-toggle=["']${panel}["']`), `El panel ${panel} debe poder activarse`);
 }
 assert.match(editor, /function bindPanels\(/, "Los paneles deben poder desacoplarse y moverse");
+for (const zone of ["left", "right", "bottom"]) {
+  assert.match(html, new RegExp(`data-dock-target=["']${zone}["']`), `Debe existir la zona de acoplamiento ${zone}`);
+}
+assert.match(editor, /function dockPanel\(/, "Las ventanas deben poder acoplarse a una zona");
+assert.match(editor, /function renderDockTabs\(/, "Las ventanas que comparten zona deben convertirse en pestañas");
+assert.match(editor, /dockTargetAt\(/, "El arrastre debe detectar zonas de acoplamiento");
 assert.match(editor, /function undo\(\)/, "Deshacer debe incluir borradores y cambios confirmados");
 assert.match(html, /id=["']canvas["'][^>]*tabindex=["']0["']/, "El lienzo debe recibir el foco para los atajos de teclado");
 

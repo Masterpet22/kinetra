@@ -21,7 +21,7 @@
       ]).catch((error) => console.warn("No se pudo retirar una caché antigua", error));
     })();
   </script>
-  <link rel="stylesheet" href="./styles.css?v=0.4.1">
+  <link rel="stylesheet" href="./styles.css?v=0.5.0">
 </head>
 <body>
   <header class="studio-header">
@@ -43,6 +43,7 @@
           <label><input type="checkbox" data-panel-toggle="left" checked> Jerarquía</label>
           <label><input type="checkbox" data-panel-toggle="right" checked> Inspector</label>
           <label><input type="checkbox" data-panel-toggle="timeline" checked> Línea de tiempo</label>
+          <small>Arrastra la barra de una ventana hacia un borde para acoplarla. Varias ventanas en la misma zona se organizan como pestañas.</small>
           <button id="reset-panels" class="small-button">Restablecer disposición</button>
         </div>
       </details>
@@ -57,7 +58,7 @@
   <main class="studio-shell">
     <aside class="panel left-panel" data-panel="left">
       <div class="panel-window-bar" data-panel-handle="left">
-        <span>Jerarquía</span>
+        <span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="left"></span>
         <span class="panel-window-actions"><button data-panel-float="left" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Jerarquía">↗</button><button data-panel-close="left" title="Ocultar panel" aria-label="Ocultar Jerarquía">×</button></span>
       </div>
       <div class="panel-tabs" role="tablist" aria-label="Organización">
@@ -111,7 +112,7 @@
 
     <aside class="panel right-panel" data-panel="right">
       <div class="panel-window-bar" data-panel-handle="right">
-        <span>Inspector</span>
+        <span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="right"></span>
         <span class="panel-window-actions"><button data-panel-float="right" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Inspector">↗</button><button data-panel-close="right" title="Ocultar panel" aria-label="Ocultar Inspector">×</button></span>
       </div>
       <div class="panel-tabs" role="tablist" aria-label="Panel derecho">
@@ -192,7 +193,7 @@
 
     <section class="timeline" data-panel="timeline">
       <div class="panel-window-bar" data-panel-handle="timeline">
-        <span>Línea de tiempo</span>
+        <span class="dock-grip" aria-hidden="true">⠿</span><span class="dock-tab-list" data-dock-tabs="timeline"></span>
         <span class="panel-window-actions"><button data-panel-float="timeline" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Línea de tiempo">↗</button><button data-panel-close="timeline" title="Ocultar panel" aria-label="Ocultar Línea de tiempo">×</button></span>
       </div>
       <div class="timeline-top">
@@ -221,7 +222,13 @@
     </section>
   </main>
 
+  <div id="dock-overlay" class="dock-overlay" hidden aria-hidden="true">
+    <div class="dock-target dock-target-left" data-dock-target="left"><span>Acoplar a la izquierda</span></div>
+    <div class="dock-target dock-target-right" data-dock-target="right"><span>Acoplar a la derecha</span></div>
+    <div class="dock-target dock-target-bottom" data-dock-target="bottom"><span>Acoplar abajo</span></div>
+  </div>
+
   <input id="file" type="file" accept=".json,application/json">
-  <script type="module" src="./src/studio/editor.js?v=0.4.1"></script>
+  <script type="module" src="./src/studio/editor.js?v=0.5.0"></script>
 </body>
 </html>

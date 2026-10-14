@@ -7,8 +7,8 @@ import {
   PUPPET_JOINT_PARENTS as PARENTS,
   PUPPET_PART_JOINTS as PART_JOINTS,
   PUPPET_TARGETS
-} from "../animations/rig.js?v=0.4.1";
-import { animationEase } from "../animations/runtime.js?v=0.4.1";
+} from "../animations/rig.js?v=0.5.0";
+import { animationEase } from "../animations/runtime.js?v=0.5.0";
 import {
   createStudioProject,
   normalizeStudioProject,
@@ -16,8 +16,8 @@ import {
   serializeStudioProject,
   STUDIO_EASES,
   validateStudioProject
-} from "../animations/studio-format.js?v=0.4.1";
-import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.4.1";
+} from "../animations/studio-format.js?v=0.5.0";
+import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.5.0";
 import {
   collapseHierarchicalSelection,
   constrainedTranslation,
@@ -27,8 +27,8 @@ import {
   hitScaleGizmo,
   scaleFromDrag,
   shortestAngleDelta
-} from "./gizmo.js?v=0.4.1";
-import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.4.1";
+} from "./gizmo.js?v=0.5.0";
+import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.5.0";
 
 const $ = (id) => document.getElementById(id);
 const BASE_SCALE = 0.32;
@@ -94,10 +94,12 @@ const MIDDLE_CHAINS = Object.freeze({
   kneeLeft: { upper: "hipLeft" }
 });
 const PANEL_DEFAULTS = Object.freeze({
-  left: { visible: true, floating: false },
-  right: { visible: true, floating: false },
-  timeline: { visible: true, floating: false }
+  left: { visible: true, dock: "left", lastDock: "left" },
+  right: { visible: true, dock: "right", lastDock: "right" },
+  timeline: { visible: true, dock: "bottom", lastDock: "bottom" }
 });
+const PANEL_LABELS = Object.freeze({ left: "Jerarquía", right: "Inspector", timeline: "Línea de tiempo" });
+const DOCK_ZONES = Object.freeze(["left", "right", "bottom"]);
 
 const freshParts = () => PRESET.map(([id, x, y, assetId], z) => ({
   id, x, y, assetId: assetId || id, rotation: 0, scaleX: 1, scaleY: 1, visible: true, z
@@ -134,7 +136,9 @@ let draftTime = null;
 let draftFrames = new Map();
 let ghostPose = null;
 let ghostTime = null;
-let panelStates = loadPanelStates();
+const initialPanelLayout = loadPanelLayout();
+let panelStates = initialPanelLayout.panels;
+let dockActive = initialPanelLayout.active;
 let panelDrag = null;
 let panelZ = 120;
 
@@ -146,31 +150,68 @@ const images = {};
 
 function status(message) { $("status").textContent = message; }
 
-function loadPanelStates() {
+function loadPanelLayout() {
   try {
-    const stored = JSON.parse(localStorage.getItem(PANEL_STORAGE_KEY) || "{}");
-    return Object.fromEntries(Object.entries(PANEL_DEFAULTS).map(([id, defaults]) => [id, {
-      ...defaults,
-      ...(stored[id] || {})
-    }]));
+    const saved = JSON.parse(localStorage.getItem(PANEL_STORAGE_KEY) || "{}");
+    const storedPanels = saved.panels || saved;
+    const panels = Object.fromEntries(Object.entries(PANEL_DEFAULTS).map(([id, defaults]) => {
+      const stored = storedPanels[id] || {};
+      const dock = DOCK_ZONES.includes(stored.dock) || stored.dock === "floating"
+        ? stored.dock
+        : stored.floating
+          ? "floating"
+          : defaults.dock;
+      return [id, { ...defaults, ...stored, dock, lastDock: DOCK_ZONES.includes(stored.lastDock) ? stored.lastDock : defaults.lastDock }];
+    }));
+    return { panels, active: { ...(saved.active || {}) } };
   } catch {
-    return structuredClone(PANEL_DEFAULTS);
+    return { panels: structuredClone(PANEL_DEFAULTS), active: {} };
   }
 }
 
 function savePanelStates() {
-  localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(panelStates));
+  localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify({ panels: panelStates, active: dockActive }));
+}
+
+function visiblePanelsInDock(zone) {
+  return Object.keys(panelStates).filter((id) => panelStates[id].visible && panelStates[id].dock === zone);
+}
+
+function renderDockTabs(panelId) {
+  const host = document.querySelector(`[data-dock-tabs="${panelId}"]`);
+  const state = panelStates[panelId];
+  const peers = state.dock === "floating" ? [panelId] : visiblePanelsInDock(state.dock);
+  host.replaceChildren(...peers.map((id) => {
+    const button = document.createElement("button");
+    button.className = `dock-tab${id === panelId ? " active" : ""}`;
+    button.textContent = PANEL_LABELS[id];
+    button.title = id === panelId ? `${PANEL_LABELS[id]} · arrastra desde ⠿ para mover` : `Mostrar ${PANEL_LABELS[id]}`;
+    button.onclick = (event) => {
+      event.stopPropagation();
+      dockActive[state.dock] = id;
+      applyPanelLayout();
+      savePanelStates();
+    };
+    return button;
+  }));
 }
 
 function applyPanelLayout() {
   const shell = document.querySelector(".studio-shell");
+  DOCK_ZONES.forEach((zone) => {
+    const peers = visiblePanelsInDock(zone);
+    if (!peers.includes(dockActive[zone])) dockActive[zone] = peers[0] || null;
+    shell.classList.toggle(`dock-${zone}-empty`, peers.length === 0);
+  });
   Object.entries(panelStates).forEach(([id, state]) => {
     const panel = document.querySelector(`[data-panel="${id}"]`);
-    const detached = !state.visible || state.floating;
+    const floating = state.dock === "floating";
+    const active = floating || dockActive[state.dock] === id;
+    panel.dataset.dockZone = state.dock;
     panel.classList.toggle("panel-hidden", !state.visible);
-    panel.classList.toggle("floating-panel", state.visible && state.floating);
-    shell.classList.toggle(`panel-${id}-detached`, detached);
-    if (state.floating) {
+    panel.classList.toggle("dock-inactive", state.visible && !active);
+    panel.classList.toggle("floating-panel", state.visible && floating);
+    if (floating) {
       panel.style.left = `${Number.isFinite(state.left) ? state.left : 18}px`;
       panel.style.top = `${Number.isFinite(state.top) ? state.top : 72}px`;
       panel.style.width = `${Number.isFinite(state.width) ? state.width : id === "timeline" ? 760 : 310}px`;
@@ -184,34 +225,67 @@ function applyPanelLayout() {
     }
     document.querySelectorAll(`[data-panel-toggle="${id}"]`).forEach((toggle) => { toggle.checked = state.visible; });
     document.querySelectorAll(`[data-panel-float="${id}"]`).forEach((button) => {
-      button.textContent = state.floating ? "↙" : "↗";
-      button.title = state.floating ? "Volver a acoplar panel" : "Desacoplar panel";
+      button.textContent = floating ? "↙" : "↗";
+      button.title = floating ? `Acoplar en ${state.lastDock}` : "Desacoplar panel";
     });
+    renderDockTabs(id);
   });
   requestAnimationFrame(draw);
 }
 
 function setPanelVisible(id, visible) {
   panelStates[id].visible = visible;
+  if (visible && panelStates[id].dock !== "floating") dockActive[panelStates[id].dock] = id;
   applyPanelLayout();
   savePanelStates();
 }
 
 function setPanelFloating(id, floating) {
   const panel = document.querySelector(`[data-panel="${id}"]`);
-  if (floating && !panelStates[id].floating) {
+  const state = panelStates[id];
+  if (floating && state.dock !== "floating") {
     const rect = panel.getBoundingClientRect();
-    Object.assign(panelStates[id], {
+    Object.assign(state, {
       visible: true,
-      floating: true,
+      lastDock: state.dock,
+      dock: "floating",
       left: Math.max(8, rect.left),
       top: Math.max(8, rect.top),
       width: Math.max(230, rect.width),
       height: Math.max(170, rect.height)
     });
-  } else panelStates[id].floating = floating;
+  } else if (!floating) {
+    state.dock = DOCK_ZONES.includes(state.lastDock) ? state.lastDock : PANEL_DEFAULTS[id].dock;
+    dockActive[state.dock] = id;
+  }
   applyPanelLayout();
   savePanelStates();
+}
+
+function dockPanel(id, zone) {
+  if (!DOCK_ZONES.includes(zone)) return;
+  Object.assign(panelStates[id], { visible: true, dock: zone, lastDock: zone });
+  dockActive[zone] = id;
+  applyPanelLayout();
+  savePanelStates();
+  status(`${PANEL_LABELS[id]} acoplado ${zone === "bottom" ? "abajo" : `a la ${zone === "left" ? "izquierda" : "derecha"}`}`);
+}
+
+function dockTargetAt(clientX, clientY) {
+  const sideWidth = Math.max(170, Math.min(300, window.innerWidth * 0.24));
+  const bottomHeight = Math.max(150, Math.min(280, window.innerHeight * 0.3));
+  if (clientY >= window.innerHeight - bottomHeight) return "bottom";
+  if (clientX <= sideWidth) return "left";
+  if (clientX >= window.innerWidth - sideWidth) return "right";
+  return null;
+}
+
+function updateDockOverlay(target) {
+  const overlay = $("dock-overlay");
+  overlay.hidden = !panelDrag;
+  overlay.querySelectorAll("[data-dock-target]").forEach((item) => {
+    item.classList.toggle("active", item.dataset.dockTarget === target);
+  });
 }
 
 function bindPanels() {
@@ -224,7 +298,7 @@ function bindPanels() {
   document.querySelectorAll("[data-panel-float]").forEach((button) => {
     button.onclick = () => {
       const id = button.dataset.panelFloat;
-      setPanelFloating(id, !panelStates[id].floating);
+      setPanelFloating(id, panelStates[id].dock !== "floating");
     };
   });
   document.querySelectorAll("[data-panel]").forEach((panel) => {
@@ -238,9 +312,10 @@ function bindPanels() {
       const id = handle.dataset.panelHandle;
       const panel = document.querySelector(`[data-panel="${id}"]`);
       const rect = panel.getBoundingClientRect();
-      if (!panelStates[id].floating) setPanelFloating(id, true);
+      if (panelStates[id].dock !== "floating") setPanelFloating(id, true);
       panel.style.zIndex = String(++panelZ);
-      panelDrag = { id, startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top };
+      panelDrag = { id, startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top, drop: null };
+      updateDockOverlay(null);
       handle.setPointerCapture(event.pointerId);
       event.preventDefault();
     };
@@ -254,19 +329,25 @@ function bindPanels() {
       state.top = Math.max(8, Math.min(maxTop, panelDrag.top + event.clientY - panelDrag.startY));
       panel.style.left = `${state.left}px`;
       panel.style.top = `${state.top}px`;
+      panelDrag.drop = dockTargetAt(event.clientX, event.clientY);
+      updateDockOverlay(panelDrag.drop);
     };
     handle.onpointerup = () => {
       if (!panelDrag || panelDrag.id !== handle.dataset.panelHandle) return;
-      const panel = document.querySelector(`[data-panel="${panelDrag.id}"]`);
-      panelStates[panelDrag.id].width = panel.offsetWidth;
-      panelStates[panelDrag.id].height = panel.offsetHeight;
+      const completed = panelDrag;
+      const panel = document.querySelector(`[data-panel="${completed.id}"]`);
+      panelStates[completed.id].width = panel.offsetWidth;
+      panelStates[completed.id].height = panel.offsetHeight;
       panelDrag = null;
-      savePanelStates();
+      updateDockOverlay(null);
+      if (completed.drop) dockPanel(completed.id, completed.drop);
+      else savePanelStates();
     };
     handle.onpointercancel = handle.onpointerup;
   });
   $("reset-panels").onclick = () => {
     panelStates = structuredClone(PANEL_DEFAULTS);
+    dockActive = { left: "left", right: "right", bottom: "timeline" };
     applyPanelLayout();
     savePanelStates();
     status("Disposición de paneles restablecida");

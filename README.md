@@ -14,7 +14,15 @@ Kinetra es un editor web estático para ensamblar y animar personajes 2D constru
 
 ## Paneles
 
-Jerarquía, Inspector y Línea de tiempo pueden ocultarse o reactivarse desde el menú `Paneles`. Arrastra la barra de título de un panel para desacoplarlo y moverlo como ventana; el botón `↙` vuelve a acoplarlo y `×` lo oculta. La disposición se conserva en el navegador.
+El espacio de trabajo usa un sistema modular inspirado en aplicaciones como GIMP. Jerarquía, Inspector y Línea de tiempo pueden ocultarse o reactivarse desde el menú `Paneles`.
+
+- Arrastra una ventana desde el asa `⠿` para desacoplarla.
+- Suéltala sobre la zona azul izquierda, derecha o inferior para acoplarla.
+- Si una zona ya contiene otra ventana, ambas se organizan como pestañas.
+- El botón `↙` devuelve una ventana flotante a su último acoplamiento y `×` la oculta.
+- `Restablecer disposición` recupera el espacio de trabajo original.
+
+La composición de pestañas, los acoplamientos y las posiciones flotantes se conservan en el navegador.
 
 ## Uso
 
