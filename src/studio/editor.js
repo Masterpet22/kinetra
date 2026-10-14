@@ -7,8 +7,8 @@ import {
   PUPPET_JOINT_PARENTS as PARENTS,
   PUPPET_PART_JOINTS as PART_JOINTS,
   PUPPET_TARGETS
-} from "../animations/rig.js?v=0.5.0";
-import { animationEase } from "../animations/runtime.js?v=0.5.0";
+} from "../animations/rig.js?v=0.6.0";
+import { animationEase } from "../animations/runtime.js?v=0.6.0";
 import {
   createStudioProject,
   normalizeStudioProject,
@@ -16,8 +16,8 @@ import {
   serializeStudioProject,
   STUDIO_EASES,
   validateStudioProject
-} from "../animations/studio-format.js?v=0.5.0";
-import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.5.0";
+} from "../animations/studio-format.js?v=0.6.0";
+import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.6.0";
 import {
   collapseHierarchicalSelection,
   constrainedTranslation,
@@ -27,8 +27,8 @@ import {
   hitScaleGizmo,
   scaleFromDrag,
   shortestAngleDelta
-} from "./gizmo.js?v=0.5.0";
-import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.5.0";
+} from "./gizmo.js?v=0.6.0";
+import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.6.0";
 
 const $ = (id) => document.getElementById(id);
 const BASE_SCALE = 0.32;
@@ -100,6 +100,12 @@ const PANEL_DEFAULTS = Object.freeze({
 });
 const PANEL_LABELS = Object.freeze({ left: "Jerarquía", right: "Inspector", timeline: "Línea de tiempo" });
 const DOCK_ZONES = Object.freeze(["left", "right", "bottom"]);
+const PANEL_LAYOUT_VERSION = 2;
+const PANEL_FLOAT_SIZES = Object.freeze({
+  left: { width: 310, height: 470 },
+  right: { width: 350, height: 520 },
+  timeline: { width: 760, height: 310 }
+});
 
 const freshParts = () => PRESET.map(([id, x, y, assetId], z) => ({
   id, x, y, assetId: assetId || id, rotation: 0, scaleX: 1, scaleY: 1, visible: true, z
@@ -161,7 +167,16 @@ function loadPanelLayout() {
         : stored.floating
           ? "floating"
           : defaults.dock;
-      return [id, { ...defaults, ...stored, dock, lastDock: DOCK_ZONES.includes(stored.lastDock) ? stored.lastDock : defaults.lastDock }];
+      const floatingGeometry = saved.layoutVersion === PANEL_LAYOUT_VERSION
+        ? Object.fromEntries(["left", "top", "width", "height"].filter((property) => Number.isFinite(stored[property])).map((property) => [property, stored[property]]))
+        : {};
+      return [id, {
+        ...defaults,
+        visible: stored.visible ?? defaults.visible,
+        dock,
+        lastDock: DOCK_ZONES.includes(stored.lastDock) ? stored.lastDock : defaults.lastDock,
+        ...floatingGeometry
+      }];
     }));
     return { panels, active: { ...(saved.active || {}) } };
   } catch {
@@ -170,7 +185,7 @@ function loadPanelLayout() {
 }
 
 function savePanelStates() {
-  localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify({ panels: panelStates, active: dockActive }));
+  localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify({ layoutVersion: PANEL_LAYOUT_VERSION, panels: panelStates, active: dockActive }));
 }
 
 function visiblePanelsInDock(zone) {
@@ -212,10 +227,15 @@ function applyPanelLayout() {
     panel.classList.toggle("dock-inactive", state.visible && !active);
     panel.classList.toggle("floating-panel", state.visible && floating);
     if (floating) {
-      panel.style.left = `${Number.isFinite(state.left) ? state.left : 18}px`;
-      panel.style.top = `${Number.isFinite(state.top) ? state.top : 72}px`;
-      panel.style.width = `${Number.isFinite(state.width) ? state.width : id === "timeline" ? 760 : 310}px`;
-      panel.style.height = `${Number.isFinite(state.height) ? state.height : id === "timeline" ? 300 : 520}px`;
+      const defaults = PANEL_FLOAT_SIZES[id];
+      state.width = Math.max(230, Math.min(Number.isFinite(state.width) ? state.width : defaults.width, shell.clientWidth - 16));
+      state.height = Math.max(170, Math.min(Number.isFinite(state.height) ? state.height : defaults.height, shell.clientHeight - 16));
+      state.left = Math.max(8, Math.min(Number.isFinite(state.left) ? state.left : 18, shell.clientWidth - state.width - 8));
+      state.top = Math.max(8, Math.min(Number.isFinite(state.top) ? state.top : 18, shell.clientHeight - state.height - 8));
+      panel.style.left = `${state.left}px`;
+      panel.style.top = `${state.top}px`;
+      panel.style.width = `${state.width}px`;
+      panel.style.height = `${state.height}px`;
     } else {
       panel.style.removeProperty("left");
       panel.style.removeProperty("top");
@@ -245,14 +265,19 @@ function setPanelFloating(id, floating) {
   const state = panelStates[id];
   if (floating && state.dock !== "floating") {
     const rect = panel.getBoundingClientRect();
+    const shell = document.querySelector(".studio-shell");
+    const shellRect = shell.getBoundingClientRect();
+    const defaults = PANEL_FLOAT_SIZES[id];
+    const width = Math.min(Number.isFinite(state.width) ? state.width : defaults.width, shell.clientWidth - 16);
+    const height = Math.min(Number.isFinite(state.height) ? state.height : defaults.height, shell.clientHeight - 16);
     Object.assign(state, {
       visible: true,
       lastDock: state.dock,
       dock: "floating",
-      left: Math.max(8, rect.left),
-      top: Math.max(8, rect.top),
-      width: Math.max(230, rect.width),
-      height: Math.max(170, rect.height)
+      left: Math.max(8, Math.min(rect.left - shellRect.left, shell.clientWidth - width - 8)),
+      top: Math.max(8, Math.min(rect.top - shellRect.top, shell.clientHeight - height - 8)),
+      width,
+      height
     });
   } else if (!floating) {
     state.dock = DOCK_ZONES.includes(state.lastDock) ? state.lastDock : PANEL_DEFAULTS[id].dock;
@@ -272,11 +297,12 @@ function dockPanel(id, zone) {
 }
 
 function dockTargetAt(clientX, clientY) {
-  const sideWidth = Math.max(170, Math.min(300, window.innerWidth * 0.24));
-  const bottomHeight = Math.max(150, Math.min(280, window.innerHeight * 0.3));
-  if (clientY >= window.innerHeight - bottomHeight) return "bottom";
-  if (clientX <= sideWidth) return "left";
-  if (clientX >= window.innerWidth - sideWidth) return "right";
+  const rect = document.querySelector(".studio-shell").getBoundingClientRect();
+  const sideWidth = Math.max(170, Math.min(300, rect.width * 0.24));
+  const bottomHeight = Math.max(150, Math.min(280, rect.height * 0.3));
+  if (clientY >= rect.bottom - bottomHeight) return "bottom";
+  if (clientX <= rect.left + sideWidth) return "left";
+  if (clientX >= rect.right - sideWidth) return "right";
   return null;
 }
 
@@ -311,10 +337,9 @@ function bindPanels() {
       if (event.button !== 0 || event.target.closest("button")) return;
       const id = handle.dataset.panelHandle;
       const panel = document.querySelector(`[data-panel="${id}"]`);
-      const rect = panel.getBoundingClientRect();
       if (panelStates[id].dock !== "floating") setPanelFloating(id, true);
       panel.style.zIndex = String(++panelZ);
-      panelDrag = { id, startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top, drop: null };
+      panelDrag = { id, startX: event.clientX, startY: event.clientY, left: panelStates[id].left, top: panelStates[id].top, drop: null };
       updateDockOverlay(null);
       handle.setPointerCapture(event.pointerId);
       event.preventDefault();
@@ -323,8 +348,9 @@ function bindPanels() {
       if (!panelDrag || panelDrag.id !== handle.dataset.panelHandle) return;
       const state = panelStates[panelDrag.id];
       const panel = document.querySelector(`[data-panel="${panelDrag.id}"]`);
-      const maxLeft = Math.max(8, window.innerWidth - panel.offsetWidth - 8);
-      const maxTop = Math.max(8, window.innerHeight - panel.offsetHeight - 8);
+      const shell = document.querySelector(".studio-shell");
+      const maxLeft = Math.max(8, shell.clientWidth - panel.offsetWidth - 8);
+      const maxTop = Math.max(8, shell.clientHeight - panel.offsetHeight - 8);
       state.left = Math.max(8, Math.min(maxLeft, panelDrag.left + event.clientX - panelDrag.startX));
       state.top = Math.max(8, Math.min(maxTop, panelDrag.top + event.clientY - panelDrag.startY));
       panel.style.left = `${state.left}px`;
@@ -344,6 +370,15 @@ function bindPanels() {
       else savePanelStates();
     };
     handle.onpointercancel = handle.onpointerup;
+  });
+  document.querySelectorAll("[data-panel]").forEach((panel) => {
+    panel.addEventListener("pointerup", () => {
+      const id = panel.dataset.panel;
+      if (panelStates[id].dock !== "floating") return;
+      panelStates[id].width = panel.offsetWidth;
+      panelStates[id].height = panel.offsetHeight;
+      savePanelStates();
+    });
   });
   $("reset-panels").onclick = () => {
     panelStates = structuredClone(PANEL_DEFAULTS);

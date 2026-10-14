@@ -14,7 +14,7 @@ for (const id of ["canvas", "preview-canvas", "tree", "inspector-panel", "timeli
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control ${id}`);
 }
 assert.doesNotMatch(html, /<iframe\b/i, "El Studio unificado no debe depender de vistas embebidas");
-assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.5\.0["']/);
+assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=0\.6\.0["']/);
 assert.match(html, /navigator\.serviceWorker\.getRegistrations\(\)/, "El Studio debe retirar cachés heredadas antes de iniciar");
 assert.doesNotMatch(html, /window\.stop\(\)/, "La limpieza del Studio no debe abortar la navegación actual");
 assert.match(html, /id=["']timeline-zoom["']/, "El timeline debe tener zoom temporal independiente");
@@ -22,7 +22,7 @@ assert.match(css, /--left-dock:\s*270px/);
 assert.match(css, /--right-dock:\s*310px/);
 assert.match(css, /data-dock-zone=["']bottom["'][^}]*grid-column:\s*1\s*\/\s*-1/s);
 assert.match(editor, /sampleStudioAnimation/);
-assert.match(editor, /studio-format\.js\?v=0\.5\.0/, "Los módulos internos deben invalidar la caché junto con el editor");
+assert.match(editor, /studio-format\.js\?v=0\.6\.0/, "Los módulos internos deben invalidar la caché junto con el editor");
 assert.match(editor, /validateStudioProject/);
 assert.match(editor, /mode:\s*["']game["']/);
 assert.match(editor, /function restoreHistory/);
@@ -71,6 +71,11 @@ for (const zone of ["left", "right", "bottom"]) {
 assert.match(editor, /function dockPanel\(/, "Las ventanas deben poder acoplarse a una zona");
 assert.match(editor, /function renderDockTabs\(/, "Las ventanas que comparten zona deben convertirse en pestañas");
 assert.match(editor, /dockTargetAt\(/, "El arrastre debe detectar zonas de acoplamiento");
+assert.match(css, /\.studio-shell\s*\{[^}]*position:\s*relative/s, "El escritorio debe contener las ventanas flotantes");
+assert.match(css, /\.floating-panel\s*\{[^}]*position:\s*absolute\s*!important/s, "Las ventanas deben moverse dentro del escritorio, no respecto al navegador");
+assert.doesNotMatch(css, /\.floating-panel\s*\{[^}]*position:\s*fixed/s, "Una ventana interna no debe escapar del espacio de trabajo");
+assert.match(css, /--timeline-h:\s*clamp\(/, "El dock inferior debe tener una altura acotada");
+assert.match(editor, /PANEL_FLOAT_SIZES/, "Cada ventana debe tener un tamaño flotante apropiado");
 assert.match(editor, /function undo\(\)/, "Deshacer debe incluir borradores y cambios confirmados");
 assert.match(html, /id=["']canvas["'][^>]*tabindex=["']0["']/, "El lienzo debe recibir el foco para los atajos de teclado");
 

@@ -17,7 +17,7 @@
   --purple: #8755d5;
   --muted: #91a8c2;
   --header-h: 56px;
-  --timeline-h: 36vh;
+  --timeline-h: clamp(220px, 32vh, 340px);
 }
 
 * { box-sizing: border-box; }
@@ -86,7 +86,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   --right-dock: 310px;
   --bottom-dock: var(--timeline-h);
   height: calc(100dvh - var(--header-h));
+  position: relative;
   display: grid;
+  overflow: hidden;
+  isolation: isolate;
   grid-template-columns: var(--left-dock) minmax(480px, 1fr) var(--right-dock);
   grid-template-rows: minmax(0, 1fr) var(--bottom-dock);
 }
@@ -101,12 +104,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 [data-panel][data-dock-zone="bottom"] { grid-column: 1 / -1; grid-row: 2; border: 0; border-top: 1px solid var(--line-strong); }
 .panel-hidden, .dock-inactive { display: none !important; }
 .floating-panel {
-  position: fixed !important;
+  position: absolute !important;
   z-index: 120;
   min-width: 230px;
   min-height: 170px;
-  max-width: calc(100vw - 18px);
-  max-height: calc(100vh - 18px);
+  max-width: calc(100% - 16px);
+  max-height: calc(100% - 16px);
   overflow: hidden;
   resize: both;
   border: 1px solid #4c739a !important;
@@ -138,7 +141,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .panel-window-actions { display: flex; gap: 3px; margin-left: auto; }
 .panel-window-actions button { width: 25px; height: 23px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #a9c1d9; }
 .panel-window-actions button:hover { background: #274866; color: #fff; }
-.dock-overlay { position: fixed; z-index: 110; inset: var(--header-h) 0 0; pointer-events: none; }
+.dock-overlay { position: absolute; z-index: 110; inset: 0; pointer-events: none; }
 .dock-overlay[hidden] { display: none; }
 .dock-target { position: absolute; display: grid; place-items: center; border: 2px dashed #5c8dba99; background: #367cba20; color: #bfe0ff; opacity: .48; transition: opacity .12s, background .12s, border-color .12s; }
 .dock-target span { padding: 7px 10px; border: 1px solid #5c8dba; border-radius: 5px; background: #0e2236e8; }
@@ -259,7 +262,7 @@ textarea { width: 100%; min-height: 68px; resize: vertical; }
 #file { display: none; }
 
 @media (max-width: 1050px) {
-  :root { --timeline-h: 320px; }
+  :root { --timeline-h: clamp(210px, 30vh, 300px); }
   .studio-shell { --left-dock: 220px; --right-dock: 270px; grid-template-columns: var(--left-dock) minmax(420px, 1fr) var(--right-dock); }
   .brand { min-width: 180px; }
   .nav-button { min-width: 70px; padding: 0 8px; }
@@ -271,6 +274,6 @@ textarea { width: 100%; min-height: 68px; resize: vertical; }
   body { overflow: auto; }
   .studio-header { height: auto; min-height: var(--header-h); flex-wrap: wrap; }
   .brand { min-width: 100%; }
-  .studio-shell { --left-dock: 210px; --right-dock: 250px; height: calc(100dvh - var(--header-h)); grid-template-columns: var(--left-dock) minmax(420px, 1fr) var(--right-dock); grid-template-rows: minmax(480px, 1fr) var(--bottom-dock); }
+  .studio-shell { --left-dock: 210px; --right-dock: 250px; height: calc(100dvh - var(--header-h)); grid-template-columns: var(--left-dock) minmax(420px, 1fr) var(--right-dock); grid-template-rows: minmax(0, 1fr) var(--bottom-dock); }
   .panel-menu-popover { position: fixed; top: 58px; right: 10px; }
 }

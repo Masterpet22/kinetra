@@ -21,7 +21,7 @@
       ]).catch((error) => console.warn("No se pudo retirar una caché antigua", error));
     })();
   </script>
-  <link rel="stylesheet" href="./styles.css?v=0.5.0">
+  <link rel="stylesheet" href="./styles.css?v=0.6.0">
 </head>
 <body>
   <header class="studio-header">
@@ -220,15 +220,15 @@
         </div>
       </div>
     </section>
+
+    <div id="dock-overlay" class="dock-overlay" hidden aria-hidden="true">
+      <div class="dock-target dock-target-left" data-dock-target="left"><span>Acoplar a la izquierda</span></div>
+      <div class="dock-target dock-target-right" data-dock-target="right"><span>Acoplar a la derecha</span></div>
+      <div class="dock-target dock-target-bottom" data-dock-target="bottom"><span>Acoplar abajo</span></div>
+    </div>
   </main>
 
-  <div id="dock-overlay" class="dock-overlay" hidden aria-hidden="true">
-    <div class="dock-target dock-target-left" data-dock-target="left"><span>Acoplar a la izquierda</span></div>
-    <div class="dock-target dock-target-right" data-dock-target="right"><span>Acoplar a la derecha</span></div>
-    <div class="dock-target dock-target-bottom" data-dock-target="bottom"><span>Acoplar abajo</span></div>
-  </div>
-
   <input id="file" type="file" accept=".json,application/json">
-  <script type="module" src="./src/studio/editor.js?v=0.5.0"></script>
+  <script type="module" src="./src/studio/editor.js?v=0.6.0"></script>
 </body>
 </html>
