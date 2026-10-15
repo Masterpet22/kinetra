@@ -21,6 +21,9 @@ assert.doesNotMatch(html, /window\.stop\(\)/, "La limpieza del Studio no debe ab
 assert.match(html, /id=["']timeline-zoom["']/, "El timeline debe tener zoom temporal independiente");
 assert.match(css, /--left-dock:\s*270px/);
 assert.match(css, /--right-dock:\s*310px/);
+assert.match(css, /\*\s*\{[^}]*user-select:\s*none/s, "Los elementos de la interfaz no deben permitir seleccionar texto accidentalmente");
+assert.ok(css.includes('input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"])'), "Los campos de texto deben conservar texto seleccionable");
+assert.match(css, /\[contenteditable="true"\]\s*\{\s*user-select:\s*text/, "El contenido editable debe permitir selección de texto");
 assert.match(css, /data-dock-zone=["']bottom["'][^}]*grid-column:\s*1\s*\/\s*-1/s);
 assert.match(css, /\.layout-divider-bottom\s*\{[^}]*bottom:\s*calc\(var\(--bottom-dock\)\s*-\s*5px\)/, "El separador de la línea de tiempo debe quedar alineado con el borde del panel");
 assert.match(css, /\.tree-row:focus-within\s*\{[^}]*outline:\s*2px solid var\(--cyan\)/, "El indicador cian de foco debe cubrir toda la fila de la capa");
@@ -155,10 +158,22 @@ assert.match(editor, /function createLayerGroup\(/, "Debe poder crearse un grupo
 assert.match(editor, /if \(ids\.length < 2\) return status\("Selecciona al menos dos capas para agruparlas"\)/, "Crear grupos requiere al menos dos capas");
 assert.match(editor, /item\.groupId = id/, "Las capas seleccionadas deben quedar vinculadas al nuevo grupo");
 assert.match(editor, /function renderLayerGroup\(/, "Los grupos deben aparecer como contenedores en el árbol de capas");
+assert.match(editor, /rename\.onclick = \(\) => renameLayerGroup\(group, name\)/, "Renombrar un grupo debe reemplazar su nombre por el campo de edición");
+assert.match(editor, /row\.append\(icon, name, visibility, lock, rename, ungroup, toggle\)/, "El control para expandir el grupo debe aparecer después de los demás botones");
+assert.match(editor, /const allVisible = items\.every\(\(item\) => item\.visible\)/, "La visibilidad del grupo debe reflejar el estado de sus capas");
+assert.match(editor, /visibility\.title = allVisible \? "Ocultar grupo" : "Mostrar grupo"/, "Los grupos deben ofrecer una acción contextual para mostrar u ocultar sus capas");
+assert.match(editor, /items\.forEach\(\(item\) => \{ item\.visible = !allVisible; \}\)/, "La acción de visibilidad del grupo debe actualizar todas sus capas");
+assert.match(editor, /const allLocked = items\.every\(\(item\) => lockedParts\.has\(item\.id\)\)/, "El bloqueo del grupo debe reflejar el estado de sus capas");
+assert.match(editor, /lock\.title = allLocked \? "Desbloquear grupo" : "Bloquear grupo"/, "Los grupos deben ofrecer una acción contextual para bloquear o desbloquear sus capas");
+assert.match(editor, /if \(allLocked\) lockedParts\.delete\(item\.id\);\s*else lockedParts\.add\(item\.id\)/, "La acción de bloqueo del grupo debe actualizar todas sus capas");
 assert.match(editor, /group\.collapsed && !search \? "chevron-right" : "chevron-down"/, "Los grupos deben poder contraerse y expandirse");
+assert.match(editor, /function renderLayers\(search, host\) \{[\s\S]*?groups\.forEach\(\(group\) => \{[\s\S]*?renderLayerGroup\(group, items, host, search\)[\s\S]*?orderedItems\.filter\(\(item\) => !item\.groupId \|\| !groupIds\.has\(item\.groupId\)\)/, "Los grupos deben mostrarse antes de las capas sin agrupar");
 assert.match(editor, /function ungroupLayers\(group\)/, "Debe ser posible desagrupar conservando las capas");
 assert.match(editor, /groupButton\.disabled = selection\.length < 2/, "El control de agrupación debe activarse solo con varias capas");
 assert.match(editor, /layerGroups: candidate\.layerGroups \|\| \[\]/, "Los grupos deben conservarse al abrir un proyecto");
+assert.match(editor, /function keepHierarchySelectionVisible\(panel, kind\)/, "La selección actual debe mantenerse visible en el panel de jerarquía");
+assert.match(editor, /if \(rowBounds\.bottom > containerBounds\.bottom\) scrollContainer\.scrollTop \+= rowBounds\.bottom - containerBounds\.bottom/, "El desplazamiento debe seguir la selección al bajar por la lista");
+assert.match(editor, /refreshIcons\(panel\);\s*keepHierarchySelectionVisible\(panel, kind\)/, "Cada actualización del árbol debe mantener visible el elemento seleccionado");
 assert.match(editor, /createKinetraBundle/, "La exportación debe producir un paquete Kinetra v2 para runtimes web");
 assert.match(editor, /document\.addEventListener\(["']click["']/, "Los menús deben cerrarse al hacer clic fuera");
 assert.match(editor, /menu\.addEventListener\("pointerleave", \(event\) => \{[\s\S]*?menu\.removeAttribute\("open"\)/, "Los menús de aplicación deben cerrarse al salir con el cursor");
@@ -167,6 +182,7 @@ assert.match(editor, /menu\.addEventListener\("toggle", \(\) => \{[\s\S]*?if \(m
 assert.match(editor, /menu\.addEventListener\("pointerenter", \(\) => \{\s*if \(!appMenuHoverSwitch\) return;[\s\S]*?menu\.open = true/, "Al estar el menú activo, pasar sobre otro encabezado debe cambiar el menú abierto");
 assert.match(editor, /menuBar\.contains\(event\.relatedTarget\)/, "Moverse entre encabezados no debe desactivar el modo de cambio por hover");
 assert.match(css, /\.app-menu-bar \.app-menu:not\(\[open\]\) > summary\s*\{[^}]*z-index:\s*241/s, "Los encabezados cerrados deben poder recibir hover aunque el desplegable actual los cubra");
+assert.match(css, /\.app-menu-popover\s*\{[^}]*top:\s*100%/s, "Todos los menús desplegables deben tocar el encabezado para permitir el paso del cursor");
 assert.match(html, /unpkg\.com\/lucide@1\.57\.0/, "La interfaz debe usar una versión fija de Lucide");
 assert.match(editor, /window\.lucide\?\.createIcons/, "Los iconos dinámicos deben usar Lucide");
 for (const kind of ["skeleton", "tracks", "layers"]) {

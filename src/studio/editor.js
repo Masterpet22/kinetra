@@ -1526,6 +1526,31 @@ function renderLayerGroup(group, items, host, search) {
     activeHierarchyKind = "layers";
     refresh();
   };
+  const allVisible = items.every((item) => item.visible);
+  const visibility = document.createElement("button");
+  visibility.className = "tree-toggle";
+  visibility.append(createIcon(allVisible ? "eye" : "eye-off"));
+  visibility.title = allVisible ? "Ocultar grupo" : "Mostrar grupo";
+  visibility.setAttribute("aria-label", visibility.title);
+  visibility.onclick = () => {
+    items.forEach((item) => { item.visible = !allVisible; });
+    commit(allVisible ? "Grupo oculto" : "Grupo mostrado");
+    refresh();
+  };
+  const allLocked = items.every((item) => lockedParts.has(item.id));
+  const lock = document.createElement("button");
+  lock.className = "tree-toggle";
+  lock.append(createIcon(allLocked ? "lock-keyhole" : "lock-keyhole-open"));
+  lock.title = allLocked ? "Desbloquear grupo" : "Bloquear grupo";
+  lock.setAttribute("aria-label", lock.title);
+  lock.onclick = () => {
+    items.forEach((item) => {
+      if (allLocked) lockedParts.delete(item.id);
+      else lockedParts.add(item.id);
+    });
+    refresh();
+    status(allLocked ? "Capas del grupo desbloqueadas" : "Capas del grupo bloqueadas");
+  };
   const toggle = document.createElement("button");
   toggle.className = "tree-toggle tree-group-collapse";
   toggle.append(createIcon(group.collapsed && !search ? "chevron-right" : "chevron-down"));
@@ -1541,14 +1566,14 @@ function renderLayerGroup(group, items, host, search) {
   rename.append(createIcon("pencil"));
   rename.title = `Renombrar grupo ${group.name}`;
   rename.setAttribute("aria-label", rename.title);
-  rename.onclick = () => renameLayerGroup(group, rename);
+  rename.onclick = () => renameLayerGroup(group, name);
   const ungroup = document.createElement("button");
   ungroup.className = "tree-toggle";
   ungroup.append(createIcon("folder-minus"));
   ungroup.title = "Desagrupar capas";
   ungroup.setAttribute("aria-label", ungroup.title);
   ungroup.onclick = () => ungroupLayers(group);
-  row.append(icon, name, toggle, rename, ungroup);
+  row.append(icon, name, visibility, lock, rename, ungroup, toggle);
   host.append(row);
 
   if (!group.collapsed || search) matchingItems.forEach((item) => renderLayerRow(item, host));
@@ -1558,18 +1583,12 @@ function renderLayers(search, host) {
   const orderedItems = [...project.parts].sort((left, right) => right.z - left.z);
   const groups = layerGroups();
   const groupIds = new Set(groups.map((group) => group.id));
-  const entries = [];
   groups.forEach((group) => {
     const items = orderedItems.filter((item) => item.groupId === group.id);
-    if (items.length) entries.push({ z: Math.max(...items.map((item) => item.z), -1), group, items });
+    if (items.length) renderLayerGroup(group, items, host, search);
   });
   orderedItems.filter((item) => !item.groupId || !groupIds.has(item.groupId)).forEach((item) => {
-    entries.push({ z: item.z, item });
-  });
-  entries.sort((left, right) => right.z - left.z);
-  entries.forEach((entry) => {
-    if (entry.group) renderLayerGroup(entry.group, entry.items, host, search);
-    else if ((entry.item.name || label(entry.item.id)).toLocaleLowerCase().includes(search)) renderLayerRow(entry.item, host);
+    if ((item.name || label(item.id)).toLocaleLowerCase().includes(search)) renderLayerRow(item, host);
   });
 }
 
@@ -1751,8 +1770,7 @@ function selectHierarchyItem(kind, id, event) {
   activeHierarchyKind = kind;
   refresh();
   const panel = document.querySelector(`[data-hierarchy-kind="${kind}"]`);
-  [...(panel?.querySelectorAll("[data-hierarchy-tree] .tree-row") || [])]
-    .find((row) => row.dataset.hierarchyId === id)?.querySelector(".tree-select")?.focus({ preventScroll: true });
+  panel?.querySelector(`[data-hierarchy-id="${CSS.escape(id)}"] .tree-select`)?.focus({ preventScroll: true });
 }
 
 function extendHierarchySelectionByArrow(kind, direction) {
@@ -2129,6 +2147,24 @@ function clearHierarchySelection(kind) {
   status("Selección cancelada");
 }
 
+function keepHierarchySelectionVisible(panel, kind) {
+  const selected = hierarchySelection(kind);
+  const selectedId = selected.at(-1) || hierarchyFocus[kind] || (kind === "layers" ? selectedPart : null);
+  if (!selectedId) return;
+  const rows = [...panel.querySelectorAll("[data-hierarchy-tree] .tree-row")];
+  let row = rows.find((item) => item.dataset.hierarchyId === selectedId);
+  if (!row && kind === "layers") {
+    const part = project.parts.find((item) => item.id === selectedId);
+    row = rows.find((item) => item.dataset.layerGroupId === part?.groupId);
+  }
+  const scrollContainer = panel.querySelector(".panel-body");
+  if (!row || !scrollContainer) return;
+  const rowBounds = row.getBoundingClientRect();
+  const containerBounds = scrollContainer.getBoundingClientRect();
+  if (rowBounds.top < containerBounds.top) scrollContainer.scrollTop += rowBounds.top - containerBounds.top;
+  else if (rowBounds.bottom > containerBounds.bottom) scrollContainer.scrollTop += rowBounds.bottom - containerBounds.bottom;
+}
+
 function renderTree() {
   document.querySelectorAll("[data-hierarchy-kind]").forEach((panel) => {
     const kind = panel.dataset.hierarchyKind;
@@ -2147,6 +2183,7 @@ function renderTree() {
     panel.querySelector("[data-hierarchy-meta]").textContent = description;
     updateMultiSelectionMenu(panel, kind);
     refreshIcons(panel);
+    keepHierarchySelectionVisible(panel, kind);
   });
 }
 
