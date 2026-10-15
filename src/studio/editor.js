@@ -81,6 +81,7 @@ const PANEL_LABELS = Object.freeze({
   timeline: "Línea de tiempo"
 });
 const DOCK_ZONES = Object.freeze(["left", "right", "bottom"]);
+const PANEL_DRAG_THRESHOLD = 8;
 const PANEL_LAYOUT_VERSION = 3;
 const PANEL_FLOAT_SIZES = Object.freeze({
   skeleton: { width: 310, height: 470 },
@@ -156,7 +157,7 @@ const TUTORIALS = Object.freeze({
 });
 
 const prettyId = (id) => String(id).replaceAll("_", " ").replace(/^./, (value) => value.toUpperCase());
-const freshProject = () => createTemplateProject("male");
+const freshProject = () => ({ ...createTemplateProject("male"), layerGroups: [] });
 const freshRig = () => freshProject().rig;
 const freshParts = () => freshProject().parts;
 
@@ -180,6 +181,19 @@ function rigTree() {
   const build = (id) => ({ id, children: (children.get(id) || []).map(build) });
   return [build("rig")];
 }
+function layerGroups() {
+  if (!Array.isArray(project.layerGroups)) project.layerGroups = [];
+  project.layerGroups = project.layerGroups.filter((group) => group && typeof group.id === "string" && group.id);
+  project.layerGroups.forEach((group, index) => {
+    group.name = String(group.name || `Grupo ${index + 1}`);
+    group.collapsed = Boolean(group.collapsed);
+  });
+  const validGroupIds = new Set(project.layerGroups.map((group) => group.id));
+  project.parts.forEach((item) => {
+    if (item.groupId && !validGroupIds.has(item.groupId)) delete item.groupId;
+  });
+  return project.layerGroups;
+}
 function label(id) {
   if (id === "rig") return project.rig?.name || LABELS.rig;
   const bone = project.rig?.bones?.find((item) => item.id === id);
@@ -188,13 +202,22 @@ function label(id) {
 
 let project = freshProject();
 let mode = "animador";
+let lastEditorMode = "animador";
 let rightTab = "inspector";
 let tool = "select";
 let selectedTarget = "rig";
 let selectedTargets = new Set(["rig"]);
 let selectedPart = "torso";
+let selectedParts = new Set(["torso"]);
 let selectedKeys = new Set();
 let keyClipboard = [];
+let hierarchyClipboard = null;
+let activeHierarchyKind = null;
+let appMenuHoverSwitch = false;
+const hierarchyAnchors = { skeleton: null, tracks: null, layers: null };
+const hierarchyFocus = { skeleton: null, tracks: null, layers: null };
+let duplicateDialogResolve = null;
+let duplicateDialogChoice = "cancel";
 let hiddenTargets = new Set();
 let lockedTargets = new Set();
 let lockedParts = new Set();
@@ -217,7 +240,9 @@ let ghostTime = null;
 const initialPanelLayout = loadPanelLayout();
 let panelStates = initialPanelLayout.panels;
 let dockActive = initialPanelLayout.active;
+let layoutSizes = initialPanelLayout.sizes;
 let panelDrag = null;
+let dividerDrag = null;
 let panelZ = 120;
 let previewVisible = localStorage.getItem(PREVIEW_STORAGE_KEY) !== "false";
 let theme = ["noche", "grafito", "aurora"].includes(localStorage.getItem(THEME_STORAGE_KEY))
@@ -272,14 +297,17 @@ function loadPanelLayout() {
         ...floatingGeometry
       }];
     }));
-    return { panels, active: saved.layoutVersion === PANEL_LAYOUT_VERSION ? { ...(saved.active || {}) } : {} };
+    const sizes = saved.layoutVersion === PANEL_LAYOUT_VERSION
+      ? Object.fromEntries(["left", "right", "bottom"].filter((zone) => Number.isFinite(saved.sizes?.[zone])).map((zone) => [zone, saved.sizes[zone]]))
+      : {};
+    return { panels, active: saved.layoutVersion === PANEL_LAYOUT_VERSION ? { ...(saved.active || {}) } : {}, sizes };
   } catch {
     return { panels: structuredClone(PANEL_DEFAULTS), active: {} };
   }
 }
 
 function savePanelStates() {
-  localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify({ layoutVersion: PANEL_LAYOUT_VERSION, panels: panelStates, active: dockActive }));
+  localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify({ layoutVersion: PANEL_LAYOUT_VERSION, panels: panelStates, active: dockActive, sizes: layoutSizes }));
 }
 
 function visiblePanelsInDock(zone) {
@@ -309,6 +337,11 @@ function renderDockTabs(panelId) {
 
 function applyPanelLayout() {
   const shell = document.querySelector(".studio-shell");
+  ["left", "right", "bottom"].forEach((zone) => {
+    const property = `--${zone}-dock`;
+    if (Number.isFinite(layoutSizes[zone])) shell.style.setProperty(property, `${layoutSizes[zone]}px`);
+    else shell.style.removeProperty(property);
+  });
   DOCK_ZONES.forEach((zone) => {
     const peers = visiblePanelsInDock(zone);
     if (!peers.includes(dockActive[zone])) dockActive[zone] = peers[0] || null;
@@ -414,6 +447,68 @@ function updateDockOverlay(target) {
 }
 
 function bindPanels() {
+  const currentDockSize = (zone, shell) =>
+    Number.parseFloat(getComputedStyle(shell).getPropertyValue(`--${zone}-dock`));
+  const centerMinimum = (width) => Math.min(480, Math.max(180, width * 0.3));
+  document.querySelectorAll("[data-layout-divider]").forEach((divider) => {
+    const zone = divider.dataset.layoutDivider;
+    const resize = (event) => {
+      const shell = document.querySelector(".studio-shell");
+      const bounds = shell.getBoundingClientRect();
+      const minimumCenter = centerMinimum(bounds.width);
+      if (zone === "left") {
+        const right = currentDockSize("right", shell);
+        layoutSizes.left = Math.max(170, Math.min(bounds.width - right - minimumCenter, event.clientX - bounds.left));
+      } else if (zone === "right") {
+        const left = currentDockSize("left", shell);
+        layoutSizes.right = Math.max(200, Math.min(bounds.width - left - minimumCenter, bounds.right - event.clientX));
+      } else {
+        layoutSizes.bottom = Math.max(150, Math.min(bounds.height - 220, bounds.bottom - event.clientY));
+      }
+      shell.style.setProperty(`--${zone}-dock`, `${layoutSizes[zone]}px`);
+      divider.setAttribute("aria-valuenow", String(Math.round(layoutSizes[zone])));
+      requestAnimationFrame(draw);
+    };
+    divider.onpointerdown = (event) => {
+      if (event.button !== 0) return;
+      dividerDrag = zone;
+      divider.setPointerCapture(event.pointerId);
+      resize(event);
+      event.preventDefault();
+    };
+    divider.onpointermove = (event) => {
+      if (dividerDrag === zone) resize(event);
+    };
+    divider.onpointerup = (event) => {
+      if (dividerDrag !== zone) return;
+      dividerDrag = null;
+      savePanelStates();
+    };
+    divider.onpointercancel = divider.onpointerup;
+    divider.onkeydown = (event) => {
+      const direction = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1
+        : event.key === "ArrowRight" || event.key === "ArrowDown" ? 1
+          : 0;
+      if (!direction) return;
+      event.preventDefault();
+      const shell = document.querySelector(".studio-shell");
+      const property = zone === "bottom" ? "--bottom-dock" : `--${zone}-dock`;
+      const current = Number.parseFloat(getComputedStyle(shell).getPropertyValue(property));
+      const factor = zone === "right" || zone === "bottom" ? -direction : direction;
+      const bounds = shell.getBoundingClientRect();
+      const right = currentDockSize("right", shell);
+      const left = currentDockSize("left", shell);
+      const minimumCenter = centerMinimum(bounds.width);
+      const max = zone === "bottom" ? bounds.height - 220
+        : zone === "left" ? bounds.width - right - minimumCenter
+          : bounds.width - left - minimumCenter;
+      layoutSizes[zone] = Math.max(zone === "right" ? 200 : zone === "bottom" ? 150 : 170, Math.min(max, current + factor * 12));
+      shell.style.setProperty(property, `${layoutSizes[zone]}px`);
+      divider.setAttribute("aria-valuenow", String(Math.round(layoutSizes[zone])));
+      savePanelStates();
+      requestAnimationFrame(draw);
+    };
+  });
   document.querySelectorAll("[data-panel-toggle]").forEach((toggle) => {
     toggle.onchange = () => setPanelVisible(toggle.dataset.panelToggle, toggle.checked);
   });
@@ -436,15 +531,39 @@ function bindPanels() {
       if (event.button !== 0 || event.target.closest("button")) return;
       const id = handle.dataset.panelHandle;
       const panel = document.querySelector(`[data-panel="${id}"]`);
-      if (panelStates[id].dock !== "floating") setPanelFloating(id, true);
       panel.style.zIndex = String(++panelZ);
-      panelDrag = { id, startX: event.clientX, startY: event.clientY, left: panelStates[id].left, top: panelStates[id].top, drop: null };
-      updateDockOverlay(null);
+      panelDrag = {
+        id,
+        startX: event.clientX,
+        startY: event.clientY,
+        left: panelStates[id].left,
+        top: panelStates[id].top,
+        drop: null,
+        active: panelStates[id].dock === "floating"
+      };
+      if (panelDrag.active) updateDockOverlay(null);
       handle.setPointerCapture(event.pointerId);
       event.preventDefault();
     };
     handle.onpointermove = (event) => {
       if (!panelDrag || panelDrag.id !== handle.dataset.panelHandle) return;
+      if (!panelDrag.active) {
+        const deltaX = event.clientX - panelDrag.startX;
+        const deltaY = event.clientY - panelDrag.startY;
+        if (Math.hypot(deltaX, deltaY) < PANEL_DRAG_THRESHOLD) return;
+        const id = panelDrag.id;
+        setPanelFloating(id, true);
+        const state = panelStates[id];
+        panelDrag = {
+          ...panelDrag,
+          startX: event.clientX,
+          startY: event.clientY,
+          left: state.left,
+          top: state.top,
+          active: true
+        };
+        updateDockOverlay(null);
+      }
       const state = panelStates[panelDrag.id];
       const panel = document.querySelector(`[data-panel="${panelDrag.id}"]`);
       const shell = document.querySelector(".studio-shell");
@@ -460,10 +579,14 @@ function bindPanels() {
     handle.onpointerup = () => {
       if (!panelDrag || panelDrag.id !== handle.dataset.panelHandle) return;
       const completed = panelDrag;
+      panelDrag = null;
+      if (!completed.active) {
+        updateDockOverlay(null);
+        return;
+      }
       const panel = document.querySelector(`[data-panel="${completed.id}"]`);
       panelStates[completed.id].width = panel.offsetWidth;
       panelStates[completed.id].height = panel.offsetHeight;
-      panelDrag = null;
       updateDockOverlay(null);
       if (completed.drop) dockPanel(completed.id, completed.drop);
       else savePanelStates();
@@ -482,12 +605,17 @@ function bindPanels() {
   $("reset-panels").onclick = () => {
     panelStates = structuredClone(PANEL_DEFAULTS);
     dockActive = { left: "skeleton", right: "inspector", bottom: "timeline" };
+    layoutSizes = {};
     rightTab = "inspector";
     applyPanelLayout();
     savePanelStates();
     status("Disposición de paneles restablecida");
   };
   applyPanelLayout();
+  document.querySelectorAll("[data-layout-divider]").forEach((divider) => {
+    const shell = document.querySelector(".studio-shell");
+    divider.setAttribute("aria-valuenow", String(Math.round(currentDockSize(divider.dataset.layoutDivider, shell))));
+  });
 }
 function duration() { return project.clip.animation.duration; }
 function fps() { return Number(project.fps || 24); }
@@ -513,12 +641,21 @@ function ikChainFor(target) {
   const upper = middle && parents[middle];
   return upper ? { upper, middle } : null;
 }
-function selectionLabel() { return selectedTargets.size > 1 ? `${selectedTargets.size} objetivos` : label(selectedTarget); }
+function selectionLabel() {
+  if (!selectedTargets.size) return "Sin selección";
+  return selectedTargets.size > 1 ? `${selectedTargets.size} objetivos` : label(selectedTarget);
+}
 function selectAnimationTarget(target, append = false) {
   if (!append) selectedTargets = new Set([target]);
-  else if (selectedTargets.has(target) && selectedTargets.size > 1) selectedTargets.delete(target);
+  else if (selectedTargets.has(target)) selectedTargets.delete(target);
   else selectedTargets.add(target);
-  selectedTarget = selectedTargets.has(target) ? target : [...selectedTargets].at(-1);
+  selectedTarget = selectedTargets.has(target) ? target : [...selectedTargets].at(-1) || "rig";
+}
+function selectLayer(id, append = false) {
+  if (!append) selectedParts = new Set([id]);
+  else if (selectedParts.has(id)) selectedParts.delete(id);
+  else selectedParts.add(id);
+  selectedPart = selectedParts.has(id) ? id : [...selectedParts].at(-1) || project.parts.at(-1)?.id || "";
 }
 function committedPose(at = time) { return sampleStudioAnimation(project.clip, at, animationTargets()); }
 function frameTransform(frame = {}) {
@@ -618,6 +755,7 @@ function normalizeLoadedProject(candidate) {
       version: 4,
       fps: Number(candidate.fps || 24),
       assets: candidate.assets || [],
+      layerGroups: candidate.layerGroups || [],
       rig,
       parts: (candidate.layers || []).map((item, z) => ({ visible: true, rotation: 0, scaleX: 1, scaleY: 1, z, ...item })),
       clip
@@ -639,7 +777,7 @@ function normalizeLoadedProject(candidate) {
       z,
       ...item
     }));
-    return { version: 4, fps: Number(candidate.fps || 24), assets: candidate.assets || [], rig, parts, clip };
+    return { version: 4, fps: Number(candidate.fps || 24), assets: candidate.assets || [], layerGroups: candidate.layerGroups || [], rig, parts, clip };
   }
   const clip = parseStudioProject(JSON.stringify(candidate), { allowedTargets: PUPPET_TARGETS });
   return { version: 4, fps: 24, assets: [], rig: freshRig(), parts: freshParts(), clip };
@@ -1270,6 +1408,7 @@ function appendTreeNode(node, depth, search, host) {
   if (!visible) return;
   const row = document.createElement("div");
   row.className = `tree-row${selectedTargets.has(node.id) ? " active" : ""}`;
+  row.dataset.hierarchyId = node.id;
   row.style.paddingLeft = `${depth * 17}px`;
   const icon = document.createElement("span");
   icon.className = "tree-icon";
@@ -1281,19 +1420,18 @@ function appendTreeNode(node, depth, search, host) {
   multi.setAttribute("aria-label", `${selectedTargets.has(node.id) ? "Quitar" : "Añadir"} ${label(node.id)} ${selectedTargets.has(node.id) ? "de" : "a"} la selección múltiple`);
   multi.setAttribute("aria-pressed", String(selectedTargets.has(node.id)));
   multi.onclick = () => {
-    selectAnimationTarget(node.id, true);
-    selectedKeys.clear();
-    refresh();
+    const kind = host.closest("[data-hierarchy-kind]")?.dataset.hierarchyKind || "skeleton";
+    hierarchyAnchors[kind] = hierarchyAnchors[kind] || node.id;
+    selectHierarchyItem(kind, node.id, { ctrlKey: true, metaKey: false, shiftKey: false });
     status(`${selectionLabel()} seleccionados`);
   };
   const button = document.createElement("button");
   button.className = "tree-select";
   button.textContent = label(node.id);
   button.onclick = (event) => {
-    selectAnimationTarget(node.id, event.shiftKey);
-    selectedKeys.clear();
-    refresh();
-    status(event.shiftKey ? `${selectionLabel()} seleccionados` : `${label(node.id)} seleccionado`);
+    const kind = host.closest("[data-hierarchy-kind]")?.dataset.hierarchyKind || "skeleton";
+    selectHierarchyItem(kind, node.id, event);
+    status(hierarchySelection(kind).length > 1 ? `${selectionLabel()} seleccionados` : `${label(node.id)} seleccionado`);
   };
   const toggle = document.createElement("button");
   toggle.className = "tree-toggle";
@@ -1314,34 +1452,681 @@ function appendTreeNode(node, depth, search, host) {
   (node.children || []).forEach((child) => appendTreeNode(child, depth + 1, search, host));
 }
 
-function renderLayers(search, host) {
-  [...project.parts].sort((left, right) => right.z - left.z).forEach((item) => {
+function renderLayerRow(item, host) {
     const itemLabel = item.name || label(item.id);
-    if (!itemLabel.toLocaleLowerCase().includes(search)) return;
     const row = document.createElement("div");
-    row.className = `tree-row${selectedPart === item.id ? " active" : ""}`;
+    row.className = `tree-row${selectedParts.has(item.id) ? " active" : ""}`;
+    row.dataset.hierarchyId = item.id;
+    if (item.groupId) row.classList.add("tree-layer-in-group");
     const icon = document.createElement("span");
     icon.className = "tree-icon";
     icon.append(createIcon("layers-3"));
+    const multi = document.createElement("button");
+    multi.className = "tree-multi";
+    multi.append(createIcon(selectedParts.has(item.id) ? "check" : "plus"));
+    multi.title = selectedParts.has(item.id) ? "Quitar de la selección múltiple" : "Añadir a la selección múltiple";
+    multi.setAttribute("aria-label", `${selectedParts.has(item.id) ? "Quitar" : "Añadir"} ${itemLabel} ${selectedParts.has(item.id) ? "de" : "a"} la selección múltiple`);
+    multi.setAttribute("aria-pressed", String(selectedParts.has(item.id)));
+    multi.onclick = () => {
+      hierarchyAnchors.layers = hierarchyAnchors.layers || item.id;
+      selectHierarchyItem("layers", item.id, { ctrlKey: true, metaKey: false, shiftKey: false });
+      status(selectedParts.size > 1 ? `${selectedParts.size} capas seleccionadas` : "Selección cancelada");
+    };
     const button = document.createElement("button");
     button.className = "tree-select";
     button.textContent = itemLabel;
-    button.onclick = () => { selectedPart = item.id; refresh(); };
+    button.onclick = (event) => {
+      selectHierarchyItem("layers", item.id, event);
+    };
     const toggle = document.createElement("button");
     toggle.className = "tree-toggle";
     toggle.append(createIcon(item.visible ? "eye" : "eye-off"));
+    toggle.title = item.visible ? "Ocultar capa" : "Mostrar capa";
+    toggle.setAttribute("aria-label", toggle.title);
     toggle.onclick = () => { item.visible = !item.visible; commit("Visibilidad actualizada"); refresh(); };
     const lock = document.createElement("button");
     lock.className = "tree-toggle";
     lock.append(createIcon(lockedParts.has(item.id) ? "lock-keyhole" : "lock-keyhole-open"));
     lock.title = lockedParts.has(item.id) ? "Desbloquear edición" : "Bloquear edición";
+    lock.setAttribute("aria-label", lock.title);
     lock.onclick = () => {
       lockedParts.has(item.id) ? lockedParts.delete(item.id) : lockedParts.add(item.id);
       refresh();
     };
-    row.append(icon, button, toggle, lock);
+    const rename = document.createElement("button");
+    rename.className = "tree-toggle";
+    rename.append(createIcon("pencil"));
+    rename.title = `Renombrar ${itemLabel}`;
+    rename.setAttribute("aria-label", `Renombrar ${itemLabel}`);
+    rename.onclick = () => renameLayer(item);
+    row.append(icon, multi, button, toggle, lock, rename);
     host.append(row);
+}
+
+function renderLayerGroup(group, items, host, search) {
+  const groupMatches = group.name.toLocaleLowerCase().includes(search);
+  const matchingItems = search && !groupMatches
+    ? items.filter((item) => (item.name || label(item.id)).toLocaleLowerCase().includes(search))
+    : items;
+  if (search && !groupMatches && !matchingItems.length) return;
+
+  const row = document.createElement("div");
+  row.className = "tree-row tree-group-row";
+  row.dataset.layerGroupId = group.id;
+  const icon = document.createElement("span");
+  icon.className = "tree-icon";
+  icon.append(createIcon("folder"));
+  const name = document.createElement("button");
+  name.className = "tree-select";
+  name.textContent = group.name;
+  name.title = `Seleccionar las ${items.length} capas del grupo`;
+  name.onclick = () => {
+    selectedParts = new Set(items.map((item) => item.id));
+    selectedPart = items.at(-1)?.id || "";
+    activeHierarchyKind = "layers";
+    refresh();
+  };
+  const toggle = document.createElement("button");
+  toggle.className = "tree-toggle tree-group-collapse";
+  toggle.append(createIcon(group.collapsed && !search ? "chevron-right" : "chevron-down"));
+  toggle.title = group.collapsed ? "Expandir grupo" : "Contraer grupo";
+  toggle.setAttribute("aria-label", toggle.title);
+  toggle.setAttribute("aria-expanded", String(!group.collapsed || Boolean(search)));
+  toggle.onclick = () => {
+    group.collapsed = !group.collapsed;
+    renderTree();
+  };
+  const rename = document.createElement("button");
+  rename.className = "tree-toggle";
+  rename.append(createIcon("pencil"));
+  rename.title = `Renombrar grupo ${group.name}`;
+  rename.setAttribute("aria-label", rename.title);
+  rename.onclick = () => renameLayerGroup(group, rename);
+  const ungroup = document.createElement("button");
+  ungroup.className = "tree-toggle";
+  ungroup.append(createIcon("folder-minus"));
+  ungroup.title = "Desagrupar capas";
+  ungroup.setAttribute("aria-label", ungroup.title);
+  ungroup.onclick = () => ungroupLayers(group);
+  row.append(icon, name, toggle, rename, ungroup);
+  host.append(row);
+
+  if (!group.collapsed || search) matchingItems.forEach((item) => renderLayerRow(item, host));
+}
+
+function renderLayers(search, host) {
+  const orderedItems = [...project.parts].sort((left, right) => right.z - left.z);
+  const groups = layerGroups();
+  const groupIds = new Set(groups.map((group) => group.id));
+  const entries = [];
+  groups.forEach((group) => {
+    const items = orderedItems.filter((item) => item.groupId === group.id);
+    if (items.length) entries.push({ z: Math.max(...items.map((item) => item.z), -1), group, items });
   });
+  orderedItems.filter((item) => !item.groupId || !groupIds.has(item.groupId)).forEach((item) => {
+    entries.push({ z: item.z, item });
+  });
+  entries.sort((left, right) => right.z - left.z);
+  entries.forEach((entry) => {
+    if (entry.group) renderLayerGroup(entry.group, entry.items, host, search);
+    else if ((entry.item.name || label(entry.item.id)).toLocaleLowerCase().includes(search)) renderLayerRow(entry.item, host);
+  });
+}
+
+function uniqueDuplicateName(name, existingNames) {
+  const counts = new Map();
+  existingNames.forEach((existingName) => counts.set(existingName, (counts.get(existingName) || 0) + 1));
+  if (!counts.has(name)) return name;
+  let suffix = counts.get(name) + 1;
+  let candidate = `${name} ${suffix}`;
+  while (counts.has(candidate)) candidate = `${name} ${++suffix}`;
+  return candidate;
+}
+
+function renameLayer(item) {
+  const row = document.querySelector(`[data-hierarchy-kind="layers"] [data-hierarchy-id="${CSS.escape(item.id)}"]`);
+  const nameButton = row?.querySelector(".tree-select");
+  if (!row || !nameButton || row.querySelector(".tree-rename-input")) return;
+  const input = document.createElement("input");
+  input.className = "tree-rename-input";
+  input.type = "text";
+  input.maxLength = 80;
+  input.value = item.name || item.id;
+  input.setAttribute("aria-label", `Nuevo nombre para ${item.name || item.id}`);
+  let finished = false;
+  const finish = (save) => {
+    if (finished) return;
+    finished = true;
+    if (save) commitLayerName(item, input.value);
+    renderTree();
+    if (save) refresh();
+  };
+  input.onkeydown = (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      finish(true);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      finish(false);
+    }
+  };
+  input.onblur = () => finish(true);
+  nameButton.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
+function commitLayerName(item, requestedName) {
+  const name = String(requestedName).trim().slice(0, 80);
+  if (!name) return status("El nombre de la capa no puede estar vacío");
+  const uniqueName = uniqueDuplicateName(name, project.parts
+    .filter((candidate) => candidate.id !== item.id)
+    .map((candidate) => candidate.name || candidate.id));
+  item.name = uniqueName;
+  const asset = project.assets?.find((candidate) => candidate.id === item.assetId);
+  if (asset) {
+    const extension = asset.name.match(/\.[^.]+$/)?.[0] || "";
+    asset.name = `${safePngFilename(uniqueName)}${extension}`;
+  }
+  commit(uniqueName === name ? "Capa renombrada" : `Capa renombrada como ${uniqueName} para evitar duplicados`);
+}
+
+function renameLayerGroup(group, nameButton) {
+  const input = document.createElement("input");
+  input.className = "tree-rename-input";
+  input.type = "text";
+  input.maxLength = 80;
+  input.value = group.name;
+  input.setAttribute("aria-label", `Nuevo nombre para el grupo ${group.name}`);
+  let finished = false;
+  const finish = (save) => {
+    if (finished) return;
+    finished = true;
+    if (save) {
+      const name = input.value.trim().slice(0, 80);
+      if (!name) status("El nombre del grupo no puede estar vacío");
+      else {
+        group.name = uniqueDuplicateName(name, layerGroups().filter((item) => item.id !== group.id).map((item) => item.name));
+        commit("Grupo de capas renombrado");
+      }
+    }
+    renderTree();
+  };
+  input.onkeydown = (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      finish(true);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      finish(false);
+    }
+  };
+  input.onblur = () => finish(true);
+  nameButton.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
+function pruneLayerGroups() {
+  const nonEmptyGroupIds = new Set(project.parts.map((item) => item.groupId).filter(Boolean));
+  project.layerGroups = layerGroups().filter((group) => nonEmptyGroupIds.has(group.id));
+}
+
+function createLayerGroup() {
+  const ids = hierarchySelection("layers");
+  if (ids.length < 2) return status("Selecciona al menos dos capas para agruparlas");
+  const usedIds = new Set(layerGroups().map((group) => group.id));
+  const groupNumber = layerGroups().length + 1;
+  const id = uniqueId(`grupo_${groupNumber}`, usedIds);
+  const name = uniqueDuplicateName(`Grupo ${groupNumber}`, layerGroups().map((group) => group.name));
+  const group = { id, name, collapsed: false };
+  layerGroups().push(group);
+  project.parts.forEach((item) => {
+    if (ids.includes(item.id)) item.groupId = id;
+  });
+  pruneLayerGroups();
+  commit(`${ids.length} capas agrupadas en ${name}`);
+  refresh();
+}
+
+function ungroupLayers(group) {
+  project.parts.forEach((item) => {
+    if (item.groupId === group.id) delete item.groupId;
+  });
+  pruneLayerGroups();
+  commit(`Grupo ${group.name} deshecho`);
+  refresh();
+}
+
+function hierarchySelection(kind) {
+  if (kind === "layers") return [...selectedParts].filter((id) => project.parts.some((item) => item.id === id));
+  const validTargets = new Set(animationTargets());
+  return [...selectedTargets].filter((target) => validTargets.has(target));
+}
+
+function visibleHierarchyItems(kind) {
+  const panel = document.querySelector(`[data-hierarchy-kind="${kind}"]`);
+  return [...(panel?.querySelectorAll("[data-hierarchy-tree] .tree-row") || [])]
+    .map((row) => row.dataset.hierarchyId);
+}
+
+function applyHierarchySelection(kind, ids) {
+  if (kind === "layers") {
+    selectedParts = new Set(ids);
+    if (ids.length) selectedPart = ids.at(-1);
+    else selectedPart = project.parts.at(-1)?.id || "";
+  } else {
+    selectedTargets = new Set(ids);
+    selectedTarget = ids.at(-1) || "rig";
+    selectedKeys.clear();
+  }
+}
+
+function selectHierarchyItem(kind, id, event) {
+  const order = visibleHierarchyItems(kind);
+  const ctrl = event.ctrlKey || event.metaKey;
+  const shift = event.shiftKey;
+  hierarchyFocus[kind] = id;
+  if (shift) {
+    const anchor = hierarchyAnchors[kind] || hierarchySelection(kind)[0] || id;
+    if (!hierarchyAnchors[kind]) hierarchyAnchors[kind] = anchor;
+    const start = order.indexOf(anchor);
+    const end = order.indexOf(id);
+    if (start >= 0 && end >= 0) {
+      const range = order.slice(Math.min(start, end), Math.max(start, end) + 1);
+      applyHierarchySelection(kind, ctrl ? [...new Set([...hierarchySelection(kind), ...range])] : range);
+    } else {
+      applyHierarchySelection(kind, ctrl ? [...new Set([...hierarchySelection(kind), id])] : [id]);
+    }
+  } else if (ctrl) {
+    const selected = new Set(hierarchySelection(kind));
+    if (selected.has(id)) selected.delete(id);
+    else selected.add(id);
+    applyHierarchySelection(kind, [...selected]);
+    hierarchyAnchors[kind] = id;
+  } else {
+    applyHierarchySelection(kind, [id]);
+    hierarchyAnchors[kind] = id;
+  }
+  activeHierarchyKind = kind;
+  refresh();
+  const panel = document.querySelector(`[data-hierarchy-kind="${kind}"]`);
+  [...(panel?.querySelectorAll("[data-hierarchy-tree] .tree-row") || [])]
+    .find((row) => row.dataset.hierarchyId === id)?.querySelector(".tree-select")?.focus({ preventScroll: true });
+}
+
+function extendHierarchySelectionByArrow(kind, direction) {
+  const order = visibleHierarchyItems(kind);
+  if (!order.length) return false;
+  const current = hierarchyFocus[kind] || hierarchySelection(kind).at(-1) || order[0];
+  const index = order.indexOf(current);
+  const next = order[Math.max(0, Math.min(order.length - 1, (index < 0 ? 0 : index) + direction))];
+  if (!next) return false;
+  selectHierarchyItem(kind, next, { shiftKey: true, ctrlKey: false, metaKey: false });
+  return true;
+}
+
+function askDuplicateChoice(kind, name) {
+  const dialog = $("duplicate-dialog");
+  const elementType = kind === "layers" ? "una capa o archivo" : kind === "skeleton" ? "una articulación" : "una pista";
+  $("duplicate-copy").textContent = `Ya existe ${elementType} con el nombre “${name}”. ¿Qué deseas hacer?`;
+  $("duplicate-apply-all").checked = false;
+  duplicateDialogChoice = "cancel";
+  dialog.showModal();
+  return new Promise((resolve) => {
+    duplicateDialogResolve = (choice) => resolve({
+      choice,
+      applyToAll: $("duplicate-apply-all").checked
+    });
+  });
+}
+
+async function resolveDuplicateNames(kind, incomingNames, existingNames) {
+  const reservedNames = new Set(existingNames);
+  const counts = new Map();
+  existingNames.forEach((name) => counts.set(name, (counts.get(name) || 0) + 1));
+  const names = [];
+  const choices = [];
+  const conflictingNames = new Set();
+  const incomingCounts = new Map();
+  let applyChoiceToAll = null;
+
+  for (const incomingName of incomingNames) {
+    const hasConflict = reservedNames.has(incomingName);
+    let choice = "none";
+    if (hasConflict) {
+      conflictingNames.add(incomingName);
+      if (applyChoiceToAll) {
+        choice = applyChoiceToAll;
+      } else {
+        const response = await askDuplicateChoice(kind, incomingName);
+        if (response.choice === "cancel") return null;
+        choice = response.choice;
+        if (response.applyToAll) applyChoiceToAll = choice;
+      }
+    }
+
+    let resolvedName = incomingName;
+    if (choice === "keep") {
+      let suffix = (counts.get(incomingName) || 0) + 1;
+      resolvedName = `${incomingName} ${suffix}`;
+      while (reservedNames.has(resolvedName)) {
+        resolvedName = `${incomingName} ${++suffix}`;
+      }
+      counts.set(incomingName, suffix);
+    } else if (choice === "replace") {
+      counts.set(incomingName, (incomingCounts.get(incomingName) || 0) + 1);
+    } else {
+      counts.set(incomingName, (counts.get(incomingName) || 0) + 1);
+    }
+    names.push(resolvedName);
+    choices.push(choice);
+    reservedNames.add(resolvedName);
+    incomingCounts.set(incomingName, (incomingCounts.get(incomingName) || 0) + 1);
+  }
+  return { names, choices, conflictingNames: [...conflictingNames] };
+}
+
+function removeLayerItems(ids) {
+  const removed = project.parts.filter((item) => ids.has(item.id));
+  project.parts = project.parts.filter((item) => !ids.has(item.id));
+  removed.forEach((item) => {
+    delete images[item.id];
+    lockedParts.delete(item.id);
+  });
+  const usedAssetIds = new Set(project.parts.map((item) => item.assetId));
+  project.assets = project.assets.filter((asset) => usedAssetIds.has(asset.id));
+  pruneLayerGroups();
+  normalizeLayerOrder();
+}
+
+function updateMultiSelectionMenu(panel, kind) {
+  const menu = panel.querySelector("[data-multi-menu]");
+  const selection = hierarchySelection(kind);
+  menu.hidden = selection.length < 2;
+  const items = kind === "layers"
+    ? selection.map((id) => project.parts.find((item) => item.id === id))
+    : selection;
+  const visibilityState = kind === "layers"
+    ? items.every((item) => item.visible)
+    : items.every((id) => !hiddenTargets.has(id));
+  const lockState = kind === "layers"
+    ? items.every((item) => lockedParts.has(item.id))
+    : items.every((id) => lockedTargets.has(id));
+  const visibilityButton = menu.querySelector('[data-selection-action="visibility"]');
+  visibilityButton.title = visibilityState ? "Ocultar elementos seleccionados" : "Mostrar elementos seleccionados";
+  visibilityButton.setAttribute("aria-label", visibilityButton.title);
+  visibilityButton.querySelector("i, svg")?.replaceWith(createIcon(visibilityState ? "eye-off" : "eye"));
+  const lockButton = menu.querySelector('[data-selection-action="lock"]');
+  lockButton.title = lockState ? "Desbloquear elementos seleccionados" : "Bloquear elementos seleccionados";
+  lockButton.setAttribute("aria-label", lockButton.title);
+  lockButton.querySelector("i, svg")?.replaceWith(createIcon(lockState ? "lock-keyhole-open" : "lock-keyhole"));
+  menu.querySelector('[data-selection-action="paste"]').disabled = hierarchyClipboard?.kind !== kind;
+  const groupButton = panel.querySelector("#group-layers");
+  if (groupButton) groupButton.disabled = selection.length < 2;
+  refreshIcons(menu);
+}
+
+function copyHierarchySelection(kind) {
+  const ids = hierarchySelection(kind);
+  if (!ids.length) return status("Selecciona elementos para copiarlos");
+  if (kind === "layers") {
+    hierarchyClipboard = {
+      kind,
+      items: ids.map((id) => {
+        const item = project.parts.find((candidate) => candidate.id === id);
+        const asset = project.assets.find((candidate) => candidate.id === item.assetId);
+        return { item: structuredClone(item), asset: asset ? structuredClone(asset) : null };
+      })
+    };
+  } else if (kind === "skeleton") {
+    const bones = project.rig.bones.filter((bone) => ids.includes(bone.id));
+    if (!bones.length) return status("La selección no contiene articulaciones copiables");
+    hierarchyClipboard = {
+      kind,
+      items: bones.map((bone) => ({
+        bone: structuredClone(bone),
+        keys: structuredClone(project.clip.animation.keys[bone.id] || [])
+      }))
+    };
+  } else {
+    hierarchyClipboard = {
+      kind,
+      items: ids.map((target) => ({
+        target,
+        keys: structuredClone(project.clip.animation.keys[target] || [])
+      }))
+    };
+  }
+  renderTree();
+  status(`${ids.length} elementos copiados`);
+}
+
+async function pasteHierarchySelection(kind) {
+  if (hierarchyClipboard?.kind !== kind) return status("No hay elementos compatibles copiados");
+  if (hasDraft()) return status("Guarda o descarta el borrador antes de pegar");
+  if (kind === "layers") {
+    const names = hierarchyClipboard.items.map(({ item }) => item.name || item.id);
+    const resolution = await resolveDuplicateNames(kind, names, project.parts.map((item) => item.name || item.id));
+    if (!resolution) return status("Pegado cancelado");
+    const replaceNames = new Set(names.filter((name, index) => resolution.choices[index] === "replace"));
+    if (replaceNames.size) {
+      const conflicts = new Set(project.parts
+        .filter((item) => replaceNames.has(item.name || item.id))
+        .map((item) => item.id));
+      removeLayerItems(conflicts);
+    }
+    const usedLayers = new Set(project.parts.map((item) => item.id));
+    const usedAssets = new Set(project.assets.map((asset) => asset.id));
+    const pasted = [];
+    hierarchyClipboard.items.forEach(({ item, asset }, index) => {
+      const layer = structuredClone(item);
+      const base = safeId(`${layer.id}_copia`, "capa_copia");
+      layer.id = uniqueId(base, usedLayers);
+      usedLayers.add(layer.id);
+      layer.name = resolution.names[index];
+      layer.z = project.parts.length;
+      if (asset) {
+        const assetCopy = structuredClone(asset);
+        assetCopy.id = uniqueId(`${asset.id}_copia`, usedAssets);
+        usedAssets.add(assetCopy.id);
+        const extension = assetCopy.name.match(/\.[^.]+$/)?.[0] || ".png";
+        assetCopy.name = `${layer.name}${extension}`;
+        layer.assetId = assetCopy.id;
+        project.assets.push(assetCopy);
+      }
+      project.parts.push(layer);
+      pasted.push(layer.id);
+    });
+    if (!pasted.length) return status("Los elementos copiados no contienen recursos para pegar");
+    selectedParts = new Set(pasted);
+    selectedPart = pasted.at(-1);
+    ensureImages();
+    normalizeLayerOrder();
+    commit(`${pasted.length} capa(s) pegadas`);
+  } else if (kind === "skeleton") {
+    const names = hierarchyClipboard.items.map(({ bone }) => bone.name || bone.id);
+    const resolution = await resolveDuplicateNames(kind, names, project.rig.bones.map((bone) => bone.name || bone.id));
+    if (!resolution) return status("Pegado cancelado");
+    const used = new Set(project.rig.bones.map((bone) => bone.id));
+    const idMap = new Map();
+    const replacements = new Map();
+    const reservedReplacementIds = new Set();
+    hierarchyClipboard.items.forEach(({ bone }, index) => {
+      const replacement = resolution.choices[index] === "replace"
+        ? project.rig.bones.find((candidate) => (candidate.name || candidate.id) === names[index] && !reservedReplacementIds.has(candidate.id))
+        : null;
+      if (replacement) {
+        idMap.set(bone.id, replacement.id);
+        replacements.set(bone.id, replacement);
+        reservedReplacementIds.add(replacement.id);
+      } else {
+        const id = uniqueId(safeId(resolution.names[index], "hueso"), used);
+        idMap.set(bone.id, id);
+        used.add(id);
+      }
+    });
+    const pasted = [];
+    hierarchyClipboard.items.forEach(({ bone, keys }, index) => {
+      const parent = idMap.get(bone.parent) || (bone.parent && bone.parent !== "rig" &&
+        !project.rig.bones.some((candidate) => candidate.id === bone.parent) ? null : bone.parent);
+      const nextBone = { ...structuredClone(bone), id: idMap.get(bone.id), name: resolution.names[index], parent };
+      const existing = replacements.get(bone.id);
+      if (existing) Object.assign(existing, nextBone);
+      else project.rig.bones.push(nextBone);
+      project.clip.animation.keys[nextBone.id] = structuredClone(keys);
+      if (project.clip.animation.requires.includes(bone.id) && !project.clip.animation.requires.includes(nextBone.id)) {
+        project.clip.animation.requires.push(nextBone.id);
+      }
+      pasted.push(nextBone.id);
+    });
+    if (!pasted.length) return status("Los elementos copiados no contienen huesos para pegar");
+    project.rig.id = project.clip.rig = project.clip.anatomy = "custom";
+    selectedTargets = new Set(pasted);
+    selectedTarget = pasted.at(-1);
+    commit(`${pasted.length} articulación(es) pegadas`);
+  } else {
+    const destinations = hierarchySelection("tracks");
+    const sources = hierarchyClipboard.items;
+    const targets = destinations.length
+      ? destinations
+      : sources.map((source) => source.target);
+    const names = targets.map((target) => label(target));
+    const resolution = await resolveDuplicateNames(kind, names, animationTargets().map((target) => label(target)));
+    if (!resolution) return status("Pegado cancelado");
+    const pastedTargets = [];
+    targets.forEach((target, index) => {
+      const source = sources[destinations.length === sources.length ? index : 0];
+      let destination = target;
+      if (resolution.choices[index] === "keep") {
+        const sourceBone = project.rig.bones.find((bone) => bone.id === target);
+        const id = uniqueId(safeId(resolution.names[index], "pista"), new Set(animationTargets()));
+        project.rig.bones.push({
+          ...(sourceBone ? structuredClone(sourceBone) : { parent: null, x: 0, y: 0 }),
+          id,
+          name: resolution.names[index]
+        });
+        destination = id;
+        pastedTargets.push(id);
+      } else {
+        pastedTargets.push(destination);
+      }
+      const frames = project.clip.animation.keys[destination] || (project.clip.animation.keys[destination] = []);
+      if (resolution.choices[index] === "replace") frames.splice(0, frames.length);
+      source.keys.forEach((frame) => {
+        const existing = frames.find((candidate) => candidate.t === frame.t);
+        if (existing) Object.assign(existing, structuredClone(frame));
+        else frames.push(structuredClone(frame));
+      });
+      frames.sort((left, right) => left.t - right.t);
+    });
+    if (resolution.choices.includes("keep")) project.rig.id = project.clip.rig = project.clip.anatomy = "custom";
+    selectedTargets = new Set(pastedTargets);
+    selectedTarget = pastedTargets.at(-1) || "rig";
+    commit(`${pastedTargets.length} pista(s) pegadas`);
+  }
+  refresh();
+}
+
+function setHierarchyVisibility(kind) {
+  const ids = hierarchySelection(kind);
+  const allVisible = kind === "layers"
+    ? ids.every((id) => project.parts.find((item) => item.id === id)?.visible)
+    : ids.every((id) => !hiddenTargets.has(id));
+  if (kind === "layers") {
+    project.parts.forEach((item) => {
+      if (ids.includes(item.id)) item.visible = !allVisible;
+    });
+    commit(allVisible ? "Capas ocultas" : "Capas mostradas");
+  } else {
+    ids.forEach((id) => allVisible ? hiddenTargets.add(id) : hiddenTargets.delete(id));
+  }
+  refresh();
+}
+
+function setHierarchyLock(kind) {
+  const ids = hierarchySelection(kind);
+  const allLocked = kind === "layers"
+    ? ids.every((id) => lockedParts.has(id))
+    : ids.every((id) => lockedTargets.has(id));
+  const targetSet = kind === "layers" ? lockedParts : lockedTargets;
+  ids.forEach((id) => allLocked ? targetSet.delete(id) : targetSet.add(id));
+  selectedKeys.clear();
+  refresh();
+  status(allLocked ? "Elementos desbloqueados" : "Elementos bloqueados");
+}
+
+function deleteHierarchySelection(kind) {
+  const ids = hierarchySelection(kind);
+  if (ids.length < 2) return status("Selecciona al menos dos elementos para eliminarlos");
+  if (!confirm(`¿Eliminar ${ids.length} elementos seleccionados de ${kind === "layers" ? "Capas" : kind === "tracks" ? "Pistas" : "Esqueleto"}?`)) return;
+  if (kind === "layers") {
+    const removed = project.parts.filter((item) => ids.includes(item.id));
+    project.parts = project.parts.filter((item) => !ids.includes(item.id));
+    removed.forEach((item) => {
+      delete images[item.id];
+      lockedParts.delete(item.id);
+      if (item.source === "asset" && !project.parts.some((candidate) => candidate.assetId === item.assetId)) {
+        project.assets = project.assets.filter((asset) => asset.id !== item.assetId);
+      }
+    });
+    selectedParts = new Set();
+    selectedPart = project.parts.at(-1)?.id || "";
+    pruneLayerGroups();
+    normalizeLayerOrder();
+  } else if (kind === "skeleton") {
+    const removeIds = new Set(ids.filter((id) => id !== "rig" && id !== "torso"));
+    if (!removeIds.size) return status("El rig raíz no se puede eliminar");
+    const parentById = rigParents();
+    project.rig.bones.forEach((bone) => {
+      if (removeIds.has(bone.id) || !removeIds.has(bone.parent)) return;
+      let parent = parentById[bone.parent];
+      while (parent && removeIds.has(parent)) parent = parentById[parent];
+      bone.parent = parent || null;
+    });
+    project.parts.forEach((item) => {
+      const target = partBoneId(item);
+      if (!removeIds.has(target)) return;
+      let parent = parentById[target];
+      while (parent && removeIds.has(parent)) parent = parentById[parent];
+      item.boneId = parent || "rig";
+    });
+    project.rig.bones = project.rig.bones.filter((bone) => !removeIds.has(bone.id));
+    removeIds.forEach((id) => {
+      delete project.clip.animation.keys[id];
+      project.clip.animation.requires = project.clip.animation.requires.filter((target) => target !== id);
+      hiddenTargets.delete(id);
+      lockedTargets.delete(id);
+    });
+    selectedTargets = new Set();
+    selectedTarget = "rig";
+    project.rig.id = project.clip.rig = project.clip.anatomy = "custom";
+  } else {
+    ids.forEach((target) => {
+      delete project.clip.animation.keys[target];
+      project.clip.animation.requires = project.clip.animation.requires.filter((required) => required !== target);
+      hiddenTargets.delete(target);
+      lockedTargets.delete(target);
+    });
+    selectedTargets = new Set();
+    selectedTarget = "rig";
+    selectedKeys.clear();
+  }
+  commit(`${ids.length} elementos eliminados`);
+  refresh();
+}
+
+function clearHierarchySelection(kind) {
+  if (kind === "layers") {
+    selectedParts.clear();
+    selectedPart = project.parts.at(-1)?.id || "";
+  } else {
+    selectedTargets.clear();
+    selectedTarget = "rig";
+    selectedKeys.clear();
+  }
+  refresh();
+  status("Selección cancelada");
 }
 
 function renderTree() {
@@ -1360,6 +2145,7 @@ function renderTree() {
       ? `${project.parts.length} capas reales · ${(project.assets || []).length} recursos importados`
       : `${project.rig?.name || project.clip.rig} · ${(project.rig?.bones || []).length} huesos · ${Object.keys(project.clip.animation.keys).length} pistas`;
     panel.querySelector("[data-hierarchy-meta]").textContent = description;
+    updateMultiSelectionMenu(panel, kind);
     refreshIcons(panel);
   });
 }
@@ -1376,7 +2162,9 @@ function renderInspector() {
       : "Importa una imagen para crear la primera capa"
     : selectedTargets.size > 1
       ? `Selección múltiple · Principal: ${label(selectedTarget)}`
-      : `Hueso · Objetivo: ${selectedTarget}`;
+      : selectedTargets.size
+        ? `Hueso · Objetivo: ${selectedTarget}`
+        : "Sin objetivo seleccionado";
   if (calibration) {
     const current = currentPart;
     $("part-name").value = current?.name || "";
@@ -1554,7 +2342,11 @@ function makeTrackRow(target) {
   trackLabel.className = `track-label${selectedTargets.has(target) ? " active" : ""}`;
   const button = document.createElement("button");
   button.textContent = label(target);
-  button.onclick = (event) => { selectAnimationTarget(target, event.shiftKey); refresh(); };
+  button.onclick = (event) => {
+    activeHierarchyKind = "tracks";
+    selectAnimationTarget(target, event.shiftKey);
+    refresh();
+  };
   trackLabel.append(button);
   const line = document.createElement("div");
   line.className = "track-line";
@@ -1722,44 +2514,213 @@ function readFileAsDataUrl(file) {
   });
 }
 
+function canvasToPngBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("No se pudo convertir una capa PSD a PNG"));
+    }, "image/png");
+  });
+}
+
+function safePngFilename(value) {
+  const filename = String(value || "").trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
+    .replace(/[. ]+$/g, "");
+  return filename || "capa";
+}
+
+function isPsdFile(file) {
+  return /\.psd$/i.test(file.name) || /^image\/(?:vnd\.adobe\.photoshop|psd)$/i.test(file.type);
+}
+
+function cropCanvasToVisiblePixels(canvas) {
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  const { data, width, height } = context.getImageData(0, 0, canvas.width, canvas.height);
+  let left = width;
+  let top = height;
+  let right = -1;
+  let bottom = -1;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (data[(y * width + x) * 4 + 3] === 0) continue;
+      left = Math.min(left, x);
+      top = Math.min(top, y);
+      right = Math.max(right, x);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  if (right < left || bottom < top) return null;
+  const cropped = document.createElement("canvas");
+  cropped.width = right - left + 1;
+  cropped.height = bottom - top + 1;
+  cropped.getContext("2d").drawImage(
+    canvas,
+    left, top, cropped.width, cropped.height,
+    0, 0, cropped.width, cropped.height
+  );
+  return { canvas: cropped, left, top };
+}
+
+async function extractPsdLayers(file, usedFilenames) {
+  const parser = await import("https://esm.sh/ag-psd@27.0.0?bundle");
+  const psd = parser.readPsd(await file.arrayBuffer());
+  const layers = [];
+  const visit = (children, parentVisible = true) => {
+    (children || []).forEach((layer) => {
+      const visible = parentVisible && !layer.hidden;
+      if (layer.children?.length) {
+        visit(layer.children, visible);
+      } else if (layer.canvas) {
+        layers.push({ layer, visible });
+      }
+    });
+  };
+  visit(psd.children);
+  if (!layers.length) throw new Error(`${file.name} no contiene capas con imagen`);
+
+  const outputLayers = [];
+  let expandedSize = 0;
+  let transparentLayers = 0;
+  for (const { layer, visible } of layers) {
+    const bounds = cropCanvasToVisiblePixels(layer.canvas);
+    if (!bounds) {
+      transparentLayers += 1;
+      continue;
+    }
+    const layerName = String(layer.name || "capa").replace(/\s/g, "_");
+    const layerBase = safePngFilename(layerName);
+    let filename = `${layerBase}.png`;
+    let suffix = 2;
+    while (usedFilenames.has(filename.toLowerCase())) filename = `${layerBase}_${suffix++}.png`;
+    usedFilenames.add(filename.toLowerCase());
+    const blob = await canvasToPngBlob(bounds.canvas);
+    expandedSize += blob.size;
+    if (expandedSize > 24 * 1024 * 1024) {
+      throw new Error(`${file.name} genera más de 24 MB en PNG; reduce el tamaño del documento`);
+    }
+    outputLayers.push({
+      name: layerName,
+      filename,
+      blob,
+      visible,
+      x: (Number(layer.left) || 0) + bounds.left + bounds.canvas.width / 2 - psd.width / 2,
+      y: (Number(layer.top) || 0) + bounds.top + bounds.canvas.height / 2 - psd.height / 2
+    });
+  }
+  return { layers: outputLayers, transparentLayers };
+}
+
 async function importImageLayers(files) {
-  const accepted = [...files].filter((file) => /^image\/(png|webp|jpeg)$/.test(file.type));
-  if (!accepted.length) return status("Selecciona imágenes PNG, WebP o JPEG");
+  const accepted = [...files].filter((file) =>
+    /^image\/(png|webp|jpeg)$/.test(file.type) || isPsdFile(file)
+  );
+  if (!accepted.length) return status("Selecciona imágenes PNG, WebP, JPEG o documentos PSD");
   const total = accepted.reduce((sum, file) => sum + file.size, 0);
-  if (total > 24 * 1024 * 1024) return status("Las imágenes superan 24 MB; reduce su tamaño antes de importarlas");
-  const usedAssets = new Set((project.assets || []).map((asset) => asset.id));
-  const usedLayers = new Set(project.parts.map((item) => item.id));
+  if (total > 24 * 1024 * 1024) return status("Los archivos superan 24 MB; reduce su tamaño antes de importarlos");
   const anchorId = selectedTarget !== "torso" && animationTargets().includes(selectedTarget) ? selectedTarget : "rig";
   const anchor = anchorId === "rig" ? { x: 0, y: 0 } : rigJoints()[anchorId] || { x: 0, y: 0 };
-  let lastLayer = null;
+  const importedLayers = [];
+  const usedFilenames = new Set();
+  let transparentLayers = 0;
+  let expandedSize = 0;
   for (const file of accepted) {
-    const base = safeId(file.name.replace(/\.[^.]+$/, ""), "capa");
+    if (isPsdFile(file)) {
+      const extracted = await extractPsdLayers(file, usedFilenames);
+      transparentLayers += extracted.transparentLayers;
+      for (const layer of extracted.layers) {
+        expandedSize += layer.blob.size;
+        importedLayers.push({
+          name: layer.name,
+          filename: layer.filename,
+          type: "image/png",
+          size: layer.blob.size,
+          src: await readFileAsDataUrl(layer.blob),
+          visible: layer.visible,
+          x: anchor.x + layer.x,
+          y: anchor.y + layer.y
+        });
+      }
+    } else {
+      importedLayers.push({
+        name: file.name.replace(/\.[^.]+$/, ""),
+        filename: file.name,
+        type: file.type,
+        size: file.size,
+        src: await readFileAsDataUrl(file),
+        visible: true,
+        x: anchor.x,
+        y: anchor.y
+      });
+      expandedSize += file.size;
+    }
+    if (expandedSize > 24 * 1024 * 1024) {
+      throw new Error("Los recursos importados superan 24 MB; reduce el tamaño antes de importarlos");
+    }
+  }
+  const resolution = await resolveDuplicateNames(
+    "layers",
+    importedLayers.map((item) => item.name),
+    project.parts.map((item) => item.name || item.id)
+  );
+  if (!resolution) return status("Importación cancelada");
+  const replaceNames = new Set(importedLayers
+    .map((item, index) => resolution.choices[index] === "replace" ? item.name : null)
+    .filter(Boolean));
+  if (replaceNames.size) {
+    const conflicts = new Set(project.parts
+      .filter((item) => replaceNames.has(item.name || item.id))
+      .map((item) => item.id));
+    removeLayerItems(conflicts);
+  }
+  const usedAssets = new Set((project.assets || []).map((asset) => asset.id));
+  const usedLayers = new Set(project.parts.map((item) => item.id));
+  importedLayers.forEach((item, index) => {
+    item.name = resolution.names[index];
+    const extension = item.filename.match(/\.[^.]+$/)?.[0] || (item.type === "image/png" ? ".png" : "");
+    item.filename = `${safePngFilename(item.name)}${extension}`;
+  });
+  let lastLayer = null;
+  for (const imported of importedLayers) {
+    const base = safeId(imported.name, "capa");
     const assetId = uniqueId(`asset_${base}`, usedAssets);
     usedAssets.add(assetId);
     const layerId = uniqueId(base, usedLayers);
     usedLayers.add(layerId);
-    const src = await readFileAsDataUrl(file);
-    project.assets.push({ id: assetId, name: file.name, type: file.type, size: file.size, src });
+    project.assets.push({
+      id: assetId,
+      name: imported.filename,
+      type: imported.type,
+      size: imported.size,
+      src: imported.src
+    });
     lastLayer = {
       id: layerId,
-      name: file.name.replace(/\.[^.]+$/, ""),
+      name: imported.name,
       assetId,
       source: "asset",
       boneId: anchorId,
-      x: anchor.x,
-      y: anchor.y,
+      x: imported.x,
+      y: imported.y,
       rotation: 0,
       scaleX: 1,
       scaleY: 1,
-      visible: true,
+      visible: imported.visible,
       z: project.parts.length
     };
     project.parts.push(lastLayer);
   }
+  if (!lastLayer) {
+    return status(transparentLayers
+      ? `El PSD solo contiene capas totalmente transparentes (${transparentLayers}); no se importó ninguna`
+      : "No hay imágenes visibles para importar");
+  }
   normalizeLayerOrder();
   selectedPart = lastLayer.id;
+  selectedParts = new Set([lastLayer.id]);
   ensureImages();
-  commit(`${accepted.length} imagen(es) importadas como capas reales`);
+  commit(`${importedLayers.length} imagen(es) importadas como capas reales`);
+  if (transparentLayers) status(`Se omitieron ${transparentLayers} capa(s) PSD totalmente transparentes`);
   setMode("calibrador");
   showRightTab("layers");
 }
@@ -1769,6 +2730,7 @@ function removeSelectedLayer() {
   if (!current) return;
   if (!confirm(`¿Eliminar la capa “${current.name || current.id}”?`)) return;
   project.parts = project.parts.filter((item) => item.id !== current.id);
+  pruneLayerGroups();
   normalizeLayerOrder();
   delete images[current.id];
   if (current.source === "asset" && !project.parts.some((item) => item.assetId === current.assetId)) {
@@ -1776,6 +2738,7 @@ function removeSelectedLayer() {
   }
   lockedParts.delete(current.id);
   selectedPart = project.parts.at(-1)?.id || "";
+  selectedParts = selectedPart ? new Set([selectedPart]) : new Set();
   commit("Capa eliminada");
   refresh();
 }
@@ -1832,10 +2795,11 @@ function createNewProject() {
 
 function createProjectFromTemplate(templateId) {
   pause();
-  project = createTemplateProject(templateId);
+  project = { ...createTemplateProject(templateId), layerGroups: [] };
   normalizeLayerOrder();
   selectAnimationTarget("rig");
   selectedPart = project.parts.find((item) => partBoneId(item) === "rig")?.id || project.parts[0]?.id || "";
+  selectedParts = selectedPart ? new Set([selectedPart]) : new Set();
   selectedKeys.clear();
   hiddenTargets.clear();
   lockedTargets.clear();
@@ -1961,9 +2925,10 @@ function renderModeOverlay() {
   if (overlay.hidden) return;
   if (mode === "exportar") {
     const errors = gameValidationErrors();
-    overlay.innerHTML = `<h2>Exportar</h2><p class="muted">Kinetra v2 conserva rig, capas, imágenes y animación en un paquete JSON autocontenido para aplicaciones web. El clip heredado mantiene compatibilidad con juegos que ya usan cronicas-studio/v1.</p><div class="summary-grid"><div class="summary-card"><strong>Paquete Kinetra v2</strong><span>${project.rig.bones.length} huesos · ${project.parts.length} capas · ${project.assets.length} recursos importados</span><div class="button-row"><button id="download-project" class="small-button primary">Exportar .kinetra.json</button></div></div><div class="summary-card"><strong>Clip heredado v1</strong><span>${errors.length ? `${errors.length} observaciones` : "Validación superada"}</span><div class="button-row"><button id="download-clip" class="small-button" ${errors.length ? "disabled" : ""}>Exportar solo movimiento</button></div></div></div>${errors.length ? `<h3>Falta resolver para el clip v1</h3><ul class="validation-list">${errors.map((error) => `<li>${error}</li>`).join("")}</ul>` : ""}`;
+    overlay.innerHTML = `<h2>Exportar</h2><p class="muted">Kinetra v2 conserva rig, capas, imágenes y animación en un paquete JSON autocontenido para aplicaciones web. El clip heredado mantiene compatibilidad con juegos que ya usan cronicas-studio/v1.</p><div class="summary-grid"><div class="summary-card"><strong>Paquete Kinetra v2</strong><span>${project.rig.bones.length} huesos · ${project.parts.length} capas · ${project.assets.length} recursos importados</span><div class="button-row"><button id="download-project" class="small-button primary">Exportar .kinetra.json</button></div></div><div class="summary-card"><strong>Clip heredado v1</strong><span>${errors.length ? `${errors.length} observaciones` : "Validación superada"}</span><div class="button-row"><button id="download-clip" class="small-button" ${errors.length ? "disabled" : ""}>Exportar solo movimiento</button></div></div></div>${errors.length ? `<h3>Falta resolver para el clip v1</h3><ul class="validation-list">${errors.map((error) => `<li>${error}</li>`).join("")}</ul>` : ""}<div class="export-actions"><button id="cancel-export" class="small-button">Cancelar</button></div>`;
     $("download-project").onclick = exportProject;
     $("download-clip").onclick = exportClip;
+    $("cancel-export").onclick = () => setMode(lastEditorMode);
   } else {
     overlay.innerHTML = `<h2>Proyecto</h2><div class="summary-grid"><div class="summary-card"><strong>${project.clip.animation.label}</strong><span>ID: ${project.clip.animation.id}<br>Rig: ${project.rig.name}<br>${project.rig.bones.length} huesos · ${project.parts.length} capas<br>Estado: ${project.clip.animation.status}</span></div><div class="summary-card"><strong>Kinetra v2</strong><span>Los recursos importados, la jerarquía y las animaciones viajan juntos en la exportación para web.</span></div></div><div class="button-row"><button id="new-project" class="small-button danger">Crear proyecto nuevo</button></div>`;
     $("new-project").onclick = createNewProject;
@@ -1998,6 +2963,7 @@ function showRightTab(next) {
 
 function setMode(next) {
   if (next === "sprites") next = "calibrador";
+  if (mode !== "exportar" && mode !== "proyecto" && ["animador", "calibrador"].includes(mode)) lastEditorMode = mode;
   mode = next;
   document.querySelectorAll("[data-mode]").forEach((button) => button.classList.toggle("active", button.dataset.mode === next));
   $("workspace-menu-label").textContent = WORKSPACE_LABELS[next] || "Espacio";
@@ -2295,6 +3261,9 @@ function tick(now) {
 }
 
 function bindControls() {
+  document.addEventListener("pointerdown", (event) => {
+    if (!event.target.closest("[data-hierarchy-kind]")) activeHierarchyKind = null;
+  }, true);
   document.querySelectorAll("[data-mode]").forEach((button) => {
     button.onclick = () => {
       setMode(button.dataset.mode);
@@ -2303,6 +3272,22 @@ function bindControls() {
   });
   document.querySelectorAll("[data-tool]").forEach((button) => { button.onclick = () => setTool(button.dataset.tool); });
   document.querySelectorAll("[data-hierarchy-search]").forEach((input) => { input.oninput = renderTree; });
+  document.querySelectorAll("[data-hierarchy-kind]").forEach((panel) => {
+    const kind = panel.dataset.hierarchyKind;
+    panel.addEventListener("pointerdown", () => { activeHierarchyKind = kind; });
+    panel.querySelectorAll("[data-selection-action]").forEach((button) => {
+      button.onclick = () => {
+        activeHierarchyKind = kind;
+        const action = button.dataset.selectionAction;
+        if (action === "visibility") setHierarchyVisibility(kind);
+        else if (action === "lock") setHierarchyLock(kind);
+        else if (action === "copy") copyHierarchySelection(kind);
+        else if (action === "paste") pasteHierarchySelection(kind);
+        else if (action === "delete") deleteHierarchySelection(kind);
+        else if (action === "clear") clearHierarchySelection(kind);
+      };
+    });
+  });
   document.querySelectorAll("[data-view-toggle]").forEach((toggle) => {
     toggle.onchange = () => {
       $(toggle.dataset.viewToggle).checked = toggle.checked;
@@ -2336,9 +3321,30 @@ function bindControls() {
     };
   });
   document.querySelectorAll(".app-menu").forEach((menu) => {
+    const menuBar = menu.closest(".app-menu-bar");
     menu.addEventListener("toggle", () => {
-      if (!menu.open) return;
-      document.querySelectorAll(".app-menu[open]").forEach((other) => { if (other !== menu) other.removeAttribute("open"); });
+      if (menu.open) {
+        if (menuBar) appMenuHoverSwitch = true;
+        document.querySelectorAll(".app-menu[open]").forEach((other) => { if (other !== menu) other.removeAttribute("open"); });
+      } else if (menuBar && !menuBar.querySelector(".app-menu[open]")) {
+        appMenuHoverSwitch = false;
+      }
+    });
+    if (menuBar) {
+      menu.addEventListener("pointerenter", () => {
+        if (!appMenuHoverSwitch) return;
+        document.querySelectorAll(".app-menu[open]").forEach((other) => {
+          if (other !== menu) other.removeAttribute("open");
+        });
+        menu.open = true;
+      });
+    }
+    menu.addEventListener("pointerleave", (event) => {
+      if (event.relatedTarget instanceof Node && menu.contains(event.relatedTarget)) return;
+      menu.removeAttribute("open");
+      if (menuBar && !(event.relatedTarget instanceof Node && menuBar.contains(event.relatedTarget))) {
+        appMenuHoverSwitch = false;
+      }
     });
   });
   document.addEventListener("click", (event) => {
@@ -2349,6 +3355,17 @@ function bindControls() {
   });
   $("help-dialog-close").onclick = () => $("help-dialog").close();
   $("help-dialog").onclick = (event) => { if (event.target === $("help-dialog")) $("help-dialog").close(); };
+  document.querySelectorAll("[data-duplicate-choice]").forEach((button) => {
+    button.onclick = () => {
+      duplicateDialogChoice = button.dataset.duplicateChoice;
+      $("duplicate-dialog").close();
+    };
+  });
+  $("duplicate-dialog").addEventListener("close", () => {
+    const resolve = duplicateDialogResolve;
+    duplicateDialogResolve = null;
+    resolve?.(duplicateDialogChoice);
+  });
   $("new-project-close").onclick = () => $("new-project-dialog").close();
   $("new-project-dialog").onclick = (event) => { if (event.target === $("new-project-dialog")) $("new-project-dialog").close(); };
   document.querySelectorAll("[data-project-template]").forEach((button) => {
@@ -2367,6 +3384,7 @@ function bindControls() {
     saveLocal(hasDraft() ? "Proyecto guardado; el borrador del fotograma sigue pendiente" : "Proyecto guardado en este navegador");
   };
   $("import-layers").onclick = () => $("image-files").click();
+  $("group-layers").onclick = createLayerGroup;
   $("delete-layer").onclick = removeSelectedLayer;
   $("remove-part").onclick = removeSelectedLayer;
   $("add-bone").onclick = addBone;
@@ -2384,8 +3402,7 @@ function bindControls() {
   };
   $("part-name").onchange = () => {
     if (!part()) return;
-    part().name = $("part-name").value.trim() || part().id;
-    commit("Capa renombrada");
+    commitLayerName(part(), $("part-name").value);
     refresh();
   };
   $("part-bone").onchange = () => {
@@ -2527,6 +3544,7 @@ function bindControls() {
       normalizeLayerOrder();
       selectAnimationTarget("rig");
       selectedPart = project.parts.find((item) => item.id === "torso")?.id || project.parts[0]?.id || "";
+      selectedParts = selectedPart ? new Set([selectedPart]) : new Set();
       selectedKeys.clear();
       time = 0;
       clearDraft();
@@ -2567,7 +3585,7 @@ function bindCanvas() {
         if (score < 1.4 && score < distance) { chosen = item.id; distance = score; }
       });
       if (chosen) {
-        selectedPart = chosen;
+        selectLayer(chosen);
         if (!lockedParts.has(chosen)) interaction = { type: "piece", start: world, x: part().x, y: part().y, moved: false };
         refresh();
       }
@@ -2739,11 +3757,34 @@ function bindKeyboard() {
     const editing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "");
     if (editing) return;
     const command = event.ctrlKey || event.metaKey;
+    const activeSelection = activeHierarchyKind ? hierarchySelection(activeHierarchyKind) : [];
+    if (event.shiftKey && activeHierarchyKind && event.key === "ArrowUp") {
+      event.preventDefault();
+      extendHierarchySelectionByArrow(activeHierarchyKind, -1);
+      return;
+    }
+    if (event.shiftKey && activeHierarchyKind && event.key === "ArrowDown") {
+      event.preventDefault();
+      extendHierarchySelectionByArrow(activeHierarchyKind, 1);
+      return;
+    }
     if (command && event.key.toLowerCase() === "z" && event.shiftKey) { event.preventDefault(); redo(); return; }
     if (command && event.key.toLowerCase() === "z") { event.preventDefault(); undo(); return; }
     if (command && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); return; }
-    if (command && event.key.toLowerCase() === "c") { event.preventDefault(); copySelectedKeys(); }
-    else if (command && event.key.toLowerCase() === "v") { event.preventDefault(); pasteKeys(); }
+    if (command && event.key.toLowerCase() === "c") {
+      event.preventDefault();
+      if (activeHierarchyKind && activeSelection.length) copyHierarchySelection(activeHierarchyKind);
+      else copySelectedKeys();
+    }
+    else if (command && event.key.toLowerCase() === "v") {
+      if (activeHierarchyKind && hierarchyClipboard?.kind === activeHierarchyKind) {
+        event.preventDefault();
+        pasteHierarchySelection(activeHierarchyKind);
+      } else {
+        event.preventDefault();
+        pasteKeys();
+      }
+    }
     else if (command && event.key.toLowerCase() === "d") { event.preventDefault(); copySelectedKeys(); pasteKeys(time + 1000 / fps()); }
     else if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); deleteSelectedKeys(); }
     else if (event.key === " ") { event.preventDefault(); playing ? pause() : play(); }

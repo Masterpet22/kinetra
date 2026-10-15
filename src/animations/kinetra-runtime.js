@@ -155,6 +155,7 @@ export function createKinetraBundle(authoringProject) {
     rig: structuredClone(authoringProject.rig),
     assets: structuredClone(authoringProject.assets || []),
     layers: structuredClone(authoringProject.parts || []),
+    layerGroups: structuredClone(authoringProject.layerGroups || []),
     clips: [structuredClone(authoringProject.clip.animation)]
   };
   const errors = validateKinetraProject(bundle);

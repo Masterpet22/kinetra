@@ -22,6 +22,9 @@ assert.match(html, /id=["']timeline-zoom["']/, "El timeline debe tener zoom temp
 assert.match(css, /--left-dock:\s*270px/);
 assert.match(css, /--right-dock:\s*310px/);
 assert.match(css, /data-dock-zone=["']bottom["'][^}]*grid-column:\s*1\s*\/\s*-1/s);
+assert.match(css, /\.layout-divider-bottom\s*\{[^}]*bottom:\s*calc\(var\(--bottom-dock\)\s*-\s*5px\)/, "El separador de la línea de tiempo debe quedar alineado con el borde del panel");
+assert.match(css, /\.tree-row:focus-within\s*\{[^}]*outline:\s*2px solid var\(--cyan\)/, "El indicador cian de foco debe cubrir toda la fila de la capa");
+assert.match(css, /\.tree-row \.tree-select:focus-visible\s*\{[^}]*outline:\s*none/, "El control del nombre no debe limitar el indicador de foco a su propio ancho");
 assert.match(editor, /sampleStudioAnimation/);
 assert.match(editor, /studio-format\.js\?v=0\.11\.0/, "Los módulos internos deben invalidar la caché junto con el editor");
 assert.match(editor, /validateStudioProject/);
@@ -61,6 +64,43 @@ assert.match(editor, /event\.shiftKey && tool === "select"/, "Mayús debe añadi
 assert.match(editor, /solveTwoBoneIk\(/, "Las extremidades deben usar cinemática inversa al arrastrar manos o pies");
 assert.match(editor, /solveJointRotation\(/, "Los codos y rodillas deben rotar desde su hueso superior sin romper la cadena");
 assert.match(editor, /className = "tree-multi"/, "El árbol debe ofrecer un control explícito de selección múltiple");
+assert.match(editor, /rename\.append\(createIcon\("pencil"\)\)/, "Cada capa debe incluir un icono para renombrarla");
+assert.match(editor, /rename\.onclick = \(\) => renameLayer\(item\)/, "El icono de renombrar debe actuar sobre la capa correspondiente");
+assert.match(editor, /function uniqueDuplicateName\(name, existingNames\)/, "Renombrar debe seguir el sufijo numérico establecido para duplicados");
+assert.match(editor, /function renameLayer\(item\)/, "La capa debe poder renombrarse desde su icono");
+assert.match(editor, /input\.className = "tree-rename-input"/, "El renombrado debe abrir una caja de texto en la fila del elemento");
+assert.match(editor, /input\.onkeydown = \(event\) => \{[\s\S]*?event\.key === "Enter"[\s\S]*?event\.key === "Escape"/, "Enter debe confirmar y Escape cancelar el renombrado en línea");
+assert.doesNotMatch(editor, /window\.prompt/, "El renombrado no debe abrir una ventana del navegador");
+assert.match(editor, /const uniqueName = uniqueDuplicateName\(name, project\.parts/, "El renombrado debe evitar duplicar nombres de capa");
+assert.match(editor, /asset\.name = `\$\{safePngFilename\(uniqueName\)\}\$\{extension\}`/, "Renombrar una capa importada debe actualizar también el nombre de su recurso");
+for (const action of ["visibility", "lock", "copy", "paste", "delete", "clear"]) {
+  assert.equal((html.match(new RegExp(`data-selection-action=["']${action}["']`, "g")) || []).length, 3, `Cada panel debe ofrecer la acción múltiple ${action}`);
+}
+assert.equal((html.match(/data-selection-action=["'][^"']+["'][^>]*aria-label=/g) || []).length, 18, "Los botones de selección solo con iconos deben conservar etiquetas accesibles");
+assert.doesNotMatch(html, /data-selection-action=["'][^"']+["'][^>]*><i[^>]*><span>/, "El menú de selección debe mostrar solo iconos");
+assert.match(editor, /menu\.hidden = selection\.length < 2/, "El menú múltiple debe ocultarse con cero o un elemento seleccionado");
+assert.match(editor, /pasteHierarchySelection\(activeHierarchyKind\)/, "Ctrl+V debe pegar elementos copiados de la jerarquía activa");
+assert.match(editor, /function selectHierarchyItem\(/, "La jerarquía debe procesar los modificadores de selección estilo Explorer");
+assert.match(editor, /event\.ctrlKey \|\| event\.metaKey/, "Ctrl+clic debe alternar elementos individuales");
+assert.match(editor, /event\.shiftKey && activeHierarchyKind && event\.key === "ArrowUp"/, "Mayús+Flecha arriba debe extender la selección");
+assert.match(editor, /event\.shiftKey && activeHierarchyKind && event\.key === "ArrowDown"/, "Mayús+Flecha abajo debe extender la selección");
+assert.match(html, /id=["']duplicate-dialog["']/, "Los conflictos de nombres deben ofrecer opciones sin aceptar una decisión por defecto");
+assert.match(html, /id=["']duplicate-apply-all["'][^>]*type=["']checkbox["']/, "La decisión de un conflicto debe poder aplicarse a todos los duplicados");
+assert.match(html, /Aplicar esta decisión a los demás elementos duplicados/, "La casilla debe aclarar su alcance");
+for (const choice of ["replace", "keep", "cancel"]) {
+  assert.match(html, new RegExp(`data-duplicate-choice=["']${choice}["']`), `Debe ofrecer la decisión ${choice} para nombres duplicados`);
+}
+assert.match(editor, /function resolveDuplicateNames\(/, "La importación y el pegado deben resolver colisiones por nombre");
+assert.match(editor, /async function importImageLayers\(files\)[\s\S]*?await resolveDuplicateNames\(/, "La importación debe resolver duplicados antes de modificar el proyecto");
+assert.match(editor, /async function pasteHierarchySelection\(kind\)[\s\S]*?await resolveDuplicateNames\(kind, names, project\.parts/, "El pegado de capas debe resolver duplicados");
+assert.match(editor, /await resolveDuplicateNames\(kind, names, project\.rig\.bones/, "El pegado de articulaciones debe resolver duplicados");
+assert.match(editor, /await resolveDuplicateNames\(kind, names, animationTargets\(\)/, "El pegado de pistas debe resolver duplicados");
+assert.match(editor, /document\.querySelectorAll\("\[data-duplicate-choice\]"\)/, "Las opciones del diálogo deben resolverse al elegir");
+assert.match(editor, /for \(const incomingName of incomingNames\)[\s\S]*?await askDuplicateChoice\(kind, incomingName\)/, "Cada conflicto debe poder resolverse por separado");
+assert.match(editor, /if \(response\.applyToAll\) applyChoiceToAll = choice/, "La casilla debe reutilizar la decisión para los conflictos restantes");
+assert.match(editor, /const replaceNames = new Set\(importedLayers[\s\S]*?removeLayerItems\(conflicts\)/, "Reemplazar al importar debe eliminar las capas coincidentes antes de añadir las nuevas");
+assert.doesNotMatch(editor, /resolution\.choice\b/, "Cada elemento debe conservar su decisión individual");
+assert.match(editor, /duplicateDialogResolve = null;\s*resolve\?\.\(duplicateDialogChoice\)/, "Cerrar el diálogo debe finalizar la operación, incluso al cancelar");
 for (const panel of ["skeleton", "tracks", "layers", "inspector", "presets", "curves", "timeline"]) {
   assert.match(html, new RegExp(`data-panel=["']${panel}["']`), `Debe existir el panel móvil ${panel}`);
   assert.match(html, new RegExp(`data-panel-toggle=["']${panel}["']`), `El panel ${panel} debe poder activarse`);
@@ -80,17 +120,27 @@ assert.match(editor, /function startTutorial\(/, "Ayuda debe iniciar un recorrid
 assert.match(editor, /function positionTutorial\(/, "El tutorial debe resaltar el control explicado");
 assert.match(html, /id=["']help-dialog["']/, "Ayuda debe abrir los atajos en un modal independiente");
 assert.match(html, /id=["']preview-toggle["']/, "La vista previa debe poder activarse desde Ventana");
+assert.match(css, /scrollbar-color:\s*var\(--line-strong\)\s+var\(--panel-2\)/, "Las barras de desplazamiento deben usar colores de interfaz en Firefox");
+assert.match(css, /\*::\-webkit-scrollbar-thumb:hover\s*\{\s*background:\s*var\(--blue\)/, "El pulgar debe resaltar con el color de acento al pasar el puntero");
 for (const theme of ["noche", "grafito", "aurora"]) {
   assert.match(html, new RegExp(`value=["']${theme}["'][^>]*data-theme-choice`), `Debe existir el tema ${theme}`);
 }
 assert.match(editor, /function applyTheme\(/, "El tema elegido debe aplicarse y persistirse");
+assert.match(editor, /id="cancel-export" class="small-button">Cancelar<\/button>/, "La vista de exportación debe ofrecer cancelar");
+assert.match(editor, /\$\("cancel-export"\)\.onclick = \(\) => setMode\(lastEditorMode\)/, "Cancelar debe volver al último espacio de edición");
+assert.match(editor, /let lastEditorMode = "animador"/, "La vista de exportación debe tener un destino de cancelación predeterminado");
 assert.match(editor, /function figureBounds\(/, "La vista previa debe encuadrar los límites reales del personaje");
-assert.match(html, /id=["']image-files["'][^>]*multiple/, "Debe permitirse importar varias imágenes como capas");
+assert.match(html, /id=["']image-files["'][^>]*accept=["'][^"']*\.psd[^"']*["'][^>]*multiple/, "Debe permitirse importar varias imágenes y documentos PSD como capas");
 assert.match(html, /data-menu-command=["']import-images["']/, "Archivo debe ofrecer importación de imágenes");
 for (const id of ["part-name", "part-bone", "add-bone", "delete-bone", "bone-name", "bone-parent", "bone-x", "bone-y"]) {
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control genérico ${id}`);
 }
 assert.match(editor, /function importImageLayers\(/, "Las imágenes deben convertirse en recursos y capas reales");
+assert.match(editor, /function cropCanvasToVisiblePixels\(/, "Las capas PSD deben recortarse a sus píxeles no transparentes");
+assert.match(editor, /async function extractPsdLayers\(/, "Los PSD deben separarse por capas y convertirse a PNG");
+assert.match(editor, /const layerName = String\(layer\.name \|\| "capa"\)\.replace\(\/\\s\/g, "_"\)/, "Los espacios en blanco de nombres PSD deben convertirse en guiones bajos");
+assert.match(editor, /name: layerName,\s*filename,\s*blob/, "El nombre normalizado debe aplicarse a las capas PSD importadas");
+assert.doesNotMatch(editor, /fflate|downloadPsdLayersZip|capas-psd\.zip/, "La importación PSD no debe descargar un ZIP");
 assert.match(html, /id=["']new-project-dialog["']/, "Archivo > Nuevo debe abrir el selector de plantillas");
 for (const template of ["male", "female", "dog", "blank"]) {
   assert.match(html, new RegExp(`data-project-template=["']${template}["']`), `Debe ofrecerse la plantilla ${template}`);
@@ -100,8 +150,23 @@ assert.match(editor, /function layerSourceRect\(/, "El editor debe recortar las 
 assert.match(editor, /function portableAuthoringProject\(/, "La exportación debe incrustar también los recursos de demostración");
 assert.match(editor, /function ikChainFor\(/, "La cinemática inversa debe derivarse de cualquier rig personalizado");
 assert.match(editor, /function rigTree\(/, "La jerarquía visual debe generarse desde el rig del proyecto");
+assert.match(html, /id=["']group-layers["'][^>]*disabled/, "Capas debe ofrecer la creación de grupos");
+assert.match(editor, /function createLayerGroup\(/, "Debe poder crearse un grupo con las capas seleccionadas");
+assert.match(editor, /if \(ids\.length < 2\) return status\("Selecciona al menos dos capas para agruparlas"\)/, "Crear grupos requiere al menos dos capas");
+assert.match(editor, /item\.groupId = id/, "Las capas seleccionadas deben quedar vinculadas al nuevo grupo");
+assert.match(editor, /function renderLayerGroup\(/, "Los grupos deben aparecer como contenedores en el árbol de capas");
+assert.match(editor, /group\.collapsed && !search \? "chevron-right" : "chevron-down"/, "Los grupos deben poder contraerse y expandirse");
+assert.match(editor, /function ungroupLayers\(group\)/, "Debe ser posible desagrupar conservando las capas");
+assert.match(editor, /groupButton\.disabled = selection\.length < 2/, "El control de agrupación debe activarse solo con varias capas");
+assert.match(editor, /layerGroups: candidate\.layerGroups \|\| \[\]/, "Los grupos deben conservarse al abrir un proyecto");
 assert.match(editor, /createKinetraBundle/, "La exportación debe producir un paquete Kinetra v2 para runtimes web");
 assert.match(editor, /document\.addEventListener\(["']click["']/, "Los menús deben cerrarse al hacer clic fuera");
+assert.match(editor, /menu\.addEventListener\("pointerleave", \(event\) => \{[\s\S]*?menu\.removeAttribute\("open"\)/, "Los menús de aplicación deben cerrarse al salir con el cursor");
+assert.match(editor, /let appMenuHoverSwitch = false/, "El cambio por hover solo se activa después de abrir un menú");
+assert.match(editor, /menu\.addEventListener\("toggle", \(\) => \{[\s\S]*?if \(menu\.open\) \{\s*if \(menuBar\) appMenuHoverSwitch = true/, "Abrir un menú superior debe habilitar el cambio por hover");
+assert.match(editor, /menu\.addEventListener\("pointerenter", \(\) => \{\s*if \(!appMenuHoverSwitch\) return;[\s\S]*?menu\.open = true/, "Al estar el menú activo, pasar sobre otro encabezado debe cambiar el menú abierto");
+assert.match(editor, /menuBar\.contains\(event\.relatedTarget\)/, "Moverse entre encabezados no debe desactivar el modo de cambio por hover");
+assert.match(css, /\.app-menu-bar \.app-menu:not\(\[open\]\) > summary\s*\{[^}]*z-index:\s*241/s, "Los encabezados cerrados deben poder recibir hover aunque el desplegable actual los cubra");
 assert.match(html, /unpkg\.com\/lucide@1\.57\.0/, "La interfaz debe usar una versión fija de Lucide");
 assert.match(editor, /window\.lucide\?\.createIcons/, "Los iconos dinámicos deben usar Lucide");
 for (const kind of ["skeleton", "tracks", "layers"]) {
@@ -119,7 +184,18 @@ for (const zone of ["left", "right", "bottom"]) {
 }
 assert.match(editor, /function dockPanel\(/, "Las ventanas deben poder acoplarse a una zona");
 assert.match(editor, /function renderDockTabs\(/, "Las ventanas que comparten zona deben convertirse en pestañas");
+for (const zone of ["left", "right", "bottom"]) {
+  assert.match(html, new RegExp(`data-layout-divider=["']${zone}["']`), `Debe existir un divisor redimensionable para ${zone}`);
+}
+assert.match(editor, /document\.querySelectorAll\("\[data-layout-divider\]"\)/, "Los divisores deben responder al arrastre del puntero");
+assert.match(editor, /divider\.onpointermove = \(event\) => \{\s*if \(dividerDrag === zone\) resize\(event\)/, "El arrastre debe actualizar el tamaño del área");
+assert.match(editor, /sizes: layoutSizes/, "Los tamaños personalizados deben persistirse con la distribución");
+assert.match(css, /\.layout-divider-left, \.layout-divider-right[^}]*cursor:\s*col-resize/, "Los divisores verticales deben mostrar cursor de redimensionado");
+assert.match(css, /\.layout-divider-bottom[^}]*cursor:\s*row-resize/, "El divisor horizontal debe mostrar cursor de redimensionado");
 assert.match(editor, /dockTargetAt\(/, "El arrastre debe detectar zonas de acoplamiento");
+assert.match(editor, /const PANEL_DRAG_THRESHOLD = 8/, "Un clic accidental no debe desacoplar un panel");
+assert.match(editor, /Math\.hypot\(deltaX, deltaY\) < PANEL_DRAG_THRESHOLD/, "El panel solo debe desacoplarse tras superar el umbral mínimo de arrastre");
+assert.match(editor, /if \(!completed\.active\) \{\s*updateDockOverlay\(null\);\s*return;/, "Soltar antes del umbral debe dejar el panel acoplado");
 assert.match(css, /\.studio-shell\s*\{[^}]*position:\s*relative/s, "El escritorio debe contener las ventanas flotantes");
 assert.match(css, /\.floating-panel\s*\{[^}]*position:\s*absolute\s*!important/s, "Las ventanas deben moverse dentro del escritorio, no respecto al navegador");
 assert.doesNotMatch(css, /\.floating-panel\s*\{[^}]*position:\s*fixed/s, "Una ventana interna no debe escapar del espacio de trabajo");

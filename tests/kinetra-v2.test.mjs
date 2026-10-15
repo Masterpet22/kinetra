@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   KINETRA_SCHEMA,
+  createKinetraBundle,
   resolveKinetraFrame,
   resolveKinetraRig,
   sampleKinetraClip,
@@ -20,7 +21,8 @@ const project = {
     ]
   },
   assets: [{ id: "mano_png", name: "mano.png", type: "image/png", src: "data:image/png;base64,AA==" }],
-  layers: [{ id: "mano_capa", name: "Mano", assetId: "mano_png", source: "asset", boneId: "mano", x: 120, y: 0, scaleX: 1, scaleY: 1, rotation: 0, visible: true, z: 0, crop: { x: 0, y: 0, width: 32, height: 48 } }],
+  layers: [{ id: "mano_capa", name: "Mano", assetId: "mano_png", source: "asset", boneId: "mano", x: 120, y: 0, scaleX: 1, scaleY: 1, rotation: 0, visible: true, z: 0, groupId: "extremidad", crop: { x: 0, y: 0, width: 32, height: 48 } }],
+  layerGroups: [{ id: "extremidad", name: "Extremidad", collapsed: false }],
   clips: [{ id: "saludo", duration: 1000, loop: false, keys: { brazo: [{ t: 0, angle: 0 }, { t: 1000, angle: 90 }] } }]
 };
 
@@ -35,6 +37,14 @@ assert.equal(frame.layers[0].assetId, "mano_png");
 assert.equal(frame.layers[0].asset.src, "data:image/png;base64,AA==");
 assert.deepEqual(frame.layers[0].crop, { x: 0, y: 0, width: 32, height: 48 });
 assert.equal(frame.layers[0].matrix.length, 6);
+assert.deepEqual(createKinetraBundle({
+  clip: { animation: project.clips[0] },
+  fps: project.fps,
+  rig: project.rig,
+  assets: project.assets,
+  parts: project.layers,
+  layerGroups: project.layerGroups
+}).layerGroups, project.layerGroups, "La exportación debe conservar la organización de grupos del editor");
 
 const invalid = structuredClone(project);
 invalid.layers[0].boneId = "fantasma";

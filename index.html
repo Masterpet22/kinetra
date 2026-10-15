@@ -129,6 +129,14 @@
         <input class="search" data-hierarchy-search type="search" placeholder="Buscar articulación…">
         <div class="tree" data-hierarchy-tree></div>
       </div>
+      <div class="multi-selection-menu" data-multi-menu hidden>
+        <button class="small-button" data-selection-action="visibility" title="Ocultar elementos seleccionados" aria-label="Ocultar elementos seleccionados"><i data-lucide="eye-off"></i></button>
+        <button class="small-button" data-selection-action="lock" title="Bloquear elementos seleccionados" aria-label="Bloquear elementos seleccionados"><i data-lucide="lock-keyhole"></i></button>
+        <button class="small-button" data-selection-action="copy" title="Copiar selección (Ctrl+C)" aria-label="Copiar selección"><i data-lucide="copy"></i></button>
+        <button class="small-button" data-selection-action="paste" title="Pegar elementos copiados (Ctrl+V)" aria-label="Pegar elementos copiados"><i data-lucide="clipboard-paste"></i></button>
+        <button class="small-button danger" data-selection-action="delete" title="Eliminar elementos seleccionados" aria-label="Eliminar elementos seleccionados"><i data-lucide="trash-2"></i></button>
+        <button class="small-button" data-selection-action="clear" title="Cancelar selección" aria-label="Cancelar selección"><i data-lucide="x"></i></button>
+      </div>
       <div class="tree-actions"><button id="add-bone" class="small-button"><i data-lucide="plus"></i> Hueso</button><button id="delete-bone" class="small-button danger"><i data-lucide="trash-2"></i></button></div>
       <div class="tree-meta" data-hierarchy-meta>Rig humanoide · Proyecto local</div>
     </aside>
@@ -136,13 +144,29 @@
     <aside class="panel left-panel hierarchy-panel" data-panel="tracks" data-hierarchy-kind="tracks">
       <div class="panel-window-bar" data-panel-handle="tracks"><span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="tracks"></span><span class="panel-window-actions"><button data-panel-float="tracks" aria-label="Desacoplar o acoplar Pistas"><i data-lucide="external-link"></i></button><button data-panel-close="tracks" aria-label="Ocultar Pistas"><i data-lucide="x"></i></button></span></div>
       <div class="panel-body"><input class="search" data-hierarchy-search type="search" placeholder="Buscar pista…"><div class="tree" data-hierarchy-tree></div></div>
+      <div class="multi-selection-menu" data-multi-menu hidden>
+        <button class="small-button" data-selection-action="visibility" title="Ocultar elementos seleccionados" aria-label="Ocultar elementos seleccionados"><i data-lucide="eye-off"></i></button>
+        <button class="small-button" data-selection-action="lock" title="Bloquear elementos seleccionados" aria-label="Bloquear elementos seleccionados"><i data-lucide="lock-keyhole"></i></button>
+        <button class="small-button" data-selection-action="copy" title="Copiar selección (Ctrl+C)" aria-label="Copiar selección"><i data-lucide="copy"></i></button>
+        <button class="small-button" data-selection-action="paste" title="Pegar elementos copiados (Ctrl+V)" aria-label="Pegar elementos copiados"><i data-lucide="clipboard-paste"></i></button>
+        <button class="small-button danger" data-selection-action="delete" title="Eliminar elementos seleccionados" aria-label="Eliminar elementos seleccionados"><i data-lucide="trash-2"></i></button>
+        <button class="small-button" data-selection-action="clear" title="Cancelar selección" aria-label="Cancelar selección"><i data-lucide="x"></i></button>
+      </div>
       <div class="tree-meta" data-hierarchy-meta></div>
     </aside>
 
     <aside class="panel left-panel hierarchy-panel" data-panel="layers" data-hierarchy-kind="layers">
       <div class="panel-window-bar" data-panel-handle="layers"><span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="layers"></span><span class="panel-window-actions"><button data-panel-float="layers" aria-label="Desacoplar o acoplar Capas"><i data-lucide="external-link"></i></button><button data-panel-close="layers" aria-label="Ocultar Capas"><i data-lucide="x"></i></button></span></div>
       <div class="panel-body"><input class="search" data-hierarchy-search type="search" placeholder="Buscar capa…"><div class="tree" data-hierarchy-tree></div></div>
-      <div class="tree-actions"><button id="import-layers" class="small-button primary"><i data-lucide="image-plus"></i> Importar</button><button id="delete-layer" class="small-button danger"><i data-lucide="trash-2"></i></button></div>
+      <div class="multi-selection-menu" data-multi-menu hidden>
+        <button class="small-button" data-selection-action="visibility" title="Ocultar elementos seleccionados" aria-label="Ocultar elementos seleccionados"><i data-lucide="eye-off"></i></button>
+        <button class="small-button" data-selection-action="lock" title="Bloquear elementos seleccionados" aria-label="Bloquear elementos seleccionados"><i data-lucide="lock-keyhole"></i></button>
+        <button class="small-button" data-selection-action="copy" title="Copiar selección (Ctrl+C)" aria-label="Copiar selección"><i data-lucide="copy"></i></button>
+        <button class="small-button" data-selection-action="paste" title="Pegar elementos copiados (Ctrl+V)" aria-label="Pegar elementos copiados"><i data-lucide="clipboard-paste"></i></button>
+        <button class="small-button danger" data-selection-action="delete" title="Eliminar elementos seleccionados" aria-label="Eliminar elementos seleccionados"><i data-lucide="trash-2"></i></button>
+        <button class="small-button" data-selection-action="clear" title="Cancelar selección" aria-label="Cancelar selección"><i data-lucide="x"></i></button>
+      </div>
+      <div class="tree-actions"><button id="group-layers" class="small-button" title="Agrupar capas seleccionadas" aria-label="Agrupar capas seleccionadas" disabled><i data-lucide="folder-plus"></i></button><button id="import-layers" class="small-button primary"><i data-lucide="image-plus"></i> Importar</button><button id="delete-layer" class="small-button danger"><i data-lucide="trash-2"></i></button></div>
       <div class="tree-meta" data-hierarchy-meta></div>
     </aside>
 
@@ -305,6 +329,9 @@
       <div class="dock-target dock-target-right" data-dock-target="right"><span>Acoplar a la derecha</span></div>
       <div class="dock-target dock-target-bottom" data-dock-target="bottom"><span>Acoplar abajo</span></div>
     </div>
+    <button class="layout-divider layout-divider-left" data-layout-divider="left" role="separator" aria-orientation="vertical" aria-label="Cambiar ancho del panel izquierdo" aria-valuemin="170" aria-valuemax="600" title="Arrastra para cambiar el ancho del panel izquierdo"></button>
+    <button class="layout-divider layout-divider-right" data-layout-divider="right" role="separator" aria-orientation="vertical" aria-label="Cambiar ancho del panel derecho" aria-valuemin="200" aria-valuemax="600" title="Arrastra para cambiar el ancho del panel derecho"></button>
+    <button class="layout-divider layout-divider-bottom" data-layout-divider="bottom" role="separator" aria-orientation="horizontal" aria-label="Cambiar altura de la línea de tiempo" aria-valuemin="150" aria-valuemax="600" title="Arrastra para cambiar la altura de la línea de tiempo"></button>
   </main>
 
   <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-dialog-title">
@@ -337,6 +364,19 @@
     </div>
   </dialog>
 
+  <dialog id="duplicate-dialog" class="help-dialog duplicate-dialog" aria-labelledby="duplicate-title">
+    <div class="help-dialog-header"><div><span class="eyebrow">Nombre duplicado</span><h2 id="duplicate-title">Ya existe un elemento con este nombre</h2></div></div>
+    <div class="help-dialog-body">
+      <p id="duplicate-copy"></p>
+      <label class="duplicate-apply-all"><input id="duplicate-apply-all" type="checkbox"> Aplicar esta decisión a los demás elementos duplicados</label>
+      <div class="duplicate-actions">
+        <button class="small-button primary" data-duplicate-choice="replace">Reemplazar el existente</button>
+        <button class="small-button" data-duplicate-choice="keep">Mantener todos</button>
+        <button class="small-button" data-duplicate-choice="cancel">Cancelar</button>
+      </div>
+    </div>
+  </dialog>
+
   <div id="tutorial-overlay" class="tutorial-overlay" hidden aria-live="polite">
     <div id="tutorial-spotlight" class="tutorial-spotlight"></div>
     <section id="tutorial-card" class="tutorial-card" role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
@@ -348,7 +388,7 @@
   </div>
 
   <input id="file" type="file" accept=".json,application/json">
-  <input id="image-files" type="file" accept="image/png,image/webp,image/jpeg" multiple>
+  <input id="image-files" type="file" accept="image/png,image/webp,image/jpeg,.psd,image/vnd.adobe.photoshop,image/psd" multiple>
   <script type="module" src="./src/studio/editor.js?v=0.11.0"></script>
 </body>
 </html>
