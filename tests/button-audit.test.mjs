@@ -21,7 +21,7 @@ for (const tag of buttons) {
   assert.match(editor, directHandler, `El botón #${id} debe tener un manejador explícito`);
 }
 
-for (const id of ["download-project", "download-clip", "cancel-export", "new-project"]) {
+for (const id of ["download-project", "cancel-export", "new-project"]) {
   assert.match(editor, new RegExp(`id=["']${id}["']`), `Debe renderizarse el botón dinámico #${id}`);
   assert.match(editor, new RegExp(`\\$\\(["']${id}["']\\)\\.onclick\\s*=`), `El botón dinámico #${id} debe tener acción`);
 }

@@ -38,7 +38,7 @@ assert.equal(frame.layers[0].asset.src, "data:image/png;base64,AA==");
 assert.deepEqual(frame.layers[0].crop, { x: 0, y: 0, width: 32, height: 48 });
 assert.equal(frame.layers[0].matrix.length, 6);
 assert.deepEqual(createKinetraBundle({
-  clip: { animation: project.clips[0] },
+  clip: project.clips[0],
   fps: project.fps,
   rig: project.rig,
   assets: project.assets,
@@ -57,5 +57,9 @@ assert.match(validateKinetraProject(cyclic).join("\n"), /ciclo jerárquico/);
 const invalidClip = structuredClone(project);
 invalidClip.clips[0].keys.fantasma = [{ t: 0, x: 1 }];
 assert.match(validateKinetraProject(invalidClip).join("\n"), /no pertenece al rig/);
+
+const tracksClip = structuredClone(project);
+tracksClip.clips[0].tracks = [{ target: "brazo", duration: 100, to: { angle: 5 } }];
+assert.match(validateKinetraProject(tracksClip).join("\n"), /tracks no es compatible con Kinetra v2/);
 
 console.log("Pruebas del runtime Kinetra v2 superadas.");

@@ -3,20 +3,17 @@
  * Une calibración, autoría por fotogramas clave, timeline, historial y exportación.
  */
 import {
-  PUPPET_PART_JOINTS as PART_JOINTS,
-  PUPPET_TARGETS
+  PUPPET_PART_JOINTS as PART_JOINTS
 } from "../animations/rig.js?v=0.11.0";
 import { animationEase } from "../animations/runtime.js?v=0.11.0";
 import {
-  createStudioProject,
-  normalizeStudioProject,
-  parseStudioProject,
-  serializeStudioProject,
-  STUDIO_EASES,
-  validateStudioProject
+  createKinetraClip,
+  normalizeKinetraClip,
+  parseKinetraClip,
+  STUDIO_EASES
 } from "../animations/studio-format.js?v=0.11.0";
-import { sampleStudioAnimation } from "../animations/studio-runtime.js?v=0.11.0";
-import { createKinetraBundle } from "../animations/kinetra-runtime.js?v=0.11.0";
+import { sampleKinetraClip } from "../animations/studio-runtime.js?v=0.11.0";
+import { createKinetraBundle, validateKinetraProject } from "../animations/kinetra-runtime.js?v=0.11.0";
 import {
   collapseHierarchicalSelection,
   constrainedTranslation,
@@ -118,10 +115,10 @@ const TUTORIALS = Object.freeze({
     steps: [
       { target: "#workspace-menu", title: "Estás en Ensamblaje", copy: "Aquí ajustas los sprites sobre el esqueleto antes de animarlos." },
       { target: "#import-layers", panel: "layers", title: "Importa las piezas", copy: "Selecciona uno o varios PNG, WebP o JPEG. Cada archivo se convierte en un recurso y una capa independiente." },
-      { target: "[data-panel='layers'] .tree", panel: "layers", title: "Organiza capas reales", copy: "Renombra, ordena, oculta, bloquea o elimina cualquier pieza importada." },
+      { targets: ["[data-panel='layers']", "[data-panel='inspector']"], panel: "layers", title: "Organiza capas reales", copy: "Selecciona una capa en la columna izquierda y calibra sus propiedades en la columna derecha." },
       { target: "#canvas", title: "Coloca el sprite", copy: "Arrastra la pieza directamente sobre el personaje para alinearla con su articulación." },
       { target: "#add-bone", panel: "skeleton", title: "Construye tu esqueleto", copy: "Añade huesos desde la raíz o como hijos del hueso seleccionado. La jerarquía ya no depende del humanoide de ejemplo." },
-      { target: "#calibration-inspector", panel: "inspector", title: "Vincula y calibra", copy: "Asigna cada capa a un hueso y ajusta posición, rotación, escala, nombre, padre y pivote." }
+      { targets: ["[data-panel='layers']", "[data-panel='inspector']"], panel: "inspector", title: "Vincula y calibra", copy: "Elige una capa y revisa su vínculo, posición y transformaciones en el inspector." }
     ]
   },
   timeline: {
@@ -150,8 +147,7 @@ const TUTORIALS = Object.freeze({
     mode: "exportar",
     steps: [
       { target: "#mode-overlay", title: "Revisa el proyecto", copy: "Esta vista resume las piezas y pistas antes de crear los archivos finales." },
-      { target: "#download-project", title: "Exporta el personaje completo", copy: "El paquete .kinetra.json incluye imágenes, capas, rig y animación para continuar editando o cargarlo en un juego web." },
-      { target: "#download-clip", title: "Mantén proyectos heredados", copy: "El clip v1 se conserva para juegos antiguos que solo esperan el movimiento del humanoide original." }
+      { target: "#download-project", title: "Exporta el proyecto completo", copy: "El paquete Kinetra v2 incluye rig, capas, imágenes y animaciones en un único archivo." }
     ]
   }
 });
@@ -617,7 +613,7 @@ function bindPanels() {
     divider.setAttribute("aria-valuenow", String(Math.round(currentDockSize(divider.dataset.layoutDivider, shell))));
   });
 }
-function duration() { return project.clip.animation.duration; }
+function duration() { return project.clip.duration; }
 function fps() { return Number(project.fps || 24); }
 function part() { return project.parts.find((item) => item.id === selectedPart); }
 function selectedBone() { return project.rig?.bones?.find((item) => item.id === selectedTarget) || null; }
@@ -657,7 +653,7 @@ function selectLayer(id, append = false) {
   else selectedParts.add(id);
   selectedPart = selectedParts.has(id) ? id : [...selectedParts].at(-1) || project.parts.at(-1)?.id || "";
 }
-function committedPose(at = time) { return sampleStudioAnimation(project.clip, at, animationTargets()); }
+function committedPose(at = time) { return sampleKinetraClip(project.clip, at, animationTargets()); }
 function frameTransform(frame = {}) {
   return Object.fromEntries(Object.keys(TRANSFORM_FIELDS)
     .filter((property) => Object.hasOwn(frame, property))
@@ -745,55 +741,27 @@ function updateGhostLabel() {
 }
 
 function normalizeLoadedProject(candidate) {
-  if (candidate?.schema === "kinetra/v2") {
-    const rig = candidate.rig || freshRig();
-    const allowedTargets = ["rig", "torso", ...(rig.bones || []).map((bone) => bone.id)];
-    const baseClip = createStudioProject({ rig: rig.id || "custom", anatomy: "custom" });
-    baseClip.animation = candidate.clips?.[0] || baseClip.animation;
-    const clip = parseStudioProject(JSON.stringify(baseClip), { allowedTargets });
-    return {
-      version: 4,
-      fps: Number(candidate.fps || 24),
-      assets: candidate.assets || [],
-      layerGroups: candidate.layerGroups || [],
-      rig,
-      parts: (candidate.layers || []).map((item, z) => ({ visible: true, rotation: 0, scaleX: 1, scaleY: 1, z, ...item })),
-      clip
-    };
-  }
-  if (candidate?.clip) {
-    if (!Array.isArray(candidate.parts)) throw new Error("El proyecto no contiene piezas");
-    const rig = candidate.rig?.bones ? candidate.rig : freshRig();
-    const allowedTargets = ["rig", "torso", ...rig.bones.map((bone) => bone.id)];
-    const clip = parseStudioProject(JSON.stringify(candidate.clip), { allowedTargets });
-    const parts = candidate.parts.map((item, z) => ({
-      name: item.name || LABELS[item.id] || prettyId(item.id),
-      source: candidate.assets?.some((asset) => asset.id === item.assetId) ? "asset" : "builtin",
-      boneId: PART_JOINTS[item.id] || (item.id === "torso" ? "rig" : "rig"),
-      visible: true,
-      rotation: 0,
-      scaleX: 1,
-      scaleY: 1,
-      z,
-      ...item
-    }));
-    return { version: 4, fps: Number(candidate.fps || 24), assets: candidate.assets || [], layerGroups: candidate.layerGroups || [], rig, parts, clip };
-  }
-  const clip = parseStudioProject(JSON.stringify(candidate), { allowedTargets: PUPPET_TARGETS });
-  return { version: 4, fps: 24, assets: [], rig: freshRig(), parts: freshParts(), clip };
+  const errors = validateKinetraProject(candidate);
+  if (errors.length) throw new Error(`Proyecto Kinetra v2 inválido:\n${errors.join("\n")}`);
+  if (!candidate.clips.length) throw new Error("El proyecto Kinetra v2 debe incluir al menos un clip");
+  const rig = candidate.rig;
+  const allowedTargets = ["rig", "torso", ...rig.bones.map((bone) => bone.id)];
+  const clip = parseKinetraClip(JSON.stringify(candidate.clips[0]), { allowedTargets });
+  return {
+    version: 4,
+    fps: Number(candidate.fps || 24),
+    assets: candidate.assets,
+    layerGroups: candidate.layerGroups || [],
+    rig,
+    parts: candidate.layers.map((item, z) => ({ visible: true, rotation: 0, scaleX: 1, scaleY: 1, z, ...item })),
+    clip
+  };
 }
 
 function loadInitialProject() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
     if (stored) return normalizeLoadedProject(stored);
-    const legacy = JSON.parse(localStorage.getItem("cronicas-studio:calibration:male") || "null");
-    if (legacy?.version === 2 && Array.isArray(legacy.parts)) {
-      const next = freshProject();
-      const byId = new Map(legacy.parts.map((item) => [item.id, item]));
-      next.parts.forEach((item) => Object.assign(item, byId.get(item.id) || {}));
-      return next;
-    }
   } catch (error) {
     console.warn("Se ignoró una copia local inválida", error);
   }
@@ -801,7 +769,7 @@ function loadInitialProject() {
 }
 
 function saveLocal(message = null) {
-  project.clip = normalizeStudioProject(project.clip);
+  project.clip = normalizeKinetraClip(project.clip);
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
     if (message) status(message);
@@ -831,7 +799,7 @@ function restoreHistory(index) {
   if (index < 0 || index >= undoHistory.length) return;
   historyIndex = index;
   project = JSON.parse(undoHistory[historyIndex]);
-  project.clip = normalizeStudioProject(project.clip);
+  project.clip = normalizeKinetraClip(project.clip);
   normalizeLayerOrder();
   time = Math.min(time, duration());
   clearDraft();
@@ -1400,7 +1368,7 @@ function draw() {
 }
 
 function exactKey(target = selectedTarget, at = Math.round(time)) {
-  return (project.clip.animation.keys[target] || []).find((frame) => frame.t === at) || null;
+  return (project.clip.keys[target] || []).find((frame) => frame.t === at) || null;
 }
 
 function appendTreeNode(node, depth, search, host) {
@@ -1904,7 +1872,7 @@ function copyHierarchySelection(kind) {
       kind,
       items: bones.map((bone) => ({
         bone: structuredClone(bone),
-        keys: structuredClone(project.clip.animation.keys[bone.id] || [])
+        keys: structuredClone(project.clip.keys[bone.id] || [])
       }))
     };
   } else {
@@ -1912,7 +1880,7 @@ function copyHierarchySelection(kind) {
       kind,
       items: ids.map((target) => ({
         target,
-        keys: structuredClone(project.clip.animation.keys[target] || [])
+        keys: structuredClone(project.clip.keys[target] || [])
       }))
     };
   }
@@ -1992,14 +1960,14 @@ async function pasteHierarchySelection(kind) {
       const existing = replacements.get(bone.id);
       if (existing) Object.assign(existing, nextBone);
       else project.rig.bones.push(nextBone);
-      project.clip.animation.keys[nextBone.id] = structuredClone(keys);
-      if (project.clip.animation.requires.includes(bone.id) && !project.clip.animation.requires.includes(nextBone.id)) {
-        project.clip.animation.requires.push(nextBone.id);
+      project.clip.keys[nextBone.id] = structuredClone(keys);
+      if (project.clip.requires.includes(bone.id) && !project.clip.requires.includes(nextBone.id)) {
+        project.clip.requires.push(nextBone.id);
       }
       pasted.push(nextBone.id);
     });
     if (!pasted.length) return status("Los elementos copiados no contienen huesos para pegar");
-    project.rig.id = project.clip.rig = project.clip.anatomy = "custom";
+    project.rig.id = "custom";
     selectedTargets = new Set(pasted);
     selectedTarget = pasted.at(-1);
     commit(`${pasted.length} articulación(es) pegadas`);
@@ -2029,7 +1997,7 @@ async function pasteHierarchySelection(kind) {
       } else {
         pastedTargets.push(destination);
       }
-      const frames = project.clip.animation.keys[destination] || (project.clip.animation.keys[destination] = []);
+      const frames = project.clip.keys[destination] || (project.clip.keys[destination] = []);
       if (resolution.choices[index] === "replace") frames.splice(0, frames.length);
       source.keys.forEach((frame) => {
         const existing = frames.find((candidate) => candidate.t === frame.t);
@@ -2038,7 +2006,7 @@ async function pasteHierarchySelection(kind) {
       });
       frames.sort((left, right) => left.t - right.t);
     });
-    if (resolution.choices.includes("keep")) project.rig.id = project.clip.rig = project.clip.anatomy = "custom";
+    if (resolution.choices.includes("keep")) project.rig.id = "custom";
     selectedTargets = new Set(pastedTargets);
     selectedTarget = pastedTargets.at(-1) || "rig";
     commit(`${pastedTargets.length} pista(s) pegadas`);
@@ -2111,18 +2079,18 @@ function deleteHierarchySelection(kind) {
     });
     project.rig.bones = project.rig.bones.filter((bone) => !removeIds.has(bone.id));
     removeIds.forEach((id) => {
-      delete project.clip.animation.keys[id];
-      project.clip.animation.requires = project.clip.animation.requires.filter((target) => target !== id);
+      delete project.clip.keys[id];
+      project.clip.requires = project.clip.requires.filter((target) => target !== id);
       hiddenTargets.delete(id);
       lockedTargets.delete(id);
     });
     selectedTargets = new Set();
     selectedTarget = "rig";
-    project.rig.id = project.clip.rig = project.clip.anatomy = "custom";
+    project.rig.id = "custom";
   } else {
     ids.forEach((target) => {
-      delete project.clip.animation.keys[target];
-      project.clip.animation.requires = project.clip.animation.requires.filter((required) => required !== target);
+      delete project.clip.keys[target];
+      project.clip.requires = project.clip.requires.filter((required) => required !== target);
       hiddenTargets.delete(target);
       lockedTargets.delete(target);
     });
@@ -2173,13 +2141,13 @@ function renderTree() {
     host.replaceChildren();
     if (kind === "layers") renderLayers(search, host);
     else if (kind === "tracks") {
-      animationTargets().filter((target) => (project.clip.animation.keys[target] || []).length || !search)
+      animationTargets().filter((target) => (project.clip.keys[target] || []).length || !search)
         .filter((target) => label(target).toLocaleLowerCase().includes(search))
         .forEach((target) => appendTreeNode({ id: target }, 0, search, host));
     } else rigTree().forEach((node) => appendTreeNode(node, 0, search, host));
     const description = kind === "layers"
       ? `${project.parts.length} capas reales · ${(project.assets || []).length} recursos importados`
-      : `${project.rig?.name || project.clip.rig} · ${(project.rig?.bones || []).length} huesos · ${Object.keys(project.clip.animation.keys).length} pistas`;
+      : `${project.rig?.name || project.rig?.id || "Rig personalizado"} · ${(project.rig?.bones || []).length} huesos · ${Object.keys(project.clip.keys).length} pistas`;
     panel.querySelector("[data-hierarchy-meta]").textContent = description;
     updateMultiSelectionMenu(panel, kind);
     refreshIcons(panel);
@@ -2237,7 +2205,7 @@ function renderInspector() {
     .forEach((id) => { $(id).disabled = lockedTargets.has(selectedTarget); });
   ["reset-transform", "mirror-pose"].forEach((id) => { $(id).disabled = lockedTargets.has(selectedTarget); });
   updateDraftUI();
-  const clip = project.clip.animation;
+  const clip = project.clip;
   $("clip-label").value = clip.label;
   $("clip-description").value = clip.description;
   $("clip-category").value = clip.category;
@@ -2327,7 +2295,7 @@ function selectKey(target, at, append = false) {
 }
 
 function allKeyTimes() {
-  return [...new Set(Object.values(project.clip.animation.keys)
+  return [...new Set(Object.values(project.clip.keys)
     .flatMap((frames) => frames.map((frame) => frame.t)))]
     .sort((left, right) => left - right);
 }
@@ -2388,7 +2356,7 @@ function makeTrackRow(target) {
   const line = document.createElement("div");
   line.className = "track-line";
   line.onclick = (event) => timelineLineClick(event, line);
-  (project.clip.animation.keys[target] || []).forEach((frame) => {
+  (project.clip.keys[target] || []).forEach((frame) => {
     const marker = document.createElement("button");
     const identity = `${target}:${frame.t}`;
     const pending = draftTime === frame.t && draftFrames.has(target);
@@ -2418,7 +2386,7 @@ function makeTrackRow(target) {
     marker.onpointerup = () => {
       if (!dragKey || dragKey.marker !== marker) return;
       const next = Number(marker.dataset.nextTime ?? dragKey.originalTime);
-      const frames = project.clip.animation.keys[target];
+      const frames = project.clip.keys[target];
       const moving = frames.find((item) => item.t === dragKey.originalTime);
       if (moving && next !== moving.t) {
         const occupied = frames.find((item) => item !== moving && item.t === next);
@@ -2456,7 +2424,7 @@ function makeEventRow() {
   const line = document.createElement("div");
   line.className = "track-line";
   line.onclick = (event) => timelineLineClick(event, line);
-  project.clip.animation.spriteEvents.forEach((event, index) => {
+  project.clip.spriteEvents.forEach((event, index) => {
     const marker = document.createElement("button");
     marker.className = "event-marker";
     marker.style.left = `${event.t / duration() * 100}%`;
@@ -2465,7 +2433,7 @@ function makeEventRow() {
     marker.onclick = () => setTime(event.t, true);
     marker.oncontextmenu = (mouseEvent) => {
       mouseEvent.preventDefault();
-      project.clip.animation.spriteEvents.splice(index, 1);
+      project.clip.spriteEvents.splice(index, 1);
       commit("Evento eliminado");
       refresh();
     };
@@ -2523,10 +2491,6 @@ function renderTimeline() {
   host.append(makeEventRow(), makeSpriteRow());
   updateTimeDisplays();
   refreshIcons($("timeline-content"));
-}
-
-function gameValidationErrors() {
-  return validateStudioProject(normalizeStudioProject(project.clip), { mode: "game", allowedTargets: animationTargets() });
 }
 
 function safeId(value, fallback) {
@@ -2794,8 +2758,6 @@ function addBone() {
   });
   project.rig.id = "custom";
   project.rig.name = project.rig.name === "Humanoide" ? "Rig personalizado" : project.rig.name;
-  project.clip.rig = "custom";
-  project.clip.anatomy = "custom";
   selectAnimationTarget(id);
   commit("Hueso añadido al rig");
   refresh();
@@ -2813,10 +2775,8 @@ function removeSelectedBone() {
   });
   project.rig.bones = project.rig.bones.filter((candidate) => candidate.id !== bone.id);
   project.rig.id = "custom";
-  project.clip.rig = "custom";
-  project.clip.anatomy = "custom";
-  delete project.clip.animation.keys[bone.id];
-  project.clip.animation.requires = project.clip.animation.requires.filter((target) => target !== bone.id);
+  delete project.clip.keys[bone.id];
+  project.clip.requires = project.clip.requires.filter((target) => target !== bone.id);
   hiddenTargets.delete(bone.id);
   lockedTargets.delete(bone.id);
   selectAnimationTarget(bone.parent || "rig");
@@ -2880,32 +2840,133 @@ function currentTutorialStep() {
   return TUTORIALS[tutorialRun.topic]?.steps[tutorialRun.index] || null;
 }
 
+function tutorialTargets(step) {
+  return (step.targets || [step.target])
+    .map((selector) => document.querySelector(selector))
+    .filter((target) => target && target.getClientRects().length);
+}
+
+function visibleTutorialRect(target) {
+  const bounds = target.getBoundingClientRect();
+  const clip = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+  const dockedPanel = target.closest("[data-dock-zone]");
+  if (["left", "right"].includes(dockedPanel?.dataset.dockZone)) {
+    const timeline = document.querySelector("[data-dock-zone='bottom']");
+    if (timeline) clip.bottom = Math.min(clip.bottom, timeline.getBoundingClientRect().top);
+  }
+  for (let parent = target.parentElement; parent; parent = parent.parentElement) {
+    const style = getComputedStyle(parent);
+    const bounds = parent.getBoundingClientRect();
+    const client = {
+      left: bounds.left + parent.clientLeft,
+      top: bounds.top + parent.clientTop,
+      right: bounds.left + parent.clientLeft + parent.clientWidth,
+      bottom: bounds.top + parent.clientTop + parent.clientHeight
+    };
+    if (["auto", "scroll", "hidden", "clip", "overlay"].includes(style.overflowX)) {
+      clip.left = Math.max(clip.left, client.left);
+      clip.right = Math.min(clip.right, client.right);
+    }
+    if (["auto", "scroll", "hidden", "clip", "overlay"].includes(style.overflowY)) {
+      clip.top = Math.max(clip.top, client.top);
+      clip.bottom = Math.min(clip.bottom, client.bottom);
+    }
+  }
+  const rect = {
+    left: Math.max(bounds.left, clip.left),
+    top: Math.max(bounds.top, clip.top),
+    right: Math.min(bounds.right, clip.right),
+    bottom: Math.min(bounds.bottom, clip.bottom)
+  };
+  return rect.left < rect.right && rect.top < rect.bottom ? { rect, clip } : null;
+}
+
+function subtractSpotlight(rectangles, hole) {
+  const next = [];
+  rectangles.forEach((rect) => {
+    const left = Math.max(rect.left, hole.left);
+    const top = Math.max(rect.top, hole.top);
+    const right = Math.min(rect.right, hole.right);
+    const bottom = Math.min(rect.bottom, hole.bottom);
+    if (left >= right || top >= bottom) {
+      next.push(rect);
+      return;
+    }
+    if (rect.top < top) next.push({ left: rect.left, top: rect.top, right: rect.right, bottom: top });
+    if (bottom < rect.bottom) next.push({ left: rect.left, top: bottom, right: rect.right, bottom: rect.bottom });
+    if (rect.left < left) next.push({ left: rect.left, top, right: left, bottom });
+    if (right < rect.right) next.push({ left: right, top, right: rect.right, bottom });
+  });
+  return next;
+}
+
 function positionTutorial() {
   const step = currentTutorialStep();
   if (!step) return;
-  const target = document.querySelector(step.target) || $("workspace-menu");
-  const rect = target.getBoundingClientRect();
+  const targets = tutorialTargets(step);
+  const targetRects = (targets.length ? targets : [$("workspace-menu")])
+    .map(visibleTutorialRect)
+    .filter(Boolean);
+  if (!targetRects.length) return;
   const padding = 7;
-  const spotlight = $("tutorial-spotlight");
-  spotlight.style.left = `${Math.max(3, rect.left - padding)}px`;
-  spotlight.style.top = `${Math.max(3, rect.top - padding)}px`;
-  spotlight.style.width = `${Math.min(innerWidth - 6, rect.width + padding * 2)}px`;
-  spotlight.style.height = `${Math.min(innerHeight - 6, rect.height + padding * 2)}px`;
+  const holes = targetRects.map(({ rect, clip }) => ({
+    left: Math.max(3, clip.left, rect.left - padding),
+    top: Math.max(3, clip.top, rect.top - padding),
+    right: Math.min(innerWidth - 3, clip.right, rect.right + padding),
+    bottom: Math.min(innerHeight - 3, clip.bottom, rect.bottom + padding)
+  })).filter((rect) => rect.left < rect.right && rect.top < rect.bottom);
+
+  const dimmers = $("tutorial-dimmers");
+  const spotlights = $("tutorial-spotlights");
+  let shaded = [{ left: 0, top: 0, right: innerWidth, bottom: innerHeight }];
+  holes.forEach((hole) => { shaded = subtractSpotlight(shaded, hole); });
+  dimmers.replaceChildren(...shaded.map((rect) => {
+    const element = document.createElement("div");
+    element.className = "tutorial-dimmer";
+    element.style.left = `${rect.left}px`;
+    element.style.top = `${rect.top}px`;
+    element.style.width = `${rect.right - rect.left}px`;
+    element.style.height = `${rect.bottom - rect.top}px`;
+    return element;
+  }));
+  spotlights.replaceChildren(...holes.map((rect) => {
+    const element = document.createElement("div");
+    element.className = "tutorial-spotlight";
+    element.style.left = `${rect.left}px`;
+    element.style.top = `${rect.top}px`;
+    element.style.width = `${rect.right - rect.left}px`;
+    element.style.height = `${rect.bottom - rect.top}px`;
+    return element;
+  }));
+
+  const anchor = targetRects[0].rect;
 
   const card = $("tutorial-card");
   const cardRect = card.getBoundingClientRect();
   const gap = 16;
-  let left = Math.min(Math.max(12, rect.left), innerWidth - cardRect.width - 12);
-  let top = rect.bottom + gap;
-  if (top + cardRect.height > innerHeight - 12) top = rect.top - cardRect.height - gap;
-  if (top < 12) {
-    top = Math.min(Math.max(12, rect.top), innerHeight - cardRect.height - 12);
-    left = rect.right + gap;
-    if (left + cardRect.width > innerWidth - 12) left = rect.left - cardRect.width - gap;
-    left = Math.min(Math.max(12, left), innerWidth - cardRect.width - 12);
+  const maxLeft = Math.max(12, innerWidth - cardRect.width - 12);
+  const maxTop = Math.max(12, innerHeight - cardRect.height - 12);
+  const clamp = (value, max) => Math.min(Math.max(12, value), max);
+  const intersectsHole = (left, top) => holes.some((hole) =>
+    left < hole.right && left + cardRect.width > hole.left
+      && top < hole.bottom && top + cardRect.height > hole.top
+  );
+  let position;
+  if (holes.length > 1) {
+    const centered = { left: clamp((innerWidth - cardRect.width) / 2, maxLeft), top: clamp((innerHeight - cardRect.height) / 2, maxTop) };
+    if (!intersectsHole(centered.left, centered.top)) position = centered;
   }
-  card.style.left = `${left}px`;
-  card.style.top = `${top}px`;
+  if (!position) {
+    const candidates = [
+      { left: anchor.left, top: anchor.bottom + gap },
+      { left: anchor.left, top: anchor.top - cardRect.height - gap },
+      { left: anchor.right + gap, top: anchor.top },
+      { left: anchor.left - cardRect.width - gap, top: anchor.top }
+    ].map(({ left, top }) => ({ left: clamp(left, maxLeft), top: clamp(top, maxTop) }));
+    position = candidates.find(({ left, top }) => !intersectsHole(left, top)) || candidates[0];
+  }
+  card.style.left = `${position.left}px`;
+  card.style.top = `${position.top}px`;
 }
 
 function renderTutorialStep() {
@@ -2925,8 +2986,7 @@ function renderTutorialStep() {
     : `Siguiente <i data-lucide="arrow-right"></i>`;
   refreshIcons($("tutorial-next"));
   requestAnimationFrame(() => {
-    const target = document.querySelector(step.target);
-    target?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    tutorialTargets(step).forEach((target) => target.scrollIntoView({ block: "nearest", inline: "nearest" }));
     requestAnimationFrame(positionTutorial);
   });
   $("tutorial-next").focus();
@@ -2961,22 +3021,20 @@ function renderModeOverlay() {
   overlay.hidden = !["exportar", "proyecto"].includes(mode);
   if (overlay.hidden) return;
   if (mode === "exportar") {
-    const errors = gameValidationErrors();
-    overlay.innerHTML = `<h2>Exportar</h2><p class="muted">Kinetra v2 conserva rig, capas, imágenes y animación en un paquete JSON autocontenido para aplicaciones web. El clip heredado mantiene compatibilidad con juegos que ya usan cronicas-studio/v1.</p><div class="summary-grid"><div class="summary-card"><strong>Paquete Kinetra v2</strong><span>${project.rig.bones.length} huesos · ${project.parts.length} capas · ${project.assets.length} recursos importados</span><div class="button-row"><button id="download-project" class="small-button primary">Exportar .kinetra.json</button></div></div><div class="summary-card"><strong>Clip heredado v1</strong><span>${errors.length ? `${errors.length} observaciones` : "Validación superada"}</span><div class="button-row"><button id="download-clip" class="small-button" ${errors.length ? "disabled" : ""}>Exportar solo movimiento</button></div></div></div>${errors.length ? `<h3>Falta resolver para el clip v1</h3><ul class="validation-list">${errors.map((error) => `<li>${error}</li>`).join("")}</ul>` : ""}<div class="export-actions"><button id="cancel-export" class="small-button">Cancelar</button></div>`;
+    overlay.innerHTML = `<h2>Exportar</h2><p class="muted">Kinetra v2 exporta el rig, las capas, las imágenes y las animaciones en un paquete autocontenido para aplicaciones web.</p><div class="summary-grid"><div class="summary-card"><strong>Paquete Kinetra v2</strong><span>${project.rig.bones.length} huesos · ${project.parts.length} capas · ${project.assets.length} recursos importados</span><div class="button-row"><button id="download-project" class="small-button primary">Exportar .kinetra.json</button></div></div></div><div class="export-actions"><button id="cancel-export" class="small-button">Cancelar</button></div>`;
     $("download-project").onclick = exportProject;
-    $("download-clip").onclick = exportClip;
     $("cancel-export").onclick = () => setMode(lastEditorMode);
   } else {
-    overlay.innerHTML = `<h2>Proyecto</h2><div class="summary-grid"><div class="summary-card"><strong>${project.clip.animation.label}</strong><span>ID: ${project.clip.animation.id}<br>Rig: ${project.rig.name}<br>${project.rig.bones.length} huesos · ${project.parts.length} capas<br>Estado: ${project.clip.animation.status}</span></div><div class="summary-card"><strong>Kinetra v2</strong><span>Los recursos importados, la jerarquía y las animaciones viajan juntos en la exportación para web.</span></div></div><div class="button-row"><button id="new-project" class="small-button danger">Crear proyecto nuevo</button></div>`;
+    overlay.innerHTML = `<h2>Proyecto</h2><div class="summary-grid"><div class="summary-card"><strong>${project.clip.label}</strong><span>ID: ${project.clip.id}<br>Rig: ${project.rig.name}<br>${project.rig.bones.length} huesos · ${project.parts.length} capas<br>Estado: ${project.clip.status}</span></div><div class="summary-card"><strong>Kinetra v2</strong><span>Los recursos importados, la jerarquía y las animaciones viajan juntos en la exportación para web.</span></div></div><div class="button-row"><button id="new-project" class="small-button danger">Crear proyecto nuevo</button></div>`;
     $("new-project").onclick = createNewProject;
   }
 }
 
 function refresh() {
-  project.clip = normalizeStudioProject(project.clip);
-  $("project-name").value = project.clip.animation.id;
+  project.clip = normalizeKinetraClip(project.clip);
+  $("project-name").value = project.clip.id;
   $("duration").value = duration();
-  $("loop").checked = project.clip.animation.loop;
+  $("loop").checked = project.clip.loop;
   $("fps").value = String(fps());
   renderTree();
   renderInspector();
@@ -3036,13 +3094,13 @@ function readTransformFields() {
 }
 
 function upsertKey(target, frame) {
-  const keys = project.clip.animation.keys;
+  const keys = project.clip.keys;
   const frames = keys[target] || [];
   const existing = frames.find((item) => item.t === frame.t);
   if (existing) Object.assign(existing, frame); else frames.push(frame);
   frames.sort((left, right) => left.t - right.t);
   keys[target] = frames;
-  if (!project.clip.animation.requires.includes(target)) project.clip.animation.requires.push(target);
+  if (!project.clip.requires.includes(target)) project.clip.requires.push(target);
 }
 
 function setKey() {
@@ -3101,7 +3159,7 @@ function mirrorCurrentPose() {
   const at = Math.round(time);
   beginDraft(at);
   const sampled = pose(time);
-  const active = new Set([...Object.keys(project.clip.animation.keys), ...draftFrames.keys()]);
+  const active = new Set([...Object.keys(project.clip.keys), ...draftFrames.keys()]);
   [...active].forEach((target) => {
     const counterpart = MIRROR_TARGETS[target];
     if (counterpart) active.add(counterpart);
@@ -3146,11 +3204,11 @@ function deleteSelectedKeys() {
     const target = identity.slice(0, separator);
     if (lockedTargets.has(target)) return;
     const at = Number(identity.slice(separator + 1));
-    const remaining = (project.clip.animation.keys[target] || []).filter((frame) => frame.t !== at);
-    if (remaining.length) project.clip.animation.keys[target] = remaining;
+    const remaining = (project.clip.keys[target] || []).filter((frame) => frame.t !== at);
+    if (remaining.length) project.clip.keys[target] = remaining;
     else {
-      delete project.clip.animation.keys[target];
-      project.clip.animation.requires = project.clip.animation.requires.filter((item) => item !== target);
+      delete project.clip.keys[target];
+      project.clip.requires = project.clip.requires.filter((item) => item !== target);
     }
   });
   selectedKeys.clear();
@@ -3164,7 +3222,7 @@ function copySelectedKeys() {
     const separator = identity.lastIndexOf(":");
     const target = identity.slice(0, separator);
     const at = Number(identity.slice(separator + 1));
-    const frame = (project.clip.animation.keys[target] || []).find((item) => item.t === at);
+    const frame = (project.clip.keys[target] || []).find((item) => item.t === at);
     return frame ? { target, frame: structuredClone(frame) } : null;
   }).filter(Boolean);
   if (!selected.length && exactKey()) selected.push({ target: selectedTarget, frame: structuredClone(exactKey()) });
@@ -3233,24 +3291,13 @@ async function portableAuthoringProject() {
 }
 
 async function exportProject() {
-  project.clip = normalizeStudioProject(project.clip);
+  project.clip = normalizeKinetraClip(project.clip);
   try {
     status("Preparando paquete portable…");
     const bundle = createKinetraBundle(await portableAuthoringProject());
-    const name = `${project.clip.animation.id.replace(/[^a-z0-9_-]/gi, "_")}.kinetra.json`;
+    const name = `${project.clip.id.replace(/[^a-z0-9_-]/gi, "_")}.kinetra.json`;
     download(name, JSON.stringify(bundle, null, 2));
     status("Proyecto Kinetra v2 exportado con rig, capas e imágenes incrustadas");
-  } catch (error) {
-    status(error.message);
-  }
-}
-
-function exportClip() {
-  try {
-    const contents = serializeStudioProject(project.clip, { mode: "game", allowedTargets: animationTargets() });
-    const name = `${project.clip.animation.id.replace(/[^a-z0-9_-]/gi, "_")}.json`;
-    download(name, contents);
-    status("Clip candidato exportado");
   } catch (error) {
     status(error.message);
   }
@@ -3289,7 +3336,7 @@ function tick(now) {
   time += now - lastTick;
   lastTick = now;
   if (time >= duration()) {
-    if (project.clip.animation.loop) time %= duration();
+    if (project.clip.loop) time %= duration();
     else { time = duration(); pause(); }
   }
   updateTimeDisplays();
@@ -3344,7 +3391,6 @@ function bindControls() {
     "import-images": () => $("image-files").click(),
     save: () => saveLocal(hasDraft() ? "Proyecto guardado; el borrador del fotograma sigue pendiente" : "Proyecto guardado en este navegador"),
     "export-project": exportProject,
-    "export-clip": exportClip,
     undo,
     redo,
     fit: () => $("fit").click(),
@@ -3473,7 +3519,7 @@ function bindControls() {
   $("bone-x").onchange = updateBonePivot;
   $("bone-y").onchange = updateBonePivot;
   $("project-name").onchange = () => {
-    project.clip.animation.id = $("project-name").value.trim() || "nuevo_movimiento";
+    project.clip.id = $("project-name").value.trim() || "nuevo_movimiento";
     commit("ID del proyecto actualizado");
     refresh();
   };
@@ -3489,14 +3535,14 @@ function bindControls() {
   $("duration").onchange = () => {
     const next = Number($("duration").value);
     if (!Number.isFinite(next) || next < 100 || next > 60000) return status("Duración fuera de rango");
-    project.clip.animation.duration = next;
-    Object.entries(project.clip.animation.keys).forEach(([target, frames]) => { project.clip.animation.keys[target] = frames.filter((frame) => frame.t <= next); });
-    project.clip.animation.spriteEvents = project.clip.animation.spriteEvents.filter((event) => event.t <= next);
+    project.clip.duration = next;
+    Object.entries(project.clip.keys).forEach(([target, frames]) => { project.clip.keys[target] = frames.filter((frame) => frame.t <= next); });
+    project.clip.spriteEvents = project.clip.spriteEvents.filter((event) => event.t <= next);
     time = Math.min(time, next);
     commit("Duración actualizada");
     refresh();
   };
-  $("loop").onchange = () => { project.clip.animation.loop = $("loop").checked; commit("Bucle actualizado"); refresh(); };
+  $("loop").onchange = () => { project.clip.loop = $("loop").checked; commit("Bucle actualizado"); refresh(); };
   $("timeline-zoom").oninput = () => {
     timelineZoom = Number($("timeline-zoom").value) / 100;
     renderTimeline();
@@ -3519,13 +3565,13 @@ function bindControls() {
     const slot = $("event-slot").value.trim();
     const variant = $("event-variant").value.trim();
     if (!slot || !variant) return status("Completa la ranura y la variante");
-    project.clip.animation.spriteEvents.push({ t: Math.round(time), slot, variant });
-    project.clip.animation.spriteEvents.sort((left, right) => left.t - right.t);
+    project.clip.spriteEvents.push({ t: Math.round(time), slot, variant });
+    project.clip.spriteEvents.sort((left, right) => left.t - right.t);
     commit("Evento de sprite insertado");
     refresh();
   };
   [["clip-label", "label"], ["clip-description", "description"], ["clip-category", "category"], ["clip-state", "state"]].forEach(([id, property]) => {
-    $(id).onchange = () => { project.clip.animation[property] = $(id).value.trim(); commit("Metadatos actualizados"); refresh(); };
+    $(id).onchange = () => { project.clip[property] = $(id).value.trim(); commit("Metadatos actualizados"); refresh(); };
   });
   ["part-x", "part-y", "part-rotation", "part-scale"].forEach((id) => {
     $(id).onchange = () => {
@@ -3838,7 +3884,7 @@ function bindKeyboard() {
 
 function initialize() {
   project = loadInitialProject();
-  project.clip = normalizeStudioProject(project.clip);
+  project.clip = normalizeKinetraClip(project.clip);
   normalizeLayerOrder();
   STUDIO_EASES.forEach((ease) => {
     const option = document.createElement("option");

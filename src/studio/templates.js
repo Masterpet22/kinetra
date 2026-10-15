@@ -3,7 +3,7 @@ import {
   PUPPET_JOINT_PARENTS,
   PUPPET_PART_JOINTS
 } from "../animations/rig.js?v=0.11.0";
-import { createStudioProject } from "../animations/studio-format.js?v=0.11.0";
+import { createKinetraClip } from "../animations/studio-format.js?v=0.11.0";
 
 const HUMAN_LABELS = Object.freeze({
   neck: "Cuello",
@@ -104,7 +104,7 @@ function maleProject() {
       assetId: assetId || id,
       boneId: PUPPET_PART_JOINTS[id] || "rig"
     })).map((item) => ({ ...item, source: "builtin" })),
-    clip: createStudioProject({ rig: "humanoid", anatomy: "male" })
+    clip: createKinetraClip()
   };
 }
 
@@ -137,7 +137,7 @@ function femaleProject() {
     parts: FEMALE_PARTS.map(([id, name, cell, boneId, x, y, z]) => layer({
       id, name, assetId, boneId, x: x * size, y: y * size, z, crop: atlasCell(cell), scale: 1.23
     })),
-    clip: createStudioProject({ rig: "humanoid_female", anatomy: "female" })
+    clip: createKinetraClip()
   };
 }
 
@@ -198,7 +198,7 @@ function dogProject() {
     parts: DOG_PARTS.map(([id, name, cell, boneId, x, y, z]) => layer({
       id, name, assetId, boneId, x, y, z, crop: DOG_CROPS[cell], scale: 1.5
     })),
-    clip: createStudioProject({ rig: "dog", anatomy: "quadruped" })
+    clip: createKinetraClip()
   };
 }
 
@@ -210,7 +210,7 @@ function blankProject() {
     assets: [],
     rig: { id: "custom", name: "Rig personalizado", bones: [] },
     parts: [],
-    clip: createStudioProject({ rig: "custom", anatomy: "custom" })
+    clip: createKinetraClip()
   };
 }
 

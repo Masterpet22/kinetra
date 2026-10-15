@@ -79,7 +79,7 @@ La rama `main` se prueba y publica automáticamente mediante GitHub Actions.
 
 ## Compatibilidad de proyectos
 
-Kinetra abre paquetes `kinetra/v2`, proyectos de autoría anteriores y clips `cronicas-studio/v1`. El exportador principal genera un paquete autocontenido con rig, capas, imágenes y clips; el exportador heredado conserva la integración con juegos que ya consumen el formato v1.
+Kinetra importa y exporta paquetes `kinetra/v2`. El paquete autocontenido incluye rig, capas, imágenes y clips de animación.
 
 ## Runtime para juegos web
 
@@ -118,6 +118,6 @@ for (const layer of frame.layers) {
 - `styles.css`: interfaz del editor.
 - `src/studio/editor.js`: controlador visual y estado de autoría.
 - `src/animations/kinetra-runtime.js`: runtime portable y contrato `kinetra/v2`.
-- `src/animations/`: rig heredado, interpolación, validación y adaptadores.
+- `src/animations/`: formatos de animación, runtime y validación de Kinetra v2.
 - `assets/modular/man_sprites/runtime/`: sprites de demostración.
 - `tests/`: pruebas del contrato y de la interfaz.

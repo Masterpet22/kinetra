@@ -1,5 +1,12 @@
-import { ANIMATION_PRIORITIES, PUPPET_ANIMATION_CLIPS } from "./clips.js?v=0.11.0";
-import { addAnimationOffsets, isKeyframeAnimationClip, sampleKeyframeAnimationPose, TRANSFORM_PROPERTIES } from "./runtime.js";
+import { addAnimationOffsets, sampleKeyframeAnimationPose, TRANSFORM_PROPERTIES } from "./runtime.js";
+
+const ANIMATION_PRIORITIES = Object.freeze({
+  idle: 10,
+  locomotion: 20,
+  action: 30,
+  hit: 40,
+  defeated: 50
+});
 
 function targetFor(fighter, name) {
   if (name === "torso") return fighter.sprite;
@@ -12,7 +19,7 @@ function snapshot(target) {
 }
 
 export class PuppetAnimationController {
-  constructor(scene, fighter, clips = PUPPET_ANIMATION_CLIPS) {
+  constructor(scene, fighter, clips = {}) {
     this.scene = scene;
     this.fighter = fighter;
     this.clips = clips;
@@ -47,42 +54,7 @@ export class PuppetAnimationController {
     this.stop({ reset: true });
     this.current = clip;
     const generation = this.generation;
-    if (isKeyframeAnimationClip(clip)) return this.playKeyframeClip(clip, { generation, timeScale });
-    const playableTracks = clip.tracks.map((track) => ({ track, target: targetFor(this.fighter, track.target) })).filter(({ target }) => target);
-    let remaining = playableTracks.length;
-    this.finished = new Promise((resolve) => { this.resolveFinished = resolve; });
-
-    for (const { track, target } of playableTracks) {
-      const base = this.neutral.get(target) || snapshot(target);
-      this.neutral.set(target, base);
-      this.touched.set(target, base);
-      const enterDuration = track.from ? Number(clip.enterDuration || 0) : 0;
-      if (track.from && !enterDuration) Object.assign(target, addAnimationOffsets(base, track.from));
-      if (track.from && enterDuration) {
-        this.tweens.push(this.scene.tweens.add({
-          targets: target,
-          ...addAnimationOffsets(base, track.from),
-          duration: Math.max(1, enterDuration / timeScale),
-          ease: "Cubic.out"
-        }));
-      }
-      const tween = this.scene.tweens.add({
-        targets: target,
-        ...addAnimationOffsets(base, track.to),
-        duration: Math.max(1, track.duration / timeScale),
-        delay: ((track.delay || 0) + enterDuration) / timeScale,
-        ease: track.ease || "Sine.inOut",
-        yoyo: Boolean(track.yoyo),
-        repeat: clip.loop ? -1 : 0,
-        onComplete: clip.loop ? undefined : () => {
-          remaining -= 1;
-          if (remaining === 0 && generation === this.generation) this.complete();
-        }
-      });
-      this.tweens.push(tween);
-    }
-    if (remaining === 0) this.complete();
-    return true;
+    return this.playKeyframeClip(clip, { generation, timeScale });
   }
 
   playKeyframeClip(clip, { generation, timeScale }) {

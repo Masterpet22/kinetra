@@ -134,7 +134,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .when-playing { display: none; }
 .playback-toggle[data-playing="true"] .when-stopped { display: none; }
 .playback-toggle[data-playing="true"] .when-playing { display: inline; }
-.app-menu-bar { display: flex; align-items: center; gap: 1px; }
+.app-menu-bar { display: flex; align-items: center; gap: 0; }
 .app-menu { position: relative; }
 .app-menu > summary { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 9px; border-radius: 4px; list-style: none; color: #c6d4e5; user-select: none; cursor: pointer; }
 .app-menu-bar .app-menu:not([open]) > summary { position: relative; z-index: 241; }
@@ -143,7 +143,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .app-menu-popover {
   position: absolute;
   z-index: 240;
-  top: 100%;
+  top: calc(100% - 1px);
   left: 0;
   width: 230px;
   display: grid;
@@ -439,7 +439,9 @@ textarea { width: 100%; min-height: 68px; resize: vertical; }
 .shortcut-grid kbd { min-width: 62px; padding: 5px 8px; border: 1px solid #3d5875; border-bottom-width: 3px; border-radius: 5px; background: #172a40; color: #fff; text-align: center; }
 
 .tutorial-overlay { position: fixed; z-index: 500; inset: 0; pointer-events: none; }
-.tutorial-spotlight { position: fixed; z-index: 500; border: 2px solid var(--cyan); border-radius: 8px; box-shadow: 0 0 0 9999px #020713b8, 0 0 0 5px color-mix(in srgb, var(--cyan) 22%, transparent), 0 10px 34px #000b; transition: left .22s ease, top .22s ease, width .22s ease, height .22s ease; }
+.tutorial-dimmers, .tutorial-spotlights { position: fixed; z-index: 500; inset: 0; pointer-events: none; }
+.tutorial-dimmer { position: absolute; background: #020713b8; }
+.tutorial-spotlight { position: absolute; border: 2px solid var(--cyan); border-radius: 8px; box-shadow: 0 0 0 5px color-mix(in srgb, var(--cyan) 22%, transparent), 0 10px 34px #000b; transition: left .22s ease, top .22s ease, width .22s ease, height .22s ease; }
 .tutorial-card { position: fixed; z-index: 501; width: min(390px, calc(100vw - 24px)); padding: 17px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--menu-bg); color: #eaf2ff; box-shadow: 0 18px 60px #000d; pointer-events: auto; }
 .tutorial-card-header { display: flex; align-items: center; justify-content: space-between; }
 .tutorial-card-header .icon-button { width: 30px; height: 30px; border: 1px solid var(--line); color: inherit; }

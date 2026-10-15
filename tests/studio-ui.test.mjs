@@ -28,10 +28,10 @@ assert.match(css, /data-dock-zone=["']bottom["'][^}]*grid-column:\s*1\s*\/\s*-1/
 assert.match(css, /\.layout-divider-bottom\s*\{[^}]*bottom:\s*calc\(var\(--bottom-dock\)\s*-\s*5px\)/, "El separador de la línea de tiempo debe quedar alineado con el borde del panel");
 assert.match(css, /\.tree-row:focus-within\s*\{[^}]*outline:\s*2px solid var\(--cyan\)/, "El indicador cian de foco debe cubrir toda la fila de la capa");
 assert.match(css, /\.tree-row \.tree-select:focus-visible\s*\{[^}]*outline:\s*none/, "El control del nombre no debe limitar el indicador de foco a su propio ancho");
-assert.match(editor, /sampleStudioAnimation/);
+assert.match(editor, /sampleKinetraClip/);
 assert.match(editor, /studio-format\.js\?v=0\.11\.0/, "Los módulos internos deben invalidar la caché junto con el editor");
-assert.match(editor, /validateStudioProject/);
-assert.match(editor, /mode:\s*["']game["']/);
+assert.match(editor, /validateKinetraProject/);
+assert.doesNotMatch(editor, /export-clip|download-clip/);
 assert.match(editor, /function restoreHistory/);
 assert.match(editor, /window\.history\.replaceState/, "El historial del editor no debe ocultar el historial del navegador");
 assert.doesNotMatch(editor, /let history\s*=/, "El historial serializable debe tener un nombre propio");
@@ -114,13 +114,21 @@ for (const menu of ["Archivo", "Edición", "Ver", "Ventana", "Ayuda"]) {
 assert.match(html, /id=["']workspace-menu["']/, "Los modos de trabajo deben integrarse con los menús de aplicación");
 assert.match(html, /class=["']workspace-switcher["']/, "El selector de espacio debe ocupar el centro de la barra");
 assert.match(css, /\.workspace-switcher\s*\{[^}]*left:\s*50%[^}]*translate\(-50%,\s*-50%\)/s, "El selector debe centrarse con independencia de los menús laterales");
+assert.match(css, /\.app-menu-bar\s*\{[^}]*gap:\s*0\b/, "Los menús adyacentes no deben dejar huecos al mover el cursor");
+assert.match(css, /\.app-menu-popover\s*\{[^}]*top:\s*calc\(100% - 1px\)/s, "El desplegable debe solapar el borde del menú para evitar interrupciones");
 for (const tutorial of ["animador", "calibrador", "timeline", "paneles", "exportar"]) {
   assert.match(html, new RegExp(`data-tutorial=["']${tutorial}["']`), `Debe existir el tutorial ${tutorial}`);
 }
 assert.match(html, /id=["']tutorial-overlay["']/, "Los tutoriales deben ejecutarse como recorridos guiados");
+assert.match(html, /id=["']tutorial-dimmers["']/, "El tutorial debe separar las zonas atenuadas de los resaltados");
+assert.match(editor, /targets:\s*\["\[data-panel='layers'\]", "\[data-panel='inspector'\]"\]/, "El recorrido de ensamblaje debe resaltar las dos columnas completas");
 assert.match(editor, /const TUTORIALS = Object\.freeze/, "Los recorridos deben definir pasos enfocados en herramientas reales");
 assert.match(editor, /function startTutorial\(/, "Ayuda debe iniciar un recorrido guiado");
 assert.match(editor, /function positionTutorial\(/, "El tutorial debe resaltar el control explicado");
+assert.match(editor, /function visibleTutorialRect\(/, "El resaltado debe limitarse al área visible de cada columna");
+assert.match(editor, /timeline\.getBoundingClientRect\(\)\.top/, "El margen del resaltado no debe invadir la línea de tiempo");
+assert.match(editor, /parent\.clientWidth/, "El recorte debe respetar el área desplazable del panel");
+assert.match(editor, /function subtractSpotlight\(/, "El atenuado debe dejar visibles varias zonas sin solaparlas");
 assert.match(html, /id=["']help-dialog["']/, "Ayuda debe abrir los atajos en un modal independiente");
 assert.match(html, /id=["']preview-toggle["']/, "La vista previa debe poder activarse desde Ventana");
 assert.match(css, /scrollbar-color:\s*var\(--line-strong\)\s+var\(--panel-2\)/, "Las barras de desplazamiento deben usar colores de interfaz en Firefox");
@@ -182,7 +190,7 @@ assert.match(editor, /menu\.addEventListener\("toggle", \(\) => \{[\s\S]*?if \(m
 assert.match(editor, /menu\.addEventListener\("pointerenter", \(\) => \{\s*if \(!appMenuHoverSwitch\) return;[\s\S]*?menu\.open = true/, "Al estar el menú activo, pasar sobre otro encabezado debe cambiar el menú abierto");
 assert.match(editor, /menuBar\.contains\(event\.relatedTarget\)/, "Moverse entre encabezados no debe desactivar el modo de cambio por hover");
 assert.match(css, /\.app-menu-bar \.app-menu:not\(\[open\]\) > summary\s*\{[^}]*z-index:\s*241/s, "Los encabezados cerrados deben poder recibir hover aunque el desplegable actual los cubra");
-assert.match(css, /\.app-menu-popover\s*\{[^}]*top:\s*100%/s, "Todos los menús desplegables deben tocar el encabezado para permitir el paso del cursor");
+assert.match(css, /\.app-menu-popover\s*\{[^}]*top:\s*calc\(100% - 1px\)/s, "Los menús desplegables deben solaparse ligeramente con el encabezado para permitir el paso del cursor");
 assert.match(html, /unpkg\.com\/lucide@1\.57\.0/, "La interfaz debe usar una versión fija de Lucide");
 assert.match(editor, /window\.lucide\?\.createIcons/, "Los iconos dinámicos deben usar Lucide");
 for (const kind of ["skeleton", "tracks", "layers"]) {

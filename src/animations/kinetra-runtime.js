@@ -74,6 +74,10 @@ export function validateKinetraProject(project) {
   (project.clips || []).forEach((clip, index) => {
     if (!clip?.id || clipIds.has(clip.id)) errors.push(`clips[${index}].id inválido o duplicado`);
     else clipIds.add(clip.id);
+    if (clip?.tracks !== undefined) errors.push(`clips[${index}].tracks no es compatible con Kinetra v2; use keys`);
+    if (clip?.schema !== undefined || clip?.animation !== undefined) {
+      errors.push(`clips[${index}] debe usar la estructura plana de Kinetra v2`);
+    }
     if (!Number.isFinite(clip?.duration) || clip.duration <= 0) errors.push(`clips[${index}].duration debe ser positivo`);
     if (!clip?.keys || typeof clip.keys !== "object" || Array.isArray(clip.keys)) errors.push(`clips[${index}].keys debe ser un objeto`);
     Object.entries(clip?.keys || {}).forEach(([target, frames]) => {
@@ -150,13 +154,13 @@ export function resolveKinetraFrame(project, clipId, time) {
 export function createKinetraBundle(authoringProject) {
   const bundle = {
     schema: KINETRA_SCHEMA,
-    name: authoringProject.clip.animation.label,
+    name: authoringProject.clip.label,
     fps: Number(authoringProject.fps || 24),
     rig: structuredClone(authoringProject.rig),
     assets: structuredClone(authoringProject.assets || []),
     layers: structuredClone(authoringProject.parts || []),
     layerGroups: structuredClone(authoringProject.layerGroups || []),
-    clips: [structuredClone(authoringProject.clip.animation)]
+    clips: [structuredClone(authoringProject.clip)]
   };
   const errors = validateKinetraProject(bundle);
   if (errors.length) throw new Error(`Proyecto Kinetra v2 inválido:\n${errors.join("\n")}`);

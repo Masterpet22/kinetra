@@ -1,13 +1,9 @@
 /**
- * Contrato serializable de Kinetra.
- *
- * Mantiene separados el proyecto editable, la anatomía y el movimiento, y
- * ofrece una entrada única para crear, normalizar, validar e importar JSON.
+ * Formato de clips de animación Kinetra v2.
  */
 import { PUPPET_TARGETS } from "./rig.js?v=0.11.0";
 import { TRANSFORM_PROPERTIES } from "./runtime.js?v=0.11.0";
 
-export const STUDIO_SCHEMA = "cronicas-studio/v1";
 export const STUDIO_STATES = Object.freeze(["idle", "locomotion", "action", "hit", "defeated"]);
 export const STUDIO_STATUSES = Object.freeze(["draft", "integrated"]);
 export const STUDIO_EASES = Object.freeze([
@@ -53,71 +49,67 @@ function normalizeFrame(frame) {
 }
 
 /**
- * Devuelve todos los errores del proyecto para mostrarlos juntos en el editor.
- * `mode: "project"` acepta borradores; `mode: "game"` exige un clip publicable.
+ * Devuelve todos los errores del clip. `mode: "project"` acepta borradores;
+ * `mode: "game"` exige un clip publicable.
  */
-export function validateStudioProject(project, {
+export function validateKinetraClip(clip, {
   allowedTargets = PUPPET_TARGETS,
   mode = "project"
 } = {}) {
   const errors = [];
-  if (!isRecord(project)) return ["proyecto: debe ser un objeto"];
-  if (project.schema !== STUDIO_SCHEMA) errors.push(`schema: debe ser ${STUDIO_SCHEMA}`);
-  pushStringError(errors, project.rig, "rig");
-  pushStringError(errors, project.anatomy, "anatomy");
-  if (!isRecord(project.animation)) {
-    errors.push("animation: debe ser un objeto");
-    return errors;
+  if (!isRecord(clip)) return ["clip: debe ser un objeto"];
+  if (clip.tracks !== undefined) errors.push("clip.tracks: formato no compatible; usa keys");
+  if (clip.schema !== undefined || clip.animation !== undefined) {
+    errors.push("clip: debe usar la estructura plana de Kinetra v2");
   }
 
   if (mode !== "project" && mode !== "game") errors.push("mode: debe ser project o game");
   const gameReady = mode === "game";
-  const clip = project.animation;
-  pushStringError(errors, clip.id, "animation.id");
-  pushStringError(errors, clip.label, "animation.label", gameReady);
-  pushStringError(errors, clip.description, "animation.description", gameReady);
-  pushStringError(errors, clip.category, "animation.category", gameReady);
-  pushStringError(errors, clip.state, "animation.state", gameReady);
-  pushStringError(errors, clip.status, "animation.status", gameReady);
+  pushStringError(errors, clip.id, "clip.id");
+  pushStringError(errors, clip.label, "clip.label", gameReady);
+  pushStringError(errors, clip.description, "clip.description", gameReady);
+  pushStringError(errors, clip.category, "clip.category", gameReady);
+  pushStringError(errors, clip.state, "clip.state", gameReady);
+  pushStringError(errors, clip.status, "clip.status", gameReady);
 
   if (clip.state !== undefined && !STATE_SET.has(clip.state)) {
-    errors.push(`animation.state: estado desconocido ${clip.state}`);
+    errors.push(`clip.state: estado desconocido ${clip.state}`);
   }
   if (clip.status !== undefined && !STATUS_SET.has(clip.status)) {
-    errors.push(`animation.status: estado desconocido ${clip.status}`);
+    errors.push(`clip.status: estado desconocido ${clip.status}`);
   }
   if (!Number.isFinite(clip.duration) || clip.duration < 100 || clip.duration > 60000) {
-    errors.push("animation.duration: debe estar entre 100 y 60000 ms");
+    errors.push("clip.duration: debe estar entre 100 y 60000 ms");
   }
-  if (typeof clip.loop !== "boolean") errors.push("animation.loop: debe ser booleano");
+  if (typeof clip.loop !== "boolean") errors.push("clip.loop: debe ser booleano");
   if (clip.restore !== undefined && typeof clip.restore !== "boolean") {
-    errors.push("animation.restore: debe ser booleano");
+    errors.push("clip.restore: debe ser booleano");
   }
 
   const allowed = allowedTargets == null ? null : new Set(allowedTargets);
   if (clip.requires !== undefined && !Array.isArray(clip.requires)) {
-    errors.push("animation.requires: debe ser una lista");
+    errors.push("clip.requires: debe ser una lista");
   } else if (Array.isArray(clip.requires)) {
     const seen = new Set();
     clip.requires.forEach((target, index) => {
-      const path = `animation.requires[${index}]`;
+      const path = `clip.requires[${index}]`;
       if (!nonEmptyString(target)) errors.push(`${path}: debe ser un identificador`);
       else if (seen.has(target)) errors.push(`${path}: objetivo duplicado ${target}`);
       else if (allowed && !allowed.has(target)) errors.push(`${path}: objetivo desconocido ${target}`);
       seen.add(target);
     });
-    if (gameReady && !clip.requires.length) errors.push("animation.requires: el clip publicable debe declarar objetivos");
+    if (gameReady && !clip.requires.length) errors.push("clip.requires: el clip publicable debe declarar objetivos");
   } else if (gameReady) {
-    errors.push("animation.requires: es obligatorio para exportar al juego");
+    errors.push("clip.requires: es obligatorio para exportar al juego");
   }
 
   if (!isRecord(clip.keys)) {
-    errors.push("animation.keys: debe ser un objeto de pistas");
+    errors.push("clip.keys: debe ser un objeto de pistas");
   } else {
     const trackEntries = Object.entries(clip.keys);
-    if (gameReady && !trackEntries.length) errors.push("animation.keys: el clip publicable necesita al menos una pista");
+    if (gameReady && !trackEntries.length) errors.push("clip.keys: el clip publicable necesita al menos una pista");
     trackEntries.forEach(([target, frames]) => {
-      const path = `animation.keys.${target}`;
+      const path = `clip.keys.${target}`;
       if (allowed && !allowed.has(target)) errors.push(`${path}: objetivo desconocido`);
       if (!Array.isArray(frames)) {
         errors.push(`${path}: debe ser una lista de fotogramas`);
@@ -154,10 +146,10 @@ export function validateStudioProject(project, {
   }
 
   if (clip.spriteEvents !== undefined && !Array.isArray(clip.spriteEvents)) {
-    errors.push("animation.spriteEvents: debe ser una lista");
+    errors.push("clip.spriteEvents: debe ser una lista");
   } else {
     (clip.spriteEvents || []).forEach((event, index) => {
-      const path = `animation.spriteEvents[${index}]`;
+      const path = `clip.spriteEvents[${index}]`;
       if (!isRecord(event)) {
         errors.push(`${path}: debe ser un objeto`);
         return;
@@ -173,22 +165,20 @@ export function validateStudioProject(project, {
   if (gameReady && isRecord(clip.keys) && Array.isArray(clip.requires)) {
     const required = new Set(clip.requires);
     Object.keys(clip.keys).forEach((target) => {
-      if (!required.has(target)) errors.push(`animation.requires: falta el objetivo animado ${target}`);
+      if (!required.has(target)) errors.push(`clip.requires: falta el objetivo animado ${target}`);
     });
   }
 
   return errors;
 }
 
-export function assertValidStudioProject(project, options) {
-  const errors = validateStudioProject(project, options);
-  if (errors.length) throw new Error(`Proyecto de Studio inválido:\n${errors.join("\n")}`);
-  return project;
+export function assertValidKinetraClip(clip, options) {
+  const errors = validateKinetraClip(clip, options);
+  if (errors.length) throw new Error(`Clip Kinetra inválido:\n${errors.join("\n")}`);
+  return clip;
 }
 
-/** Convierte JSON antiguos de la fase prototipo al orden canónico de v1. */
-export function normalizeStudioProject(project) {
-  const clip = project.animation;
+export function normalizeKinetraClip(clip) {
   const keys = Object.fromEntries(
     Object.entries(clip.keys || {})
       .sort(([left], [right]) => left.localeCompare(right))
@@ -203,69 +193,52 @@ export function normalizeStudioProject(project) {
     .sort((left, right) => left.t - right.t || left.slot.localeCompare(right.slot));
 
   return {
-    schema: project.schema,
-    rig: project.rig,
-    anatomy: project.anatomy,
-    animation: {
-      id: clip.id,
-      label: clip.label ?? clip.id,
-      description: clip.description ?? "",
-      category: clip.category ?? "acción",
-      state: clip.state ?? "action",
-      status: clip.status ?? "draft",
-      duration: clip.duration,
-      loop: clip.loop,
-      ...(clip.restore === undefined ? {} : { restore: clip.restore }),
-      requires: requiredTargets,
-      keys,
-      spriteEvents
-    }
+    id: clip.id,
+    label: clip.label ?? clip.id,
+    description: clip.description ?? "",
+    category: clip.category ?? "acción",
+    state: clip.state ?? "action",
+    status: clip.status ?? "draft",
+    duration: clip.duration,
+    loop: clip.loop,
+    ...(clip.restore === undefined ? {} : { restore: clip.restore }),
+    requires: requiredTargets,
+    keys,
+    spriteEvents
   };
 }
 
-export function createStudioProject({
+export function createKinetraClip({
   id = "nuevo_movimiento",
   label = "Nuevo movimiento",
   description = "Animación creada en Kinetra.",
   category = "acción",
   state = "action",
   duration = 1000,
-  loop = false,
-  rig = "humanoid",
-  anatomy = "male"
+  loop = false
 } = {}) {
-  return normalizeStudioProject({
-    schema: STUDIO_SCHEMA,
-    rig,
-    anatomy,
-    animation: {
-      id,
-      label,
-      description,
-      category,
-      state,
-      status: "draft",
-      duration,
-      loop,
-      requires: [],
-      keys: {},
-      spriteEvents: []
-    }
+  return normalizeKinetraClip({
+    id,
+    label,
+    description,
+    category,
+    state,
+    status: "draft",
+    duration,
+    loop,
+    requires: [],
+    keys: {},
+    spriteEvents: []
   });
 }
 
-export function serializeStudioProject(project, options = {}) {
-  assertValidStudioProject(project, options);
-  return JSON.stringify(normalizeStudioProject(project), null, 2);
-}
-
-export function parseStudioProject(source, options = {}) {
-  let project;
+export function parseKinetraClip(source, options = {}) {
+  let clip;
   try {
-    project = JSON.parse(source);
+    clip = JSON.parse(source);
   } catch (error) {
-    throw new Error(`JSON de Studio inválido: ${error.message}`);
+    throw new Error(`JSON de clip Kinetra inválido: ${error.message}`);
   }
-  assertValidStudioProject(project, options);
-  return normalizeStudioProject(project);
+  assertValidKinetraClip(clip, options);
+  return normalizeKinetraClip(clip);
 }
