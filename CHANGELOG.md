@@ -8,7 +8,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ### Added
 
-- Sección reservada para los cambios posteriores a `v0.11.0`.
+- Previsualizaciones ensambladas a partir de las piezas reales de cada plantilla.
+
+### Changed
+
+- Las plantillas masculina y femenina usan 14 recursos PNG independientes en lugar de vistas previas o atlas compartidos.
+- El rig femenino se recalibró para la posición de sus nuevas piezas.
+
+### Removed
+
+- Plantilla de perro y sus recursos, debido a que no ofrecía un flujo funcional.
 
 ## [0.11.0] - 2026-10-16
 

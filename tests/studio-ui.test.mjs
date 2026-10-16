@@ -153,9 +153,10 @@ assert.match(editor, /const layerName = String\(layer\.name \|\| "capa"\)\.repla
 assert.match(editor, /name: layerName,\s*filename,\s*blob/, "El nombre normalizado debe aplicarse a las capas PSD importadas");
 assert.doesNotMatch(editor, /fflate|downloadPsdLayersZip|capas-psd\.zip/, "La importación PSD no debe descargar un ZIP");
 assert.match(html, /id=["']new-project-dialog["']/, "Archivo > Nuevo debe abrir el selector de plantillas");
-for (const template of ["male", "female", "dog", "blank"]) {
-  assert.match(html, new RegExp(`data-project-template=["']${template}["']`), `Debe ofrecerse la plantilla ${template}`);
-}
+assert.match(html, /id=["']template-grid["']/, "El selector debe reservar un contenedor para las plantillas disponibles");
+assert.match(editor, /PROJECT_TEMPLATES\.forEach/, "Las tarjetas deben generarse desde el catálogo de plantillas");
+assert.match(editor, /drawTemplatePreview\(canvas, template\.id\)/, "Las tarjetas deben ensamblar una vista previa con las piezas reales");
+assert.doesNotMatch(html, /data-project-template=["']dog["']/, "La plantilla de perro no debe ofrecerse");
 assert.match(editor, /createProjectFromTemplate\(button\.dataset\.projectTemplate\)/, "El selector debe crear la plantilla elegida");
 assert.match(editor, /function layerSourceRect\(/, "El editor debe recortar las piezas compartidas de un atlas");
 assert.match(editor, /function portableAuthoringProject\(/, "La exportación debe incrustar también los recursos de demostración");

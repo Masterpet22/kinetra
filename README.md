@@ -4,7 +4,7 @@ Kinetra es un editor web estático para ensamblar y animar personajes 2D constru
 
 ## Crear un personaje propio
 
-1. Usa `Archivo > Nuevo` y elige Humano masculino, Humano femenino, Perro o Proyecto vacío.
+1. Usa `Archivo > Nuevo` y elige Humano masculino, Humano femenino o Proyecto vacío.
 2. En `Ensamblaje`, pulsa `Importar imágenes`. Cada PNG, WebP o JPEG se guarda como recurso y capa independiente. También puedes importar PSD: cada capa con píxeles visibles se convierte en una capa del proyecto y en un PNG recortado al límite de sus píxeles no transparentes, nombrado según la capa original. En los nombres extraídos del PSD, los espacios en blanco se sustituyen por `_`. No se inicia ninguna descarga.
 3. Añade huesos desde la ventana `Esqueleto`. El nuevo hueso será hijo del hueso seleccionado; nombre, padre y pivote pueden cambiarse desde el Inspector.
 4. Selecciona una capa, asígnala a un hueso y calibra posición, rotación, escala y orden visual.
@@ -17,9 +17,8 @@ La lectura de PSD utiliza ag-psd, cargada bajo demanda desde esm.sh; el document
 
 ## Plantillas incluidas
 
-- **Humano masculino:** el personaje original, con 14 piezas y un rig humanoide.
-- **Humano femenino:** 14 piezas recortadas de un atlas compartido y el mismo conjunto de articulaciones humanoides.
-- **Perro:** 15 piezas y un rig cuadrúpedo; sus cuatro patas forman cadenas IK editables.
+- **Humano masculino:** personaje modular con 14 imágenes independientes y un rig humanoide.
+- **Humano femenino:** personaje modular con 14 imágenes independientes y un rig humanoide calibrado para su anatomía.
 - **Proyecto vacío:** sin recursos, capas ni huesos, para construir una marioneta desde cero.
 
 Las plantillas son puntos de partida normales: sus capas, pivotes, jerarquías y animaciones pueden modificarse igual que las de un proyecto importado.

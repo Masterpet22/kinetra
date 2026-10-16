@@ -25,7 +25,7 @@ import {
   shortestAngleDelta
 } from "./gizmo.js?v=0.11.0";
 import { solveJointRotation, solveTwoBoneIk } from "./ik.js?v=0.11.0";
-import { createTemplateProject } from "./templates.js?v=0.11.0";
+import { createTemplateProject, PROJECT_TEMPLATES } from "./templates.js?v=0.11.0";
 
 const $ = (id) => document.getElementById(id);
 const BASE_SCALE = 0.32;
@@ -2784,6 +2784,93 @@ function removeSelectedBone() {
   refresh();
 }
 
+function loadTemplateImage(asset) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => resolve([asset.id, image]);
+    image.onerror = () => reject(new Error(`No se pudo cargar ${asset.name}`));
+    image.src = asset.src;
+  });
+}
+
+async function drawTemplatePreview(canvas, templateId) {
+  const template = createTemplateProject(templateId);
+  const images = new Map(await Promise.all(template.assets.map(loadTemplateImage)));
+  const drawable = template.parts.map((item) => {
+    const image = images.get(item.assetId);
+    if (!image) return null;
+    const source = item.crop || { x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight };
+    const width = source.width * (item.scaleX ?? 1);
+    const height = source.height * (item.scaleY ?? 1);
+    return { item, image, source, width, height };
+  }).filter(Boolean);
+  if (!drawable.length || !canvas.isConnected) return;
+
+  const bounds = drawable.reduce((result, entry) => ({
+    left: Math.min(result.left, entry.item.x - entry.width / 2),
+    top: Math.min(result.top, entry.item.y - entry.height / 2),
+    right: Math.max(result.right, entry.item.x + entry.width / 2),
+    bottom: Math.max(result.bottom, entry.item.y + entry.height / 2)
+  }), { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity });
+  const width = 420;
+  const height = 260;
+  const padding = 18;
+  const scale = Math.min(
+    (width - padding * 2) / Math.max(1, bounds.right - bounds.left),
+    (height - padding * 2) / Math.max(1, bounds.bottom - bounds.top)
+  );
+  const context = canvas.getContext("2d");
+  canvas.width = width;
+  canvas.height = height;
+  context.imageSmoothingEnabled = false;
+  context.translate(
+    width / 2 - (bounds.left + bounds.right) / 2 * scale,
+    height / 2 - (bounds.top + bounds.bottom) / 2 * scale
+  );
+  context.scale(scale, scale);
+  drawable.sort((left, right) => left.item.z - right.item.z).forEach(({ item, image, source, width: drawWidth, height: drawHeight }) => {
+    context.save();
+    context.translate(item.x, item.y);
+    context.rotate((item.rotation || 0) * Math.PI / 180);
+    context.globalAlpha = item.opacity ?? 1;
+    context.drawImage(
+      image,
+      source.x, source.y, source.width, source.height,
+      -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight
+    );
+    context.restore();
+  });
+}
+
+function renderTemplateChooser() {
+  const host = $("template-grid");
+  host.replaceChildren();
+  PROJECT_TEMPLATES.forEach((template) => {
+    const button = document.createElement("button");
+    button.className = "template-card";
+    button.dataset.projectTemplate = template.id;
+    const preview = document.createElement("span");
+    preview.className = `template-preview${template.id === "blank" ? " blank" : ""}`;
+    if (template.id === "blank") {
+      preview.innerHTML = '<i data-lucide="file-plus-2"></i>';
+    } else {
+      const canvas = document.createElement("canvas");
+      canvas.className = "template-preview-canvas";
+      canvas.setAttribute("role", "img");
+      canvas.setAttribute("aria-label", `Vista previa de ${template.name.toLowerCase()}`);
+      preview.append(canvas);
+      drawTemplatePreview(canvas, template.id).catch(() => preview.classList.add("failed"));
+    }
+    const name = document.createElement("strong");
+    name.textContent = template.name;
+    const description = document.createElement("small");
+    description.textContent = template.description;
+    button.append(preview, name, description);
+    host.append(button);
+  });
+}
+
 function createNewProject() {
   closeApplicationMenus();
   $("new-project-dialog").showModal();
@@ -2806,7 +2893,7 @@ function createProjectFromTemplate(templateId) {
   clearGhost();
   ensureImages();
   $("new-project-dialog").close();
-  const templateName = templateId === "female" ? "humano femenino" : templateId === "dog" ? "perro" : templateId === "blank" ? "proyecto vacío" : "humano masculino";
+  const templateName = PROJECT_TEMPLATES.find((item) => item.id === templateId)?.name.toLowerCase() || "humano masculino";
   commit(`Plantilla ${templateName} creada`);
   setMode("calibrador");
 }
@@ -3893,6 +3980,7 @@ function initialize() {
     $("key-ease").append(option);
   });
   ensureImages();
+  renderTemplateChooser();
   bindPanels();
   bindControls();
   bindCanvas();

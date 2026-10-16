@@ -342,24 +342,7 @@
     <div class="help-dialog-header"><div><span class="eyebrow">Nuevo proyecto</span><h2 id="new-project-title">Elige una plantilla</h2></div><button id="new-project-close" class="icon-button" aria-label="Cerrar selector de plantilla"><i data-lucide="x"></i></button></div>
     <div class="template-dialog-body">
       <p>La plantilla reemplazará el proyecto guardado localmente. Después podrás modificar todas sus capas y huesos.</p>
-      <div class="template-grid">
-        <button class="template-card" data-project-template="male">
-          <span class="template-preview"><img src="./assets/templates/male/preview.png" alt="Vista previa del humano masculino"></span>
-          <strong>Humano masculino</strong><small>La marioneta original de Kinetra</small>
-        </button>
-        <button class="template-card" data-project-template="female">
-          <span class="template-preview"><img src="./assets/templates/female/preview.png" alt="Vista previa del humano femenino"></span>
-          <strong>Humano femenino</strong><small>Personaje modular de 14 capas</small>
-        </button>
-        <button class="template-card" data-project-template="dog">
-          <span class="template-preview"><img src="./assets/templates/dog/preview.png" alt="Vista previa de la plantilla de perro"></span>
-          <strong>Perro</strong><small>Cuadrúpedo con cuatro cadenas IK</small>
-        </button>
-        <button class="template-card" data-project-template="blank">
-          <span class="template-preview blank"><i data-lucide="file-plus-2"></i></span>
-          <strong>Proyecto vacío</strong><small>Empieza sin capas ni huesos</small>
-        </button>
-      </div>
+      <div id="template-grid" class="template-grid"></div>
     </div>
   </dialog>
 

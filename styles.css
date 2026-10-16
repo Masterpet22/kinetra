@@ -425,14 +425,13 @@ textarea { width: 100%; min-height: 68px; resize: vertical; }
 .duplicate-actions .small-button { min-height: 34px; }
 .template-dialog-body { overflow: auto; padding: 20px; }
 .template-dialog-body > p { margin: 0 0 16px; color: var(--muted); }
-.template-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.template-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .template-card { min-width: 0; padding: 0; overflow: hidden; display: grid; grid-template-rows: 210px auto auto; text-align: left; border: 1px solid #34516d; border-radius: 10px; background: #0c1a2a; color: #e9f4ff; transition: border-color .15s, transform .15s, background .15s; }
 .template-card:hover, .template-card:focus-visible { border-color: var(--accent); background: #102842; transform: translateY(-2px); }
 .template-card strong { padding: 12px 13px 2px; font-size: 15px; }
 .template-card small { padding: 0 13px 14px; color: var(--muted); line-height: 1.35; }
 .template-preview { display: grid; place-items: center; overflow: hidden; min-height: 0; background: radial-gradient(circle at 50% 45%, #1a3752 0, #0a1725 70%); border-bottom: 1px solid #29435d; }
-.template-preview img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; filter: drop-shadow(0 10px 15px #0008); }
-.template-preview.male img { width: 70%; height: 115%; object-fit: contain; object-position: 50% 28%; }
+.template-preview-canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; filter: drop-shadow(0 10px 15px #0008); }
 .template-preview.blank svg { width: 58px; height: 58px; color: #70baff; }
 .help-tip { padding: 10px 12px; border-left: 3px solid var(--cyan); background: #112b42; color: #cceaff; }
 .shortcut-grid { display: grid; grid-template-columns: max-content 1fr; gap: 9px 14px; align-items: center; }

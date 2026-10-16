@@ -22,41 +22,60 @@ const HUMAN_LABELS = Object.freeze({
 });
 
 const MALE_PARTS = [
-  ["pie_derecho", "Pie derecho", -175.526, 732.316],
-  ["brazo_izquierdo", "Brazo izquierdo", 161.481, -174.474, "brazo_derecho"],
-  ["mano_derecha", "Mano derecha", -291.203, 251.237],
-  ["muslo_izquierdo", "Muslo izquierdo", 117.315, 255.895],
-  ["torso", "Pieza del torso", -41, -72.5],
-  ["muslo_derecho", "Muslo derecho", -93.789, 261.869],
-  ["pie_izquierdo", "Pie izquierdo", 153.763, 715.421],
-  ["pierna_derecha", "Pierna derecha", -140.026, 527.974],
-  ["pierna_izquierda", "Pierna izquierda", 151.263, 520.474],
-  ["brazo_derecho", "Brazo derecho", -242.955, -164.184, "brazo_izquierdo"],
-  ["antebrazo_derecho", "Antebrazo derecho", -315.639, 62.658],
-  ["antebrazo_izquierdo", "Antebrazo izquierdo", 278.403, 24.447],
-  ["mano_izquierda", "Mano izquierda", 355.423, 215.474],
-  ["cabeza", "Cabeza", -10.737, -498.684]
+  { id: "pie_derecho", name: "Pie derecho", x: -175.526, y: 732.316 },
+  { id: "brazo_izquierdo", name: "Brazo izquierdo", sourceId: "brazo_derecho", x: 161.481, y: -174.474 },
+  { id: "mano_derecha", name: "Mano derecha", x: -291.203, y: 251.237 },
+  { id: "muslo_izquierdo", name: "Muslo izquierdo", x: 117.315, y: 255.895 },
+  { id: "torso", name: "Pieza del torso", x: -41, y: -72.5 },
+  { id: "muslo_derecho", name: "Muslo derecho", x: -93.789, y: 261.869 },
+  { id: "pie_izquierdo", name: "Pie izquierdo", x: 153.763, y: 715.421 },
+  { id: "pierna_derecha", name: "Pierna derecha", x: -140.026, y: 527.974 },
+  { id: "pierna_izquierda", name: "Pierna izquierda", x: 151.263, y: 520.474 },
+  { id: "brazo_derecho", name: "Brazo derecho", sourceId: "brazo_izquierdo", x: -242.955, y: -164.184 },
+  { id: "antebrazo_derecho", name: "Antebrazo derecho", x: -315.639, y: 62.658 },
+  { id: "antebrazo_izquierdo", name: "Antebrazo izquierdo", x: 278.403, y: 24.447 },
+  { id: "mano_izquierda", name: "Mano izquierda", x: 355.423, y: 215.474 },
+  { id: "cabeza", name: "Cabeza", x: -10.737, y: -498.684 }
 ];
 
-export const PROJECT_TEMPLATES = Object.freeze([
-  { id: "male", name: "Humano masculino", description: "La marioneta original de Kinetra.", preview: "./assets/templates/male/preview.png" },
-  { id: "female", name: "Humano femenino", description: "Personaje modular femenino de 14 capas.", preview: "./assets/templates/female/preview.png" },
-  { id: "dog", name: "Perro", description: "Cuadrúpedo modular con cuatro cadenas IK.", preview: "./assets/templates/dog/preview.png" },
-  { id: "blank", name: "Proyecto vacío", description: "Empieza sin capas ni huesos.", preview: null }
-]);
+const FEMALE_PARTS = [
+  { id: "brazo_izquierdo", name: "Brazo izquierdo", sourceId: "antebrazo_izquierdo", boneId: "shoulderLeft", crop: [1257, 693, 210, 292], x: 338, y: -185, z: 0 },
+  { id: "antebrazo_izquierdo", name: "Antebrazo izquierdo", sourceId: "brazo_izquierdo", boneId: "elbowLeft", crop: [1411, 959, 188, 231], x: 481, y: 50.5, z: 1 },
+  { id: "mano_izquierda", name: "Mano izquierda", boneId: "wristLeft", crop: [1544, 1206, 117, 188], x: 578.5, y: 276, z: 2 },
+  { id: "muslo_izquierdo", name: "Muslo izquierdo", boneId: "hipLeft", crop: [1032, 1185, 189, 353], x: 102.5, y: 337.5, z: 3 },
+  { id: "pierna_izquierda", name: "Pierna izquierda", boneId: "kneeLeft", crop: [1042, 1553, 148, 250], x: 92, y: 654, z: 4 },
+  { id: "pie_izquierdo", name: "Pie izquierdo", boneId: "ankleLeft", crop: [1063, 1809, 219, 179], x: 148.5, y: 874.5, z: 5 },
+  { id: "torso", name: "Pieza del torso", boneId: "rig", crop: [817, 652, 364, 616], x: -25, y: -64, z: 6 },
+  { id: "muslo_derecho", name: "Muslo derecho", boneId: "hipRight", crop: [797, 1185, 199, 362], x: -127.5, y: 342, z: 7 },
+  { id: "pierna_derecha", name: "Pierna derecha", boneId: "kneeRight", crop: [766, 1563, 158, 251], x: -179, y: 664.5, z: 8 },
+  { id: "pie_derecho", name: "Pie derecho", boneId: "ankleRight", crop: [735, 1830, 148, 168], x: -215, y: 890, z: 9 },
+  { id: "brazo_derecho", name: "Brazo derecho", sourceId: "antebrazo_derecho", boneId: "shoulderRight", crop: [489, 673, 220, 312], x: -425, y: -195, z: 10 },
+  { id: "antebrazo_derecho", name: "Antebrazo derecho", sourceId: "brazo_derecho", boneId: "elbowRight", crop: [449, 990, 117, 241], x: -516.5, y: 86.5, z: 11 },
+  { id: "mano_derecha", name: "Mano derecha", boneId: "wristRight", crop: [459, 1235, 147, 190], x: -491.5, y: 306, z: 12 },
+  { id: "cabeza", name: "Cabeza", boneId: "neck", crop: [889, 253, 261, 393], x: -4.5, y: -574.5, z: 13 }
+];
 
-const atlasCell = (index) => {
-  const column = index % 3;
-  const row = Math.floor(index / 3);
-  const x = Math.floor(column * 1024 / 3);
-  const y = Math.floor(row * 1536 / 5);
-  return {
-    x,
-    y,
-    width: Math.floor((column + 1) * 1024 / 3) - x,
-    height: Math.floor((row + 1) * 1536 / 5) - y
-  };
-};
+const FEMALE_JOINTS = Object.freeze({
+  neck: { x: 0, y: -390 },
+  shoulderRight: { x: -320, y: -345 },
+  elbowRight: { x: -515, y: -35 },
+  wristRight: { x: -515, y: 210 },
+  shoulderLeft: { x: 320, y: -345 },
+  elbowLeft: { x: 520, y: -45 },
+  wristLeft: { x: 560, y: 195 },
+  hipRight: { x: -105, y: 160 },
+  kneeRight: { x: -180, y: 525 },
+  ankleRight: { x: -210, y: 805 },
+  hipLeft: { x: 100, y: 160 },
+  kneeLeft: { x: 105, y: 525 },
+  ankleLeft: { x: 115, y: 805 }
+});
+
+export const PROJECT_TEMPLATES = Object.freeze([
+  { id: "male", name: "Humano masculino", description: "Personaje modular masculino de 14 piezas." },
+  { id: "female", name: "Humano femenino", description: "Personaje modular femenino de 14 piezas." },
+  { id: "blank", name: "Proyecto vacío", description: "Empieza sin capas ni huesos." }
+]);
 
 const layer = ({ id, name, assetId, boneId = "rig", x, y, z, crop, scale = 1 }) => ({
   id,
@@ -74,11 +93,11 @@ const layer = ({ id, name, assetId, boneId = "rig", x, y, z, crop, scale = 1 }) 
   ...(crop ? { crop } : {})
 });
 
-function humanoidRig(id, name, size = 1) {
+function humanoidRig(id, name, size = 1, joints = PUPPET_JOINTS) {
   return {
     id,
     name,
-    bones: Object.entries(PUPPET_JOINTS).map(([boneId, pivot]) => ({
+    bones: Object.entries(joints).map(([boneId, pivot]) => ({
       id: boneId,
       name: HUMAN_LABELS[boneId] || boneId,
       parent: PUPPET_JOINT_PARENTS[boneId] || null,
@@ -88,115 +107,53 @@ function humanoidRig(id, name, size = 1) {
   };
 }
 
+function splitAssets(templateId, parts) {
+  return [...new Set(parts.map((item) => item.sourceId || item.id))].map((sourceId) => ({
+    id: `${templateId}_${sourceId}`,
+    name: `${sourceId}.png`,
+    type: "image/png",
+    src: `./assets/templates/${templateId}/${sourceId}.png`
+  }));
+}
+
 function maleProject() {
   return {
     version: 4,
     fps: 24,
     templateId: "male",
-    assets: [],
+    assets: splitAssets("male", MALE_PARTS),
     rig: humanoidRig("humanoid", "Humano masculino"),
-    parts: MALE_PARTS.map(([id, name, x, y, assetId], z) => layer({
-      id,
-      name,
-      x,
-      y,
+    parts: MALE_PARTS.map((item, z) => layer({
+      id: item.id,
+      name: item.name,
+      x: item.x,
+      y: item.y,
       z,
-      assetId: assetId || id,
-      boneId: PUPPET_PART_JOINTS[id] || "rig"
-    })).map((item) => ({ ...item, source: "builtin" })),
-    clip: createKinetraClip()
-  };
-}
-
-const FEMALE_PARTS = [
-  ["female_left_upper_arm", "Brazo izquierdo", 5, "shoulderLeft", 180, -180, 0],
-  ["female_left_forearm", "Antebrazo izquierdo", 6, "elbowLeft", 275, 45, 1],
-  ["female_left_hand", "Mano izquierda", 7, "wristLeft", 330, 230, 2],
-  ["female_left_thigh", "Muslo izquierdo", 11, "hipLeft", 105, 250, 3],
-  ["female_left_shin", "Pierna izquierda", 12, "kneeLeft", 125, 510, 4],
-  ["female_left_foot", "Pie izquierdo", 13, "ankleLeft", 145, 700, 5],
-  ["female_torso", "Torso", 1, "rig", 0, -80, 6],
-  ["female_right_thigh", "Muslo derecho", 8, "hipRight", -100, 250, 7],
-  ["female_right_shin", "Pierna derecha", 9, "kneeRight", -120, 510, 8],
-  ["female_right_foot", "Pie derecho", 10, "ankleRight", -140, 700, 9],
-  ["female_right_upper_arm", "Brazo derecho", 2, "shoulderRight", -190, -180, 10],
-  ["female_right_forearm", "Antebrazo derecho", 3, "elbowRight", -270, 45, 11],
-  ["female_right_hand", "Mano derecha", 4, "wristRight", -320, 230, 12],
-  ["female_head", "Cabeza", 0, "neck", -10, -500, 13]
-];
-
-function femaleProject() {
-  const assetId = "female_atlas";
-  const size = 0.88;
-  return {
-    version: 4,
-    fps: 24,
-    templateId: "female",
-    assets: [{ id: assetId, name: "Plantilla femenina", type: "image/png", src: "./assets/templates/female/atlas.png" }],
-    rig: humanoidRig("humanoid_female", "Humano femenino", size),
-    parts: FEMALE_PARTS.map(([id, name, cell, boneId, x, y, z]) => layer({
-      id, name, assetId, boneId, x: x * size, y: y * size, z, crop: atlasCell(cell), scale: 1.23
+      assetId: `male_${item.sourceId || item.id}`,
+      boneId: PUPPET_PART_JOINTS[item.id] || "rig"
     })),
     clip: createKinetraClip()
   };
 }
 
-const DOG_BONES = [
-  ["neck", "Cuello", null, 285, -155],
-  ["tail", "Cola", null, -300, -105],
-  ["shoulderRight", "Hombro delantero cercano", null, 175, 15],
-  ["elbowRight", "Codo delantero cercano", "shoulderRight", 190, 205],
-  ["wristRight", "Pata delantera cercana", "elbowRight", 205, 385],
-  ["shoulderLeft", "Hombro delantero lejano", null, 115, 30],
-  ["elbowLeft", "Codo delantero lejano", "shoulderLeft", 125, 200],
-  ["wristLeft", "Pata delantera lejana", "elbowLeft", 135, 385],
-  ["hipRight", "Cadera trasera cercana", null, -175, 15],
-  ["kneeRight", "Rodilla trasera cercana", "hipRight", -195, 205],
-  ["ankleRight", "Pata trasera cercana", "kneeRight", -215, 385],
-  ["hipLeft", "Cadera trasera lejana", null, -115, 30],
-  ["kneeLeft", "Rodilla trasera lejana", "hipLeft", -125, 200],
-  ["ankleLeft", "Pata trasera lejana", "kneeLeft", -135, 385]
-];
-
-const DOG_CROPS = [
-  { x: 0, y: 0, width: 455, height: 330 },
-  { x: 450, y: 0, width: 325, height: 330 },
-  { x: 770, y: 0, width: 254, height: 330 },
-  ...Array.from({ length: 12 }, (_, index) => atlasCell(index + 3))
-];
-
-const DOG_PARTS = [
-  ["dog_body", "Cuerpo", 0, "rig", 0, -45, 7],
-  ["dog_head", "Cabeza", 1, "neck", 300, -150, 14],
-  ["dog_tail", "Cola", 2, "tail", -350, -105, 6],
-  ["dog_front_near_upper", "Brazo delantero cercano", 3, "shoulderRight", 175, 105, 11],
-  ["dog_front_near_lower", "Antebrazo delantero cercano", 4, "elbowRight", 190, 285, 12],
-  ["dog_front_near_paw", "Pie delantero cercano", 5, "wristRight", 210, 410, 13],
-  ["dog_front_far_upper", "Brazo delantero lejano", 6, "shoulderLeft", 115, 110, 3],
-  ["dog_front_far_lower", "Antebrazo delantero lejano", 7, "elbowLeft", 125, 280, 4],
-  ["dog_front_far_paw", "Pie delantero lejano", 8, "wristLeft", 140, 410, 5],
-  ["dog_rear_near_upper", "Muslo trasero cercano", 9, "hipRight", -175, 105, 8],
-  ["dog_rear_near_lower", "Pierna trasera cercana", 10, "kneeRight", -195, 285, 9],
-  ["dog_rear_near_paw", "Pie trasero cercano", 11, "ankleRight", -220, 410, 10],
-  ["dog_rear_far_upper", "Muslo trasero lejano", 12, "hipLeft", -115, 110, 0],
-  ["dog_rear_far_lower", "Pierna trasera lejana", 13, "kneeLeft", -125, 280, 1],
-  ["dog_rear_far_paw", "Pie trasero lejano", 14, "ankleLeft", -140, 410, 2]
-];
-
-function dogProject() {
-  const assetId = "dog_atlas";
+function femaleProject() {
+  const size = 0.88;
   return {
     version: 4,
     fps: 24,
-    templateId: "dog",
-    assets: [{ id: assetId, name: "Plantilla de perro", type: "image/png", src: "./assets/templates/dog/atlas.png" }],
-    rig: {
-      id: "dog",
-      name: "Perro",
-      bones: DOG_BONES.map(([id, name, parent, x, y]) => ({ id, name, parent, x, y }))
-    },
-    parts: DOG_PARTS.map(([id, name, cell, boneId, x, y, z]) => layer({
-      id, name, assetId, boneId, x, y, z, crop: DOG_CROPS[cell], scale: 1.5
+    templateId: "female",
+    assets: splitAssets("female", FEMALE_PARTS),
+    rig: humanoidRig("humanoid_female", "Humano femenino", size, FEMALE_JOINTS),
+    parts: FEMALE_PARTS.map((item) => layer({
+      id: item.id,
+      name: item.name,
+      assetId: `female_${item.sourceId || item.id}`,
+      boneId: item.boneId,
+      x: item.x * size,
+      y: item.y * size,
+      z: item.z,
+      crop: { x: item.crop[0], y: item.crop[1], width: item.crop[2], height: item.crop[3] },
+      scale: size
     })),
     clip: createKinetraClip()
   };
@@ -216,7 +173,6 @@ function blankProject() {
 
 export function createTemplateProject(templateId = "male") {
   if (templateId === "female") return femaleProject();
-  if (templateId === "dog") return dogProject();
   if (templateId === "blank") return blankProject();
   return maleProject();
 }
