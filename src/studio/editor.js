@@ -986,7 +986,7 @@ function renderFigure(targetContext, at, { alpha = 1, tint = false, sampledPose 
     targetContext.globalAlpha *= visibility;
     targetContext.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
     targetContext.translate(item.x - anchor.x, item.y - anchor.y);
-    targetContext.rotate(item.rotation * Math.PI / 180);
+    targetContext.rotate(((item.restRotation || 0) + item.rotation) * Math.PI / 180);
     targetContext.scale(item.scaleX, item.scaleY);
     targetContext.drawImage(
       image,
@@ -1030,7 +1030,7 @@ function figureBounds(at) {
     const matrix = multiply(
       multiply(
         multiply(parentMatrix, translate(item.x - anchor.x, item.y - anchor.y)),
-        rotate(item.rotation)
+        rotate((item.restRotation || 0) + item.rotation)
       ),
       scale(item.scaleX, item.scaleY)
     );
@@ -2832,7 +2832,7 @@ async function drawTemplatePreview(canvas, templateId) {
   drawable.sort((left, right) => left.item.z - right.item.z).forEach(({ item, image, source, width: drawWidth, height: drawHeight }) => {
     context.save();
     context.translate(item.x, item.y);
-    context.rotate((item.rotation || 0) * Math.PI / 180);
+    context.rotate(((item.restRotation || 0) + (item.rotation || 0)) * Math.PI / 180);
     context.globalAlpha = item.opacity ?? 1;
     context.drawImage(
       image,

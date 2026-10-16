@@ -24,19 +24,19 @@ assert.ok(female.assets.every((asset) => asset.src.startsWith("./assets/template
 assert.deepEqual(
   Object.fromEntries(female.rig.bones.map(({ id, x, y }) => [id, { x, y }])),
   {
-    neck: { x: 0, y: -343.2 },
-    shoulderRight: { x: -281.6, y: -303.6 },
-    elbowRight: { x: -453.2, y: -30.8 },
-    wristRight: { x: -453.2, y: 184.8 },
-    shoulderLeft: { x: 281.6, y: -303.6 },
-    elbowLeft: { x: 457.6, y: -39.6 },
-    wristLeft: { x: 492.8, y: 171.6 },
+    neck: { x: 0, y: -292.2 },
+    shoulderRight: { x: -167.78, y: -271.37 },
+    elbowRight: { x: -224.11, y: -24.14 },
+    wristRight: { x: -249.54, y: 145.85 },
+    shoulderLeft: { x: 95.36, y: -269.89 },
+    elbowLeft: { x: 198.12, y: -60.41 },
+    wristLeft: { x: 284.58, y: 96.99 },
     hipRight: { x: -92.4, y: 140.8 },
-    kneeRight: { x: -158.4, y: 462 },
-    ankleRight: { x: -184.8, y: 708.4 },
+    kneeRight: { x: -106.54, y: 370.16 },
+    ankleRight: { x: -136.24, y: 556.99 },
     hipLeft: { x: 88, y: 140.8 },
-    kneeLeft: { x: 92.4, y: 462 },
-    ankleLeft: { x: 101.2, y: 708.4 }
+    kneeLeft: { x: 84.57, y: 363.76 },
+    ankleLeft: { x: 86.01, y: 550.29 }
   }
 );
 assert.deepEqual(
@@ -52,11 +52,17 @@ assert.deepEqual(
     { id: "muslo_derecho", x: -87.894444, y: 231.515556, rotation: 0, z: 7 },
     { id: "pierna_derecha", x: -119.325556, y: 466.704444, rotation: 0, z: 8 },
     { id: "pie_derecho", x: -147.533333, y: 616.533333, rotation: 0, z: 9 },
-    { id: "brazo_derecho", x: -186.5, y: -143.822222, rotation: -12, z: 10 },
-    { id: "antebrazo_derecho", x: -235.77, y: 62.231111, rotation: 6, z: 11 },
-    { id: "mano_derecha", x: -234.603333, y: 213.724444, rotation: 4, z: 12 },
+    { id: "brazo_derecho", x: -186.5, y: -143.822222, rotation: 0, z: 10 },
+    { id: "antebrazo_derecho", x: -235.77, y: 62.231111, rotation: 0, z: 11 },
+    { id: "mano_derecha", x: -234.603333, y: 213.724444, rotation: 0, z: 12 },
     { id: "cabeza", x: -3.96, y: -443.06, rotation: 0, z: 13 }
   ]
+);
+assert.ok(female.parts.every((part) => part.rotation === 0), "La pose femenina oficial debe iniciar en rotación cero");
+assert.deepEqual(
+  Object.fromEntries(female.parts.filter((part) => part.restRotation).map(({ id, restRotation }) => [id, restRotation])),
+  { brazo_derecho: -12, antebrazo_derecho: 6, mano_derecha: 4 },
+  "La orientación visual de los sprites debe conservarse como calibración de reposo"
 );
 assert.deepEqual(validateKinetraProject(createKinetraBundle(female)), []);
 

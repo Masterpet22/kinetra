@@ -136,7 +136,10 @@ export function resolveKinetraFrame(project, clipId, time) {
       const anchor = rest.get(boneId) || { x: 0, y: 0 };
       const parent = bones[boneId] || bones.rig;
       const calibration = multiplyMatrix(
-        multiplyMatrix(translateMatrix((layer.x || 0) - anchor.x, (layer.y || 0) - anchor.y), rotateMatrix(layer.rotation || 0)),
+        multiplyMatrix(
+          translateMatrix((layer.x || 0) - anchor.x, (layer.y || 0) - anchor.y),
+          rotateMatrix((layer.restRotation || 0) + (layer.rotation || 0))
+        ),
         scaleMatrix(layer.scaleX ?? 1, layer.scaleY ?? 1)
       );
       return {

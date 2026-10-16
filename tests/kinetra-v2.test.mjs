@@ -37,6 +37,10 @@ assert.equal(frame.layers[0].assetId, "mano_png");
 assert.equal(frame.layers[0].asset.src, "data:image/png;base64,AA==");
 assert.deepEqual(frame.layers[0].crop, { x: 0, y: 0, width: 32, height: 48 });
 assert.equal(frame.layers[0].matrix.length, 6);
+const restCalibrated = structuredClone(project);
+restCalibrated.layers[0].restRotation = 15;
+const restFrame = resolveKinetraFrame(restCalibrated, "saludo", 0);
+assert.ok(Math.abs(restFrame.layers[0].matrix[0] - Math.cos(15 * Math.PI / 180)) < 0.0001, "El runtime debe aplicar la orientación de reposo sin alterar la rotación editable");
 assert.deepEqual(createKinetraBundle({
   clip: project.clips[0],
   fps: project.fps,

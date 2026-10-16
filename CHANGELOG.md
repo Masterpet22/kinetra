@@ -13,7 +13,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 ### Changed
 
 - Las plantillas masculina y femenina usan 14 recursos PNG independientes en lugar de vistas previas o atlas compartidos.
-- El rig femenino se recalibró para la posición de sus nuevas piezas.
+- El rig femenino se recalibró sobre las articulaciones visibles de sus nuevas piezas y su pose oficial ahora inicia con rotación editable de cero grados.
 
 ### Removed
 
