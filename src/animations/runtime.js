@@ -15,13 +15,11 @@ export function animationEase(progress, ease = "Sine.inOut") {
       const overshoot = 1.70158;
       return (overshoot + 1) * value * value * value - overshoot * value * value;
     }
-    return 1 - Math.cos(value * Math.PI / 2);
+    return 1 - Math.cos((value * Math.PI) / 2);
   };
   if (direction === "in") return easeIn(clamped);
   if (direction === "out") return 1 - easeIn(1 - clamped);
-  return clamped < 0.5
-    ? easeIn(clamped * 2) / 2
-    : 1 - easeIn((1 - clamped) * 2) / 2;
+  return clamped < 0.5 ? easeIn(clamped * 2) / 2 : 1 - easeIn((1 - clamped) * 2) / 2;
 }
 
 export function isKeyframeAnimationClip(clip) {
@@ -38,9 +36,7 @@ function sampleKeyframeProperty(frames, property, time) {
     if (time > next.t) continue;
     const previous = keys[index - 1];
     const rawProgress = (time - previous.t) / (next.t - previous.t || 1);
-    const progress = next.ease && next.ease !== "Linear"
-      ? animationEase(rawProgress, next.ease)
-      : rawProgress;
+    const progress = next.ease && next.ease !== "Linear" ? animationEase(rawProgress, next.ease) : rawProgress;
     return previous[property] + (next[property] - previous[property]) * progress;
   }
   return keys[keys.length - 1][property];
@@ -50,9 +46,7 @@ function sampleKeyframeProperty(frames, property, time) {
 export function sampleKeyframeAnimationPose(clip, elapsed) {
   if (!isKeyframeAnimationClip(clip)) return {};
   const duration = Math.max(1, Number(clip.duration || 0));
-  const time = clip.loop
-    ? ((elapsed % duration) + duration) % duration
-    : Math.max(0, Math.min(duration, elapsed));
+  const time = clip.loop ? ((elapsed % duration) + duration) % duration : Math.max(0, Math.min(duration, elapsed));
   const pose = {};
   Object.entries(clip.keys).forEach(([target, original]) => {
     const frames = [...original].sort((left, right) => left.t - right.t);

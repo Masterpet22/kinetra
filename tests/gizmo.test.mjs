@@ -25,20 +25,19 @@ assert.equal(shortestAngleDelta(170, -170), 20);
 assert.equal(shortestAngleDelta(-170, 170), -20);
 
 const parents = { shoulderRight: null, elbowRight: "shoulderRight", wristRight: "elbowRight", hipLeft: null };
-assert.deepEqual(
-  collapseHierarchicalSelection(["shoulderRight", "elbowRight", "wristRight"], parents),
-  ["shoulderRight"]
-);
-assert.deepEqual(
-  collapseHierarchicalSelection(["elbowRight", "wristRight", "hipLeft"], parents),
-  ["elbowRight", "hipLeft"]
-);
+assert.deepEqual(collapseHierarchicalSelection(["shoulderRight", "elbowRight", "wristRight"], parents), [
+  "shoulderRight"
+]);
+assert.deepEqual(collapseHierarchicalSelection(["elbowRight", "wristRight", "hipLeft"], parents), [
+  "elbowRight",
+  "hipLeft"
+]);
 assert.deepEqual(collapseHierarchicalSelection(["rig", "wristRight"], parents), ["rig"]);
 
-assert.deepEqual(
-  scaleFromDrag({ scaleX: 0, scaleY: 0 }, { x: 20, y: -10 }, { xSign: 1, ySign: -1 }),
-  { scaleX: 0.2, scaleY: 0.1 }
-);
+assert.deepEqual(scaleFromDrag({ scaleX: 0, scaleY: 0 }, { x: 20, y: -10 }, { xSign: 1, ySign: -1 }), {
+  scaleX: 0.2,
+  scaleY: 0.1
+});
 assert.deepEqual(
   scaleFromDrag({ scaleX: 0, scaleY: 0 }, { x: 20, y: -10 }, { xSign: 1, ySign: -1 }, { uniform: true }),
   { scaleX: 0.15000000000000002, scaleY: 0.15000000000000002 }

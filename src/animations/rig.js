@@ -46,6 +46,4 @@ export const PUPPET_PART_JOINTS = Object.freeze({
   pie_izquierdo: "ankleLeft"
 });
 
-export const PUPPET_TARGETS = Object.freeze([
-  "body", "rig", "shadow", "torso", ...Object.keys(PUPPET_JOINTS)
-]);
+export const PUPPET_TARGETS = Object.freeze(["body", "rig", "shadow", "torso", ...Object.keys(PUPPET_JOINTS)]);

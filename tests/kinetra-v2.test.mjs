@@ -21,9 +21,38 @@ const project = {
     ]
   },
   assets: [{ id: "mano_png", name: "mano.png", type: "image/png", src: "data:image/png;base64,AA==" }],
-  layers: [{ id: "mano_capa", name: "Mano", assetId: "mano_png", source: "asset", boneId: "mano", x: 120, y: 0, scaleX: 1, scaleY: 1, rotation: 0, visible: true, z: 0, groupId: "extremidad", crop: { x: 0, y: 0, width: 32, height: 48 } }],
+  layers: [
+    {
+      id: "mano_capa",
+      name: "Mano",
+      assetId: "mano_png",
+      source: "asset",
+      boneId: "mano",
+      x: 120,
+      y: 0,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+      visible: true,
+      z: 0,
+      groupId: "extremidad",
+      crop: { x: 0, y: 0, width: 32, height: 48 }
+    }
+  ],
   layerGroups: [{ id: "extremidad", name: "Extremidad", collapsed: false }],
-  clips: [{ id: "saludo", duration: 1000, loop: false, keys: { brazo: [{ t: 0, angle: 0 }, { t: 1000, angle: 90 }] } }]
+  clips: [
+    {
+      id: "saludo",
+      duration: 1000,
+      loop: false,
+      keys: {
+        brazo: [
+          { t: 0, angle: 0 },
+          { t: 1000, angle: 90 }
+        ]
+      }
+    }
+  ]
 };
 
 assert.deepEqual(validateKinetraProject(project), []);
@@ -40,15 +69,22 @@ assert.equal(frame.layers[0].matrix.length, 6);
 const restCalibrated = structuredClone(project);
 restCalibrated.layers[0].restRotation = 15;
 const restFrame = resolveKinetraFrame(restCalibrated, "saludo", 0);
-assert.ok(Math.abs(restFrame.layers[0].matrix[0] - Math.cos(15 * Math.PI / 180)) < 0.0001, "El runtime debe aplicar la orientación de reposo sin alterar la rotación editable");
-assert.deepEqual(createKinetraBundle({
-  clip: project.clips[0],
-  fps: project.fps,
-  rig: project.rig,
-  assets: project.assets,
-  parts: project.layers,
-  layerGroups: project.layerGroups
-}).layerGroups, project.layerGroups, "La exportación debe conservar la organización de grupos del editor");
+assert.ok(
+  Math.abs(restFrame.layers[0].matrix[0] - Math.cos((15 * Math.PI) / 180)) < 0.0001,
+  "El runtime debe aplicar la orientación de reposo sin alterar la rotación editable"
+);
+assert.deepEqual(
+  createKinetraBundle({
+    clip: project.clips[0],
+    fps: project.fps,
+    rig: project.rig,
+    assets: project.assets,
+    parts: project.layers,
+    layerGroups: project.layerGroups
+  }).layerGroups,
+  project.layerGroups,
+  "La exportación debe conservar la organización de grupos del editor"
+);
 
 const invalid = structuredClone(project);
 invalid.layers[0].boneId = "fantasma";

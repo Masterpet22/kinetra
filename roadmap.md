@@ -34,7 +34,7 @@ Establecer una versión reproducible y documentada del editor funcional actual.
 - La rama `main` se publica mediante GitHub Actions.
 - El tag `v0.11.0` identifica exactamente la línea base publicada.
 
-## Fase 1 — Integridad de datos y recuperación · Objetivo `v0.12.0`
+## Fase 1 — Integridad de datos y recuperación · Completada en `v0.13.0`
 
 ### Objetivo
 
@@ -76,7 +76,13 @@ Eliminar los riesgos de pérdida silenciosa de animaciones y de agotamiento de a
 - Cien transformaciones consecutivas no multiplican el peso de las imágenes dentro del historial.
 - Las migraciones y escenarios de cuota insuficiente tienen pruebas automatizadas.
 
-## Fase 2 — Arquitectura, calidad y automatización · Objetivo `v0.13.0`
+### Evidencia de entrega
+
+- `tests/phase1.test.mjs` verifica cinco clips, migración, cuota insuficiente, recuperación real de un `Blob` de 24 MiB y cien transformaciones bajo presupuesto.
+- `docs/kinetra-v2.schema.json` y `docs/LIMITS.md` publican el contrato y sus límites.
+- El Studio muestra el estado de persistencia y mantiene disponible una exportación de emergencia.
+
+## Fase 2 — Arquitectura, calidad y automatización · Completada en `v0.13.0`
 
 ### Objetivo
 
@@ -112,6 +118,13 @@ Reducir el riesgo de cambios en el Studio y convertir los flujos principales en 
 - Los flujos críticos se ejecutan en Chromium y Firefox dentro de CI.
 - Un cambio no puede publicarse si falla lint, tipos, unidad, E2E o accesibilidad crítica.
 - La creación de una release requiere únicamente actualizar el changelog y ejecutar `npm version`.
+
+### Evidencia de entrega
+
+- `docs/ARCHITECTURE.md` delimita los módulos y documenta la única excepción temporal al objetivo de 800 líneas.
+- `tests/e2e/studio.spec.js` ejecuta los flujos críticos y axe-core en Chromium y Firefox.
+- `npm run quality` agrupa lint, tipos, unidad, límites y E2E; los mismos controles bloquean despliegue y release en GitHub Actions.
+- `npm run build` genera `dist/` sin pruebas ni configuración de desarrollo, y los tags `v*` crean una release con notas extraídas de este changelog.
 
 ## Fase 3 — Experiencia de escritorio y adaptación · Objetivo `v0.14.0`
 

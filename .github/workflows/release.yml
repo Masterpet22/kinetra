@@ -1,0 +1,28 @@
+name: Publicar release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run release:verify
+      - run: npx playwright install --with-deps chromium firefox
+      - run: npm run quality
+      - run: npm run build
+      - run: node scripts/release-notes.mjs "${GITHUB_REF_NAME}" > release-notes.md
+      - run: tar -czf "kinetra-${GITHUB_REF_NAME}.tar.gz" -C dist .
+      - run: gh release create "${GITHUB_REF_NAME}" "kinetra-${GITHUB_REF_NAME}.tar.gz" --title "Kinetra ${GITHUB_REF_NAME}" --notes-file release-notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}

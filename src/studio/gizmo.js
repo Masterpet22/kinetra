@@ -53,14 +53,10 @@ export function constrainedTranslation(delta, axis) {
 export function collapseHierarchicalSelection(targets, parents, rootTarget = "rig") {
   const selected = new Set(targets);
   return targets.filter((target) => {
-    let parent = target === rootTarget
-      ? null
-      : target === "torso"
-        ? rootTarget
-        : parents[target] ?? rootTarget;
+    let parent = target === rootTarget ? null : target === "torso" ? rootTarget : (parents[target] ?? rootTarget);
     while (parent) {
       if (selected.has(parent)) return false;
-      parent = parent === rootTarget ? null : parents[parent] ?? rootTarget;
+      parent = parent === rootTarget ? null : (parents[parent] ?? rootTarget);
     }
     return true;
   });

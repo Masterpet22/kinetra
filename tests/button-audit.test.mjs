@@ -8,7 +8,18 @@ const [html, editor] = await Promise.all([
 
 const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const attribute = (tag, name) => tag.match(new RegExp(`${name}=["']([^"']+)["']`))?.[1] || null;
-const genericActions = ["data-mode", "data-tool", "data-menu-command", "data-panel-float", "data-panel-close", "data-tutorial", "data-project-template", "data-selection-action", "data-duplicate-choice", "data-layout-divider"];
+const genericActions = [
+  "data-mode",
+  "data-tool",
+  "data-menu-command",
+  "data-panel-float",
+  "data-panel-close",
+  "data-tutorial",
+  "data-project-template",
+  "data-selection-action",
+  "data-duplicate-choice",
+  "data-layout-divider"
+];
 const buttons = [...html.matchAll(/<button\b[^>]*>/g)].map((match) => match[0]);
 
 assert.ok(buttons.length > 30, "La auditoría debe abarcar los controles estáticos del Studio");
@@ -23,12 +34,20 @@ for (const tag of buttons) {
 
 for (const id of ["download-project", "cancel-export", "new-project"]) {
   assert.match(editor, new RegExp(`id=["']${id}["']`), `Debe renderizarse el botón dinámico #${id}`);
-  assert.match(editor, new RegExp(`\\$\\(["']${id}["']\\)\\.onclick\\s*=`), `El botón dinámico #${id} debe tener acción`);
+  assert.match(
+    editor,
+    new RegExp(`\\$\\(["']${id}["']\\)\\.onclick\\s*=`),
+    `El botón dinámico #${id} debe tener acción`
+  );
 }
 
-assert.match(editor, /function updatePlaybackButtons\(/, "Los tres accesos de reproducción deben compartir estado visible");
-assert.match(editor, /preview-play["']\)\.onclick\s*=\s*\(\)\s*=>\s*playing\s*\?\s*pause\(\)\s*:\s*play\(\)/);
-assert.match(editor, /header-play["']\)\.onclick\s*=\s*\(\)\s*=>\s*playing\s*\?\s*pause\(\)\s*:\s*play\(\)/);
-assert.match(editor, /\$\(["']play["']\)\.onclick\s*=\s*\(\)\s*=>\s*playing\s*\?\s*pause\(\)\s*:\s*play\(\)/);
+assert.match(
+  editor,
+  /function updatePlaybackButtons\(/,
+  "Los tres accesos de reproducción deben compartir estado visible"
+);
+assert.match(editor, /preview-play["']\)\.onclick\s*=\s*\(\)\s*=>\s*\(?playing\s*\?\s*pause\(\)\s*:\s*play\(\)\)?/);
+assert.match(editor, /header-play["']\)\.onclick\s*=\s*\(\)\s*=>\s*\(?playing\s*\?\s*pause\(\)\s*:\s*play\(\)\)?/);
+assert.match(editor, /\$\(["']play["']\)\.onclick\s*=\s*\(\)\s*=>\s*\(?playing\s*\?\s*pause\(\)\s*:\s*play\(\)\)?/);
 
 console.log(`Auditoría de ${buttons.length + 3} botones de Kinetra superada.`);

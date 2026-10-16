@@ -3,7 +3,7 @@ function angleBetween(from, to) {
 }
 
 function angleDelta(from, to) {
-  let delta = (to - from) * 180 / Math.PI;
+  let delta = ((to - from) * 180) / Math.PI;
   while (delta > 180) delta -= 360;
   while (delta < -180) delta += 360;
   return delta;
@@ -24,9 +24,10 @@ export function solveTwoBoneIk(root, joint, end, target) {
   const minimum = Math.max(1e-4, Math.abs(upperLength - lowerLength) + 1e-4);
   const maximum = Math.max(minimum, upperLength + lowerLength - 1e-4);
   const reach = Math.max(minimum, Math.min(maximum, rawDistance));
-  const cosine = Math.max(-1, Math.min(1,
-    (upperLength ** 2 + reach ** 2 - lowerLength ** 2) / (2 * upperLength * reach)
-  ));
+  const cosine = Math.max(
+    -1,
+    Math.min(1, (upperLength ** 2 + reach ** 2 - lowerLength ** 2) / (2 * upperLength * reach))
+  );
   const offset = Math.acos(cosine);
   const candidates = [targetAngle + offset, targetAngle - offset].map((angle) => ({
     x: root.x + Math.cos(angle) * upperLength,
@@ -43,7 +44,7 @@ export function solveTwoBoneIk(root, joint, end, target) {
   const desiredUpper = angleBetween(root, solvedJoint);
   const desiredLower = angleBetween(solvedJoint, solvedEnd);
   const upperDelta = angleDelta(currentUpper, desiredUpper);
-  const lowerDelta = angleDelta(currentLower + upperDelta * Math.PI / 180, desiredLower);
+  const lowerDelta = angleDelta(currentLower + (upperDelta * Math.PI) / 180, desiredLower);
 
   return { upperDelta, lowerDelta, joint: solvedJoint, end: solvedEnd };
 }

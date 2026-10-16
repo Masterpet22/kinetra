@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { PUPPET_TARGETS } from "../src/animations/rig.js";
 import {
   createKinetraClip,
   normalizeKinetraClip,
@@ -18,7 +17,11 @@ assert.equal(animationEase(0.25, "Quad.inOut"), 0.125);
 const editableDraft = createKinetraClip();
 editableDraft.description = "";
 editableDraft.keys.rig = [{ t: 0, x: 0 }];
-assert.equal("schema" in editableDraft, false, "Un clip usa el objeto de animación de Kinetra v2, no un envoltorio versionado");
+assert.equal(
+  "schema" in editableDraft,
+  false,
+  "Un clip usa el objeto de animación de Kinetra v2, no un envoltorio versionado"
+);
 assert.deepEqual(
   validateKinetraClip(editableDraft),
   [],
@@ -53,21 +56,43 @@ project.keys.rig = [
 ];
 project.spriteEvents = [{ t: 400, slot: "handRight", variant: "grip" }];
 
-assert.deepEqual(validateKinetraClip(project, { mode: "game" }), [], "Un clip completo debe superar la validación de publicación");
+assert.deepEqual(
+  validateKinetraClip(project, { mode: "game" }),
+  [],
+  "Un clip completo debe superar la validación de publicación"
+);
 const serialized = JSON.stringify(normalizeKinetraClip(project), null, 2);
 const roundTrip = parseKinetraClip(serialized, { mode: "game" });
 assert.equal(JSON.stringify(roundTrip, null, 2), serialized, "La importación debe conservar el objeto de clip Kinetra");
-assert.ok(serialized.indexOf('"t": 0') < serialized.indexOf('"t": 1000'), "Los fotogramas deben serializarse en orden temporal");
+assert.ok(
+  serialized.indexOf('"t": 0') < serialized.indexOf('"t": 1000'),
+  "Los fotogramas deben serializarse en orden temporal"
+);
 
 const pose = sampleKinetraClip(roundTrip, 500);
 assert.equal(pose.shoulderRight.angle, -52.5, "El muestreador del editor debe usar la curva declarada");
 assert.equal(pose.shoulderRight.x, 8.75, "El formato debe admitir más transformaciones que el ángulo");
-assert.deepEqual(pose.rig, { y: -5, scaleX: 0.05, scaleY: -0.05, alpha: -0.5 }, "Las transformaciones relativas se interpolan de forma determinista");
-assert.deepEqual(sampleKeyframeAnimationPose(roundTrip, 500), pose, "El editor y el runtime deben producir la misma pose");
+assert.deepEqual(
+  pose.rig,
+  { y: -5, scaleX: 0.05, scaleY: -0.05, alpha: -0.5 },
+  "Las transformaciones relativas se interpolan de forma determinista"
+);
+assert.deepEqual(
+  sampleKeyframeAnimationPose(roundTrip, 500),
+  pose,
+  "El editor y el runtime deben producir la misma pose"
+);
 
 const makeTarget = () => ({ x: 0, y: 0, angle: 0, scaleX: 1, scaleY: 1, alpha: 1 });
 const tweenConfigs = [];
-const scene = { tweens: { add(config) { tweenConfigs.push(config); return { stop() {} }; } } };
+const scene = {
+  tweens: {
+    add(config) {
+      tweenConfigs.push(config);
+      return { stop() {} };
+    }
+  }
+};
 const fighter = {
   rig: makeTarget(),
   sprite: makeTarget(),

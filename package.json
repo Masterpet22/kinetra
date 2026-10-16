@@ -1,15 +1,34 @@
 {
   "name": "kinetra",
-  "version": "0.11.0",
+  "version": "0.13.0",
   "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {
     "pretest": "npm run version:check",
-    "test": "node tests/studio-format.test.mjs && node tests/templates.test.mjs && node tests/kinetra-v2.test.mjs && node tests/gizmo.test.mjs && node tests/ik.test.mjs && node tests/studio-ui.test.mjs && node tests/button-audit.test.mjs",
-    "serve": "npx --yes serve .",
+    "test": "node tests/studio-format.test.mjs && node tests/templates.test.mjs && node tests/kinetra-v2.test.mjs && node tests/gizmo.test.mjs && node tests/ik.test.mjs && node tests/phase1.test.mjs && node tests/studio-ui.test.mjs && node tests/button-audit.test.mjs",
+    "serve": "node scripts/serve.mjs",
+    "lint": "eslint .",
+    "typecheck": "tsc -p jsconfig.json",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "budget": "node scripts/check-budget.mjs",
+    "build": "node scripts/build.mjs",
+    "test:e2e": "playwright test",
+    "quality": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run budget && npm run test:e2e",
     "version:sync": "node scripts/sync-version.mjs",
     "version:check": "node scripts/sync-version.mjs --check",
-    "version": "npm run version:sync && git add package.json package-lock.json index.html src tests"
+    "version": "npm run version:sync && git add package.json package-lock.json index.html src tests",
+    "release:verify": "node scripts/verify-release-tag.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
+    "eslint": "^10.13.0",
+    "fake-indexeddb": "^6.2.6",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "typescript": "^7.0.2"
   }
 }

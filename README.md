@@ -11,6 +11,8 @@ Kinetra es un editor web estático para ensamblar y animar personajes 2D constru
 5. Cambia a `Animador`, crea poses y guarda los fotogramas clave.
 6. En `Exportar`, descarga el paquete `.kinetra.json`. Las imágenes quedan incrustadas como data URLs, por lo que el archivo no depende de la instalación del editor.
 
+Cada proyecto puede contener varios clips. El selector del encabezado permite crear, duplicar, renombrar, ordenar y eliminar clips; la vista previa puede reproducir cualquiera de ellos y la exportación conserva la colección completa.
+
 Para que las articulaciones deformen zonas distintas, el personaje debe estar separado en imágenes por pieza (por ejemplo, brazo, antebrazo y mano). Una ilustración plana importada como una única capa se mueve como una sola pieza; el corte automático y la deformación por malla pertenecen a una etapa posterior.
 
 La lectura de PSD utiliza ag-psd, cargada bajo demanda desde esm.sh; el documento se procesa en el navegador.
@@ -71,10 +73,14 @@ La aplicación no necesita backend ni proceso de compilación.
 ## Desarrollo
 
 ```bash
-npm test
+npm ci
+npm run quality
+npm run build
 ```
 
-La rama `main` se prueba y publica automáticamente mediante GitHub Actions.
+`npm run quality` ejecuta ESLint, `checkJs`, pruebas unitarias, presupuestos de tamaño, Playwright en Chromium y Firefox y auditoría de accesibilidad. `npm run build` crea en `dist/` el artefacto estático de producción, sin pruebas ni configuración de desarrollo.
+
+La rama `main` se verifica y publica mediante flujos separados de GitHub Actions. Los tags `v*` publican una release únicamente cuando la versión coincide y todos los controles terminan correctamente.
 
 La versión se define una sola vez en `package.json`. Para preparar una nueva versión usa `npm version patch`, `npm version minor` o `npm version major`; el script de ciclo de vida sincroniza automáticamente las referencias de caché del HTML, los módulos y las pruebas. También puedes ejecutar `npm run version:check` para verificar que no existan referencias desactualizadas.
 
@@ -88,15 +94,14 @@ Kinetra se distribuye bajo la [licencia MIT](./LICENSE).
 
 Kinetra importa y exporta paquetes `kinetra/v2`. El paquete autocontenido incluye rig, capas, imágenes y clips de animación.
 
+El trabajo local se guarda en IndexedDB: los metadatos quedan separados de las imágenes, almacenadas como `Blob`. El Studio informa cambios pendientes, guardado, recuperación y falta de cuota; si el almacenamiento falla, habilita una exportación de emergencia. Consulta [los límites del formato](./docs/LIMITS.md) y el [JSON Schema](./docs/kinetra-v2.schema.json).
+
 ## Runtime para juegos web
 
 El módulo `src/animations/kinetra-runtime.js` no depende del DOM. Valida el paquete, interpola la animación y devuelve una matriz afín por capa, utilizable con Canvas 2D, PixiJS o Phaser:
 
 ```js
-import {
-  resolveKinetraFrame,
-  validateKinetraProject
-} from "./src/animations/kinetra-runtime.js";
+import { resolveKinetraFrame, validateKinetraProject } from "./src/animations/kinetra-runtime.js";
 
 const character = await fetch("./personaje.kinetra.json").then((response) => response.json());
 const errors = validateKinetraProject(character);
@@ -111,8 +116,14 @@ for (const layer of frame.layers) {
   context.globalAlpha = layer.opacity;
   context.drawImage(
     image,
-    crop.x, crop.y, crop.width, crop.height,
-    -crop.width / 2, -crop.height / 2, crop.width, crop.height
+    crop.x,
+    crop.y,
+    crop.width,
+    crop.height,
+    -crop.width / 2,
+    -crop.height / 2,
+    crop.width,
+    crop.height
   );
 }
 ```
@@ -123,8 +134,13 @@ for (const layer of frame.layers) {
 
 - `index.html`: entrada de la aplicación.
 - `styles.css`: interfaz del editor.
-- `src/studio/editor.js`: controlador visual y estado de autoría.
+- `src/studio/editor.js`: adaptador DOM y coordinador de interacciones.
+- `src/studio/project-model.js`, `state.js`, `commands.js` e `history.js`: modelo de autoría y cambios reversibles.
+- `src/studio/persistence.js` y `project-io.js`: IndexedDB, recuperación e importación/exportación.
+- `src/studio/canvas-renderer.js`, `timeline.js`, `panels.js` y `tutorials.js`: módulos de interfaz sin efectos secundarios al importarse.
 - `src/animations/kinetra-runtime.js`: runtime portable y contrato `kinetra/v2`.
 - `src/animations/`: formatos de animación, runtime y validación de Kinetra v2.
 - `assets/modular/man_sprites/runtime/`: sprites de demostración.
 - `tests/`: pruebas del contrato y de la interfaz.
+
+La distribución completa se describe en [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).

@@ -15,7 +15,12 @@ function targetFor(fighter, name) {
 }
 
 function snapshot(target) {
-  return Object.fromEntries(TRANSFORM_PROPERTIES.map((property) => [property, Number(target?.[property] ?? (property.startsWith("scale") || property === "alpha" ? 1 : 0))]));
+  return Object.fromEntries(
+    TRANSFORM_PROPERTIES.map((property) => [
+      property,
+      Number(target?.[property] ?? (property.startsWith("scale") || property === "alpha" ? 1 : 0))
+    ])
+  );
 }
 
 export class PuppetAnimationController {
@@ -32,8 +37,12 @@ export class PuppetAnimationController {
     this.generation = 0;
   }
 
-  get state() { return this.current?.state || null; }
-  get clipId() { return this.current?.id || null; }
+  get state() {
+    return this.current?.state || null;
+  }
+  get clipId() {
+    return this.current?.id || null;
+  }
 
   supports(idOrClip) {
     const clip = typeof idOrClip === "string" ? this.clips[idOrClip] : idOrClip;
@@ -78,7 +87,9 @@ export class PuppetAnimationController {
 
     applyAt(0);
     const clock = { elapsed: 0 };
-    this.finished = new Promise((resolve) => { this.resolveFinished = resolve; });
+    this.finished = new Promise((resolve) => {
+      this.resolveFinished = resolve;
+    });
     const tween = this.scene.tweens.add({
       targets: clock,
       elapsed: clip.duration,
@@ -86,16 +97,20 @@ export class PuppetAnimationController {
       ease: "Linear",
       repeat: clip.loop ? -1 : 0,
       onUpdate: () => applyAt(clock.elapsed),
-      onComplete: clip.loop ? undefined : () => {
-        applyAt(clip.duration);
-        if (generation === this.generation) this.complete();
-      }
+      onComplete: clip.loop
+        ? undefined
+        : () => {
+            applyAt(clip.duration);
+            if (generation === this.generation) this.complete();
+          }
     });
     this.tweens.push(tween);
     return true;
   }
 
-  loop(id, options) { return this.play(id, options); }
+  loop(id, options) {
+    return this.play(id, options);
+  }
 
   async playOnce(id, options) {
     if (!this.play(id, options)) return false;

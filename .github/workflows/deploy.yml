@@ -15,33 +15,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Descargar repositorio
-        uses: actions/checkout@v5
-      - name: Configurar Node.js
-        uses: actions/setup-node@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - name: Ejecutar pruebas
-        run: npm test
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium firefox
+      - run: npm run quality
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
 
   deploy:
-    needs: test
+    needs: build
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Descargar repositorio
-        uses: actions/checkout@v5
-      - name: Configurar GitHub Pages
-        uses: actions/configure-pages@v5
-      - name: Preparar sitio estático
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: .
       - name: Publicar
         id: deployment
         uses: actions/deploy-pages@v4

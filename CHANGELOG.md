@@ -6,14 +6,33 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-16
+
 ### Added
 
 - Previsualizaciones ensambladas a partir de las piezas reales de cada plantilla.
+- Proyectos de autoría con varios clips y controles para crear, duplicar, renombrar, ordenar, eliminar y previsualizar animaciones.
+- Persistencia en IndexedDB con recursos binarios como `Blob`, autoguardado, guardado explícito, recuperación tras cierres inesperados y exportación de emergencia.
+- Historial por comandos con presupuesto de memoria configurable y reutilización de recursos inmutables.
+- Migración explícita de proyectos anteriores y JSON Schema para el contrato `kinetra/v2`.
+- Límites documentados y validación de MIME, data URLs, atlas, referencias y dimensiones.
+- Módulos independientes para modelo, estado, comandos, historial, persistencia, E/S, render, timeline, paneles y tutoriales.
+- Pruebas E2E en Chromium y Firefox para clips, recursos, rig, claves, persistencia, exportación, reimportación, deshacer y rehacer.
+- Auditoría de accesibilidad con axe-core, comprobación de tipos con `checkJs`, ESLint, Prettier y presupuestos de tamaño.
+- Artefacto de producción reproducible y flujos separados de verificación, despliegue y publicación de releases desde tags.
 
 ### Changed
 
 - Las plantillas masculina y femenina usan 14 recursos PNG independientes en lugar de vistas previas o atlas compartidos.
 - El rig femenino se recalibró sobre las articulaciones visibles de sus nuevas piezas y su pose oficial ahora inicia con rotación editable de cero grados.
+- La exportación portable conserva todos los clips del proyecto, no únicamente el clip activo.
+- El encabezado reorganiza los controles de clips en resoluciones de escritorio estrechas para evitar solapamientos.
+- La versión del paquete, los recursos del HTML y el tag de release se verifican desde una única fuente en `package.json`.
+
+### Fixed
+
+- Estados ARIA inválidos en el divisor de la línea de tiempo y controles sin nombre accesible.
+- Recuperación de proyectos grandes sin depender de `localStorage` ni repetir imágenes en cada entrada del historial.
 
 ### Removed
 
@@ -63,5 +82,6 @@ Primera versión pública etiquetada de Kinetra. Consolida el editor independien
 
 - Compatibilidad y código residual del formato `kinetra/v1`.
 
-[Unreleased]: https://github.com/Masterpet22/kinetra/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/Masterpet22/kinetra/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/Masterpet22/kinetra/compare/v0.11.0...v0.13.0
 [0.11.0]: https://github.com/Masterpet22/kinetra/releases/tag/v0.11.0

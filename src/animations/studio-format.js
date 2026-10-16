@@ -1,17 +1,25 @@
 /**
  * Formato de clips de animación Kinetra v2.
  */
-import { PUPPET_TARGETS } from "./rig.js?v=0.11.0";
-import { TRANSFORM_PROPERTIES } from "./runtime.js?v=0.11.0";
+import { PUPPET_TARGETS } from "./rig.js";
+import { TRANSFORM_PROPERTIES } from "./runtime.js";
 
 export const STUDIO_STATES = Object.freeze(["idle", "locomotion", "action", "hit", "defeated"]);
 export const STUDIO_STATUSES = Object.freeze(["draft", "integrated"]);
 export const STUDIO_EASES = Object.freeze([
   "Linear",
-  "Sine.in", "Sine.out", "Sine.inOut",
-  "Quad.in", "Quad.out", "Quad.inOut",
-  "Cubic.in", "Cubic.out", "Cubic.inOut",
-  "Back.in", "Back.out", "Back.inOut"
+  "Sine.in",
+  "Sine.out",
+  "Sine.inOut",
+  "Quad.in",
+  "Quad.out",
+  "Quad.inOut",
+  "Cubic.in",
+  "Cubic.out",
+  "Cubic.inOut",
+  "Back.in",
+  "Back.out",
+  "Back.inOut"
 ]);
 
 const TRANSFORM_SET = new Set(TRANSFORM_PROPERTIES);
@@ -52,10 +60,7 @@ function normalizeFrame(frame) {
  * Devuelve todos los errores del clip. `mode: "project"` acepta borradores;
  * `mode: "game"` exige un clip publicable.
  */
-export function validateKinetraClip(clip, {
-  allowedTargets = PUPPET_TARGETS,
-  mode = "project"
-} = {}) {
+export function validateKinetraClip(clip, { allowedTargets = PUPPET_TARGETS, mode = "project" } = {}) {
   const errors = [];
   if (!isRecord(clip)) return ["clip: debe ser un objeto"];
   if (clip.tracks !== undefined) errors.push("clip.tracks: formato no compatible; usa keys");
@@ -182,10 +187,7 @@ export function normalizeKinetraClip(clip) {
   const keys = Object.fromEntries(
     Object.entries(clip.keys || {})
       .sort(([left], [right]) => left.localeCompare(right))
-      .map(([target, frames]) => [
-        target,
-        [...frames].map(normalizeFrame).sort((left, right) => left.t - right.t)
-      ])
+      .map(([target, frames]) => [target, [...frames].map(normalizeFrame).sort((left, right) => left.t - right.t)])
   );
   const requiredTargets = sortedUnique([...(clip.requires || []), ...Object.keys(keys)]);
   const spriteEvents = [...(clip.spriteEvents || [])]

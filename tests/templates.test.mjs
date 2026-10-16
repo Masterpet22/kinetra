@@ -3,7 +3,10 @@ import { stat } from "node:fs/promises";
 import { createKinetraBundle, validateKinetraProject } from "../src/animations/kinetra-runtime.js";
 import { createTemplateProject, PROJECT_TEMPLATES } from "../src/studio/templates.js";
 
-assert.deepEqual(PROJECT_TEMPLATES.map((template) => template.id), ["male", "female", "blank"]);
+assert.deepEqual(
+  PROJECT_TEMPLATES.map((template) => template.id),
+  ["male", "female", "blank"]
+);
 
 const male = createTemplateProject("male");
 assert.equal(male.parts.length, 14);
@@ -21,24 +24,21 @@ assert.equal(female.rig.bones.length, 13);
 assert.ok(female.parts.every((part) => part.crop?.width > 0 && part.crop?.height > 0));
 assert.equal(new Set(female.parts.map((part) => part.assetId)).size, 14);
 assert.ok(female.assets.every((asset) => asset.src.startsWith("./assets/templates/female/")));
-assert.deepEqual(
-  Object.fromEntries(female.rig.bones.map(({ id, x, y }) => [id, { x, y }])),
-  {
-    neck: { x: 0, y: -292.2 },
-    shoulderRight: { x: -167.78, y: -271.37 },
-    elbowRight: { x: -224.11, y: -24.14 },
-    wristRight: { x: -249.54, y: 145.85 },
-    shoulderLeft: { x: 95.36, y: -269.89 },
-    elbowLeft: { x: 198.12, y: -60.41 },
-    wristLeft: { x: 284.58, y: 96.99 },
-    hipRight: { x: -92.4, y: 140.8 },
-    kneeRight: { x: -106.54, y: 370.16 },
-    ankleRight: { x: -136.24, y: 556.99 },
-    hipLeft: { x: 88, y: 140.8 },
-    kneeLeft: { x: 84.57, y: 363.76 },
-    ankleLeft: { x: 86.01, y: 550.29 }
-  }
-);
+assert.deepEqual(Object.fromEntries(female.rig.bones.map(({ id, x, y }) => [id, { x, y }])), {
+  neck: { x: 0, y: -292.2 },
+  shoulderRight: { x: -167.78, y: -271.37 },
+  elbowRight: { x: -224.11, y: -24.14 },
+  wristRight: { x: -249.54, y: 145.85 },
+  shoulderLeft: { x: 95.36, y: -269.89 },
+  elbowLeft: { x: 198.12, y: -60.41 },
+  wristLeft: { x: 284.58, y: 96.99 },
+  hipRight: { x: -92.4, y: 140.8 },
+  kneeRight: { x: -106.54, y: 370.16 },
+  ankleRight: { x: -136.24, y: 556.99 },
+  hipLeft: { x: 88, y: 140.8 },
+  kneeLeft: { x: 84.57, y: 363.76 },
+  ankleLeft: { x: 86.01, y: 550.29 }
+});
 assert.deepEqual(
   female.parts.map(({ id, x, y, rotation, z }) => ({ id, x, y, rotation, z })),
   [
@@ -58,9 +58,14 @@ assert.deepEqual(
     { id: "cabeza", x: -3.96, y: -443.06, rotation: 0, z: 13 }
   ]
 );
-assert.ok(female.parts.every((part) => part.rotation === 0), "La pose femenina oficial debe iniciar en rotación cero");
+assert.ok(
+  female.parts.every((part) => part.rotation === 0),
+  "La pose femenina oficial debe iniciar en rotación cero"
+);
 assert.deepEqual(
-  Object.fromEntries(female.parts.filter((part) => part.restRotation).map(({ id, restRotation }) => [id, restRotation])),
+  Object.fromEntries(
+    female.parts.filter((part) => part.restRotation).map(({ id, restRotation }) => [id, restRotation])
+  ),
   { brazo_derecho: -12, antebrazo_derecho: 6, mano_derecha: 4 },
   "La orientación visual de los sprites debe conservarse como calibración de reposo"
 );
@@ -70,6 +75,8 @@ const blank = createTemplateProject("blank");
 assert.equal(blank.parts.length, 0);
 assert.equal(blank.rig.bones.length, 0);
 
-await Promise.all([...male.assets, ...female.assets].map((asset) => stat(new URL(`../${asset.src.slice(2)}`, import.meta.url))));
+await Promise.all(
+  [...male.assets, ...female.assets].map((asset) => stat(new URL(`../${asset.src.slice(2)}`, import.meta.url)))
+);
 
 console.log("Pruebas de plantillas de Kinetra superadas.");

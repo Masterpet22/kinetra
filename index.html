@@ -1,377 +1,896 @@
 <!doctype html>
 <html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Kinetra · Editor de animación por marionetas</title>
-  <meta name="description" content="Editor web para ensamblar y animar personajes 2D mediante sprites y esqueletos articulados.">
-  <link rel="icon" href="./assets/favicon.png?v=0.11.0" type="image/png">
-  <script>
-    // Retira trabajadores antiguos sin detener ni recargar la navegación actual.
-    (() => {
-      if (!("serviceWorker" in navigator)) return;
-      const scope = new URL("./", window.location.href).href;
-      Promise.all([
-        navigator.serviceWorker.getRegistrations().then((registrations) => Promise.all(
-          registrations.filter((registration) => registration.scope === scope).map((registration) => registration.unregister())
-        )),
-        "caches" in window
-          ? caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith("kinetra-assets-")).map((key) => caches.delete(key))))
-          : Promise.resolve()
-      ]).catch((error) => console.warn("No se pudo retirar una caché antigua", error));
-    })();
-  </script>
-  <script>
-    try {
-      const theme = localStorage.getItem("kinetra:theme");
-      if (["noche", "grafito", "aurora"].includes(theme)) document.documentElement.dataset.theme = theme;
-    } catch {}
-  </script>
-  <link rel="stylesheet" href="./styles.css?v=0.11.0">
-  <script defer src="https://unpkg.com/lucide@1.57.0/dist/umd/lucide.min.js"></script>
-</head>
-<body>
-  <header class="studio-header">
-    <div class="brand" aria-label="Kinetra"><span class="brand-mark"><img class="brand-logo" src="./assets/brand/kinetra-logo.png?v=0.11.0" alt=""></span><span class="brand-name">Kinetra</span></div>
-    <nav class="app-menu-bar" aria-label="Menú de aplicación">
-      <details class="app-menu">
-        <summary>Archivo</summary>
-        <div class="app-menu-popover">
-          <button data-menu-command="new"><span><i data-lucide="file-plus-2"></i> Nuevo proyecto</span></button>
-          <button data-menu-command="open"><span><i data-lucide="folder-open"></i> Abrir JSON…</span></button>
-          <button data-menu-command="import-images"><span><i data-lucide="images"></i> Importar imágenes como capas…</span></button>
-          <button data-menu-command="save"><span><i data-lucide="save"></i> Guardar localmente</span></button>
-          <hr>
-          <button data-mode="proyecto"><span><i data-lucide="layout-dashboard"></i> Resumen del proyecto</span></button>
-          <button data-mode="exportar"><span><i data-lucide="package-check"></i> Preparar exportación</span></button>
-          <button data-menu-command="export-project"><span><i data-lucide="download"></i> Exportar proyecto…</span></button>
-        </div>
-      </details>
-      <details class="app-menu">
-        <summary>Edición</summary>
-        <div class="app-menu-popover">
-          <button data-menu-command="undo"><span><i data-lucide="undo-2"></i> Deshacer</span><kbd>Ctrl Z</kbd></button>
-          <button data-menu-command="redo"><span><i data-lucide="redo-2"></i> Rehacer</span><kbd>Ctrl Y</kbd></button>
-        </div>
-      </details>
-      <details class="app-menu">
-        <summary>Ver</summary>
-        <div class="app-menu-popover">
-          <label><input type="checkbox" data-view-toggle="grid" checked> Cuadrícula</label>
-          <label><input type="checkbox" data-view-toggle="bones" checked> Huesos</label>
-          <label><input type="checkbox" data-view-toggle="ghost" checked> Vista fantasma</label>
-          <hr>
-          <button data-menu-command="fit"><span><i data-lucide="scan"></i> Centrar vista</span></button>
-          <button data-menu-command="fullscreen"><span><i data-lucide="maximize-2"></i> Pantalla completa</span></button>
-          <hr>
-          <small class="menu-section-label">Tema de color</small>
-          <label><input type="radio" name="theme" value="noche" data-theme-choice> Noche</label>
-          <label><input type="radio" name="theme" value="grafito" data-theme-choice> Grafito</label>
-          <label><input type="radio" name="theme" value="aurora" data-theme-choice> Aurora</label>
-        </div>
-      </details>
-      <details class="app-menu" id="window-menu">
-        <summary>Ventana</summary>
-        <div class="app-menu-popover app-menu-windows">
-          <label><input type="checkbox" data-panel-toggle="skeleton" checked> Esqueleto</label>
-          <label><input type="checkbox" data-panel-toggle="tracks" checked> Pistas</label>
-          <label><input type="checkbox" data-panel-toggle="layers" checked> Capas</label>
-          <label><input type="checkbox" data-panel-toggle="inspector" checked> Inspector</label>
-          <label><input type="checkbox" data-panel-toggle="presets" checked> Presets</label>
-          <label><input type="checkbox" data-panel-toggle="curves" checked> Curvas</label>
-          <label><input type="checkbox" data-panel-toggle="timeline" checked> Línea de tiempo</label>
-          <label><input id="preview-toggle" type="checkbox" checked> Vista previa</label>
-          <hr>
-          <button id="reset-panels"><span><i data-lucide="rotate-ccw"></i> Restablecer disposición</span></button>
-          <small>Arrastra el asa de una ventana para moverla o acoplarla a otro borde.</small>
-        </div>
-      </details>
-      <details class="app-menu">
-        <summary>Ayuda</summary>
-        <div class="app-menu-popover help-menu-popover">
-          <button data-tutorial="animador"><span><i data-lucide="film"></i> Tutorial del Animador</span></button>
-          <button data-tutorial="calibrador"><span><i data-lucide="bone"></i> Tutorial de Ensamblaje</span></button>
-          <button data-tutorial="timeline"><span><i data-lucide="clock-3"></i> Tutorial de línea de tiempo</span></button>
-          <button data-tutorial="paneles"><span><i data-lucide="panels-top-left"></i> Tutorial de paneles</span></button>
-          <button data-tutorial="exportar"><span><i data-lucide="package-check"></i> Tutorial de exportación</span></button>
-          <hr>
-          <button data-menu-command="shortcuts"><span><i data-lucide="keyboard"></i> Atajos de teclado</span></button>
-        </div>
-      </details>
-    </nav>
-    <div class="workspace-switcher">
-      <details class="app-menu workspace-menu" id="workspace-menu">
-        <summary><i data-lucide="panels-top-left"></i><span id="workspace-menu-label">Animador</span><i data-lucide="chevron-down"></i></summary>
-        <div class="app-menu-popover">
-          <button data-mode="animador"><span><i data-lucide="film"></i> Animador</span></button>
-          <button data-mode="calibrador"><span><i data-lucide="bone"></i> Ensamblaje</span></button>
-        </div>
-      </details>
-    </div>
-    <div class="header-spacer"></div>
-    <label class="project-title">Proyecto <input id="project-name" value="nuevo_movimiento" maxlength="80" aria-label="ID del proyecto"></label>
-    <div class="header-actions">
-      <button id="undo" class="header-action icon-button" title="Deshacer (Ctrl+Z)" aria-label="Deshacer"><i data-lucide="undo-2"></i></button>
-      <button id="redo" class="header-action icon-button" title="Rehacer (Ctrl+Y)" aria-label="Rehacer"><i data-lucide="redo-2"></i></button>
-      <button id="header-play" class="header-action playback-toggle" title="Reproducir (Espacio)" aria-label="Reproducir"><i class="when-stopped" data-lucide="play"></i><i class="when-playing" data-lucide="square"></i><span class="playback-label">Reproducir</span></button>
-      <button id="save-local" class="header-action primary"><i data-lucide="save"></i><span>Guardar</span></button>
-    </div>
-  </header>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kinetra · Editor de animación por marionetas</title>
+    <meta
+      name="description"
+      content="Editor web para ensamblar y animar personajes 2D mediante sprites y esqueletos articulados."
+    />
+    <link rel="icon" href="./assets/favicon.png?v=0.13.0" type="image/png" />
+    <script>
+      // Retira trabajadores antiguos sin detener ni recargar la navegación actual.
+      (() => {
+        if (!("serviceWorker" in navigator)) return;
+        const scope = new URL("./", window.location.href).href;
+        Promise.all([
+          navigator.serviceWorker
+            .getRegistrations()
+            .then((registrations) =>
+              Promise.all(
+                registrations
+                  .filter((registration) => registration.scope === scope)
+                  .map((registration) => registration.unregister())
+              )
+            ),
+          "caches" in window
+            ? caches
+                .keys()
+                .then((keys) =>
+                  Promise.all(keys.filter((key) => key.startsWith("kinetra-assets-")).map((key) => caches.delete(key)))
+                )
+            : Promise.resolve()
+        ]).catch((error) => console.warn("No se pudo retirar una caché antigua", error));
+      })();
+    </script>
+    <script>
+      try {
+        const theme = localStorage.getItem("kinetra:theme");
+        if (["noche", "grafito", "aurora"].includes(theme)) document.documentElement.dataset.theme = theme;
+      } catch {}
+    </script>
+    <link rel="stylesheet" href="./styles.css?v=0.13.0" />
+    <script defer src="https://unpkg.com/lucide@1.57.0/dist/umd/lucide.min.js"></script>
+  </head>
+  <body>
+    <header class="studio-header">
+      <div class="brand" aria-label="Kinetra">
+        <span class="brand-mark"><img class="brand-logo" src="./assets/brand/kinetra-logo.png?v=0.13.0" alt="" /></span
+        ><span class="brand-name">Kinetra</span>
+      </div>
+      <nav class="app-menu-bar" aria-label="Menú de aplicación">
+        <details class="app-menu">
+          <summary>Archivo</summary>
+          <div class="app-menu-popover">
+            <button data-menu-command="new">
+              <span><i data-lucide="file-plus-2"></i> Nuevo proyecto</span>
+            </button>
+            <button data-menu-command="open">
+              <span><i data-lucide="folder-open"></i> Abrir JSON…</span>
+            </button>
+            <button data-menu-command="import-images">
+              <span><i data-lucide="images"></i> Importar imágenes como capas…</span>
+            </button>
+            <button data-menu-command="save">
+              <span><i data-lucide="save"></i> Guardar localmente</span>
+            </button>
+            <hr />
+            <button data-mode="proyecto">
+              <span><i data-lucide="layout-dashboard"></i> Resumen del proyecto</span>
+            </button>
+            <button data-mode="exportar">
+              <span><i data-lucide="package-check"></i> Preparar exportación</span>
+            </button>
+            <button data-menu-command="export-project">
+              <span><i data-lucide="download"></i> Exportar proyecto…</span>
+            </button>
+          </div>
+        </details>
+        <details class="app-menu">
+          <summary>Edición</summary>
+          <div class="app-menu-popover">
+            <button data-menu-command="undo">
+              <span><i data-lucide="undo-2"></i> Deshacer</span><kbd>Ctrl Z</kbd>
+            </button>
+            <button data-menu-command="redo">
+              <span><i data-lucide="redo-2"></i> Rehacer</span><kbd>Ctrl Y</kbd>
+            </button>
+          </div>
+        </details>
+        <details class="app-menu">
+          <summary>Ver</summary>
+          <div class="app-menu-popover">
+            <label><input type="checkbox" data-view-toggle="grid" checked /> Cuadrícula</label>
+            <label><input type="checkbox" data-view-toggle="bones" checked /> Huesos</label>
+            <label><input type="checkbox" data-view-toggle="ghost" checked /> Vista fantasma</label>
+            <hr />
+            <button data-menu-command="fit">
+              <span><i data-lucide="scan"></i> Centrar vista</span>
+            </button>
+            <button data-menu-command="fullscreen">
+              <span><i data-lucide="maximize-2"></i> Pantalla completa</span>
+            </button>
+            <hr />
+            <small class="menu-section-label">Tema de color</small>
+            <label><input type="radio" name="theme" value="noche" data-theme-choice /> Noche</label>
+            <label><input type="radio" name="theme" value="grafito" data-theme-choice /> Grafito</label>
+            <label><input type="radio" name="theme" value="aurora" data-theme-choice /> Aurora</label>
+          </div>
+        </details>
+        <details class="app-menu" id="window-menu">
+          <summary>Ventana</summary>
+          <div class="app-menu-popover app-menu-windows">
+            <label><input type="checkbox" data-panel-toggle="skeleton" checked /> Esqueleto</label>
+            <label><input type="checkbox" data-panel-toggle="tracks" checked /> Pistas</label>
+            <label><input type="checkbox" data-panel-toggle="layers" checked /> Capas</label>
+            <label><input type="checkbox" data-panel-toggle="inspector" checked /> Inspector</label>
+            <label><input type="checkbox" data-panel-toggle="presets" checked /> Presets</label>
+            <label><input type="checkbox" data-panel-toggle="curves" checked /> Curvas</label>
+            <label><input type="checkbox" data-panel-toggle="timeline" checked /> Línea de tiempo</label>
+            <label><input id="preview-toggle" type="checkbox" checked /> Vista previa</label>
+            <hr />
+            <button id="reset-panels">
+              <span><i data-lucide="rotate-ccw"></i> Restablecer disposición</span>
+            </button>
+            <small>Arrastra el asa de una ventana para moverla o acoplarla a otro borde.</small>
+          </div>
+        </details>
+        <details class="app-menu">
+          <summary>Ayuda</summary>
+          <div class="app-menu-popover help-menu-popover">
+            <button data-tutorial="animador">
+              <span><i data-lucide="film"></i> Tutorial del Animador</span>
+            </button>
+            <button data-tutorial="calibrador">
+              <span><i data-lucide="bone"></i> Tutorial de Ensamblaje</span>
+            </button>
+            <button data-tutorial="timeline">
+              <span><i data-lucide="clock-3"></i> Tutorial de línea de tiempo</span>
+            </button>
+            <button data-tutorial="paneles">
+              <span><i data-lucide="panels-top-left"></i> Tutorial de paneles</span>
+            </button>
+            <button data-tutorial="exportar">
+              <span><i data-lucide="package-check"></i> Tutorial de exportación</span>
+            </button>
+            <hr />
+            <button data-menu-command="shortcuts">
+              <span><i data-lucide="keyboard"></i> Atajos de teclado</span>
+            </button>
+          </div>
+        </details>
+      </nav>
+      <div class="workspace-switcher">
+        <details class="app-menu workspace-menu" id="workspace-menu">
+          <summary>
+            <i data-lucide="panels-top-left"></i><span id="workspace-menu-label">Animador</span
+            ><i data-lucide="chevron-down"></i>
+          </summary>
+          <div class="app-menu-popover">
+            <button data-mode="animador">
+              <span><i data-lucide="film"></i> Animador</span>
+            </button>
+            <button data-mode="calibrador">
+              <span><i data-lucide="bone"></i> Ensamblaje</span>
+            </button>
+          </div>
+        </details>
+      </div>
+      <div class="header-spacer"></div>
+      <div class="clip-switcher" aria-label="Clips del proyecto">
+        <select id="clip-select" aria-label="Clip activo"></select>
+        <button id="clip-new" class="header-action icon-button" title="Crear clip" aria-label="Crear clip">
+          <i data-lucide="plus"></i>
+        </button>
+        <button id="clip-duplicate" class="header-action icon-button" title="Duplicar clip" aria-label="Duplicar clip">
+          <i data-lucide="copy-plus"></i>
+        </button>
+        <button id="clip-rename" class="header-action icon-button" title="Renombrar clip" aria-label="Renombrar clip">
+          <i data-lucide="pencil"></i>
+        </button>
+        <button
+          id="clip-up"
+          class="header-action icon-button"
+          title="Mover clip a la izquierda"
+          aria-label="Mover clip a la izquierda"
+        >
+          <i data-lucide="arrow-left"></i>
+        </button>
+        <button
+          id="clip-down"
+          class="header-action icon-button"
+          title="Mover clip a la derecha"
+          aria-label="Mover clip a la derecha"
+        >
+          <i data-lucide="arrow-right"></i>
+        </button>
+        <button id="clip-delete" class="header-action icon-button" title="Eliminar clip" aria-label="Eliminar clip">
+          <i data-lucide="trash-2"></i>
+        </button>
+      </div>
+      <label class="project-title"
+        >ID clip <input id="project-name" value="nuevo_movimiento" maxlength="80" aria-label="ID del clip activo"
+      /></label>
+      <div class="header-actions">
+        <button id="undo" class="header-action icon-button" title="Deshacer (Ctrl+Z)" aria-label="Deshacer">
+          <i data-lucide="undo-2"></i>
+        </button>
+        <button id="redo" class="header-action icon-button" title="Rehacer (Ctrl+Y)" aria-label="Rehacer">
+          <i data-lucide="redo-2"></i>
+        </button>
+        <button
+          id="header-play"
+          class="header-action playback-toggle"
+          title="Reproducir (Espacio)"
+          aria-label="Reproducir"
+        >
+          <i class="when-stopped" data-lucide="play"></i><i class="when-playing" data-lucide="square"></i
+          ><span class="playback-label">Reproducir</span>
+        </button>
+        <button id="save-local" class="header-action primary"><i data-lucide="save"></i><span>Guardar</span></button>
+        <output id="save-state" class="save-state" role="status">Sin cambios</output>
+        <button id="emergency-export" class="header-action danger" hidden>
+          <i data-lucide="download"></i><span>Exportación de emergencia</span>
+        </button>
+      </div>
+    </header>
 
-  <main class="studio-shell">
-    <aside class="panel left-panel hierarchy-panel" data-panel="skeleton" data-hierarchy-kind="skeleton">
-      <div class="panel-window-bar" data-panel-handle="skeleton">
-        <span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="skeleton"></span>
-        <span class="panel-window-actions"><button data-panel-float="skeleton" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Esqueleto"><i data-lucide="external-link"></i></button><button data-panel-close="skeleton" title="Ocultar panel" aria-label="Ocultar Esqueleto"><i data-lucide="x"></i></button></span>
-      </div>
-      <div class="panel-body">
-        <input class="search" data-hierarchy-search type="search" placeholder="Buscar articulación…">
-        <div class="tree" data-hierarchy-tree></div>
-      </div>
-      <div class="multi-selection-menu" data-multi-menu hidden>
-        <button class="small-button" data-selection-action="visibility" title="Ocultar elementos seleccionados" aria-label="Ocultar elementos seleccionados"><i data-lucide="eye-off"></i></button>
-        <button class="small-button" data-selection-action="lock" title="Bloquear elementos seleccionados" aria-label="Bloquear elementos seleccionados"><i data-lucide="lock-keyhole"></i></button>
-        <button class="small-button" data-selection-action="copy" title="Copiar selección (Ctrl+C)" aria-label="Copiar selección"><i data-lucide="copy"></i></button>
-        <button class="small-button" data-selection-action="paste" title="Pegar elementos copiados (Ctrl+V)" aria-label="Pegar elementos copiados"><i data-lucide="clipboard-paste"></i></button>
-        <button class="small-button danger" data-selection-action="delete" title="Eliminar elementos seleccionados" aria-label="Eliminar elementos seleccionados"><i data-lucide="trash-2"></i></button>
-        <button class="small-button" data-selection-action="clear" title="Cancelar selección" aria-label="Cancelar selección"><i data-lucide="x"></i></button>
-      </div>
-      <div class="tree-actions"><button id="add-bone" class="small-button"><i data-lucide="plus"></i> Hueso</button><button id="delete-bone" class="small-button danger"><i data-lucide="trash-2"></i></button></div>
-      <div class="tree-meta" data-hierarchy-meta>Rig humanoide · Proyecto local</div>
-    </aside>
-
-    <aside class="panel left-panel hierarchy-panel" data-panel="tracks" data-hierarchy-kind="tracks">
-      <div class="panel-window-bar" data-panel-handle="tracks"><span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="tracks"></span><span class="panel-window-actions"><button data-panel-float="tracks" aria-label="Desacoplar o acoplar Pistas"><i data-lucide="external-link"></i></button><button data-panel-close="tracks" aria-label="Ocultar Pistas"><i data-lucide="x"></i></button></span></div>
-      <div class="panel-body"><input class="search" data-hierarchy-search type="search" placeholder="Buscar pista…"><div class="tree" data-hierarchy-tree></div></div>
-      <div class="multi-selection-menu" data-multi-menu hidden>
-        <button class="small-button" data-selection-action="visibility" title="Ocultar elementos seleccionados" aria-label="Ocultar elementos seleccionados"><i data-lucide="eye-off"></i></button>
-        <button class="small-button" data-selection-action="lock" title="Bloquear elementos seleccionados" aria-label="Bloquear elementos seleccionados"><i data-lucide="lock-keyhole"></i></button>
-        <button class="small-button" data-selection-action="copy" title="Copiar selección (Ctrl+C)" aria-label="Copiar selección"><i data-lucide="copy"></i></button>
-        <button class="small-button" data-selection-action="paste" title="Pegar elementos copiados (Ctrl+V)" aria-label="Pegar elementos copiados"><i data-lucide="clipboard-paste"></i></button>
-        <button class="small-button danger" data-selection-action="delete" title="Eliminar elementos seleccionados" aria-label="Eliminar elementos seleccionados"><i data-lucide="trash-2"></i></button>
-        <button class="small-button" data-selection-action="clear" title="Cancelar selección" aria-label="Cancelar selección"><i data-lucide="x"></i></button>
-      </div>
-      <div class="tree-meta" data-hierarchy-meta></div>
-    </aside>
-
-    <aside class="panel left-panel hierarchy-panel" data-panel="layers" data-hierarchy-kind="layers">
-      <div class="panel-window-bar" data-panel-handle="layers"><span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="layers"></span><span class="panel-window-actions"><button data-panel-float="layers" aria-label="Desacoplar o acoplar Capas"><i data-lucide="external-link"></i></button><button data-panel-close="layers" aria-label="Ocultar Capas"><i data-lucide="x"></i></button></span></div>
-      <div class="panel-body"><input class="search" data-hierarchy-search type="search" placeholder="Buscar capa…"><div class="tree" data-hierarchy-tree></div></div>
-      <div class="multi-selection-menu" data-multi-menu hidden>
-        <button class="small-button" data-selection-action="visibility" title="Ocultar elementos seleccionados" aria-label="Ocultar elementos seleccionados"><i data-lucide="eye-off"></i></button>
-        <button class="small-button" data-selection-action="lock" title="Bloquear elementos seleccionados" aria-label="Bloquear elementos seleccionados"><i data-lucide="lock-keyhole"></i></button>
-        <button class="small-button" data-selection-action="copy" title="Copiar selección (Ctrl+C)" aria-label="Copiar selección"><i data-lucide="copy"></i></button>
-        <button class="small-button" data-selection-action="paste" title="Pegar elementos copiados (Ctrl+V)" aria-label="Pegar elementos copiados"><i data-lucide="clipboard-paste"></i></button>
-        <button class="small-button danger" data-selection-action="delete" title="Eliminar elementos seleccionados" aria-label="Eliminar elementos seleccionados"><i data-lucide="trash-2"></i></button>
-        <button class="small-button" data-selection-action="clear" title="Cancelar selección" aria-label="Cancelar selección"><i data-lucide="x"></i></button>
-      </div>
-      <div class="tree-actions"><button id="group-layers" class="small-button" title="Agrupar capas seleccionadas" aria-label="Agrupar capas seleccionadas" disabled><i data-lucide="folder-plus"></i></button><button id="import-layers" class="small-button primary"><i data-lucide="image-plus"></i> Importar</button><button id="delete-layer" class="small-button danger"><i data-lucide="trash-2"></i></button></div>
-      <div class="tree-meta" data-hierarchy-meta></div>
-    </aside>
-
-    <section class="workspace">
-      <div class="toolbar">
-        <div class="tool-group">
-          <button class="tool-button active" data-tool="select" title="Seleccionar y mover objetivo (V) · Mayús para selección múltiple" aria-label="Seleccionar y mover"><i data-lucide="mouse-pointer-2"></i></button>
-          <button class="tool-button" data-tool="pan" title="Mover vista (H)" aria-label="Mover vista"><i data-lucide="hand"></i></button>
-          <button class="tool-button" data-tool="rotate" title="Rotar (R)" aria-label="Rotar"><i data-lucide="rotate-cw"></i></button>
-          <button class="tool-button" data-tool="scale" title="Escalar objetivo (S)" aria-label="Escalar"><i data-lucide="scaling"></i></button>
-          <button id="fit" class="tool-button" title="Centrar" aria-label="Centrar vista"><i data-lucide="scan"></i></button>
+    <main class="studio-shell">
+      <aside class="panel left-panel hierarchy-panel" data-panel="skeleton" data-hierarchy-kind="skeleton">
+        <div class="panel-window-bar" data-panel-handle="skeleton">
+          <span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span
+          ><span class="dock-tab-list" data-dock-tabs="skeleton"></span>
+          <span class="panel-window-actions"
+            ><button
+              data-panel-float="skeleton"
+              title="Desacoplar o acoplar panel"
+              aria-label="Desacoplar o acoplar Esqueleto"
+            >
+              <i data-lucide="external-link"></i></button
+            ><button data-panel-close="skeleton" title="Ocultar panel" aria-label="Ocultar Esqueleto">
+              <i data-lucide="x"></i></button
+          ></span>
         </div>
-        <div class="tool-group">
-          <label class="inline-control"><input id="grid" type="checkbox" checked> Cuadrícula</label>
-          <label class="inline-control"><input id="bones" type="checkbox" checked> Huesos</label>
-          <label class="inline-control"><input id="ghost" type="checkbox" checked> Vista fantasma</label>
-          <label class="inline-control">Opacidad <input id="ghost-alpha" class="opacity-slider" type="range" min="5" max="70" value="28"></label>
-          <output id="ghost-label" class="ghost-label">Sin referencia</output>
+        <div class="panel-body">
+          <input class="search" data-hierarchy-search type="search" placeholder="Buscar articulación…" />
+          <div class="tree" data-hierarchy-tree></div>
         </div>
-        <div class="tool-group">
-          <button id="zoomout" class="tool-button" aria-label="Alejar"><i data-lucide="zoom-out"></i></button>
-          <input id="zoom" class="zoom-slider" type="range" min="40" max="220" value="100" aria-label="Zoom">
-          <output id="zoom-label" class="zoom-output">100 %</output>
-          <button id="zoomin" class="tool-button" aria-label="Acercar"><i data-lucide="zoom-in"></i></button>
-          <button id="fullscreen" class="tool-button" title="Pantalla completa" aria-label="Pantalla completa"><i data-lucide="maximize-2"></i></button>
+        <div class="multi-selection-menu" data-multi-menu hidden>
+          <button
+            class="small-button"
+            data-selection-action="visibility"
+            title="Ocultar elementos seleccionados"
+            aria-label="Ocultar elementos seleccionados"
+          >
+            <i data-lucide="eye-off"></i>
+          </button>
+          <button
+            class="small-button"
+            data-selection-action="lock"
+            title="Bloquear elementos seleccionados"
+            aria-label="Bloquear elementos seleccionados"
+          >
+            <i data-lucide="lock-keyhole"></i>
+          </button>
+          <button
+            class="small-button"
+            data-selection-action="copy"
+            title="Copiar selección (Ctrl+C)"
+            aria-label="Copiar selección"
+          >
+            <i data-lucide="copy"></i>
+          </button>
+          <button
+            class="small-button"
+            data-selection-action="paste"
+            title="Pegar elementos copiados (Ctrl+V)"
+            aria-label="Pegar elementos copiados"
+          >
+            <i data-lucide="clipboard-paste"></i>
+          </button>
+          <button
+            class="small-button danger"
+            data-selection-action="delete"
+            title="Eliminar elementos seleccionados"
+            aria-label="Eliminar elementos seleccionados"
+          >
+            <i data-lucide="trash-2"></i>
+          </button>
+          <button
+            class="small-button"
+            data-selection-action="clear"
+            title="Cancelar selección"
+            aria-label="Cancelar selección"
+          >
+            <i data-lucide="x"></i>
+          </button>
         </div>
-      </div>
-      <div id="viewport" class="viewport">
-        <canvas id="canvas" tabindex="0" aria-label="Lienzo del personaje y su esqueleto"></canvas>
-        <section class="preview-card" aria-label="Vista previa">
-            <div class="preview-title"><span>Vista previa</span><span id="preview-state" class="preview-state" aria-label="Detenido"></span></div>
-          <canvas id="preview-canvas"></canvas>
-          <div class="preview-footer"><span id="preview-duration">1000 ms · 24 fps</span><button id="preview-play" class="small-button icon-button playback-toggle" aria-label="Reproducir vista previa"><i class="when-stopped" data-lucide="play"></i><i class="when-playing" data-lucide="square"></i></button></div>
-        </section>
-        <div id="canvas-status" class="canvas-status">Zoom: 100 % · Animación · 0 ms</div>
-        <section id="mode-overlay" class="mode-overlay" hidden></section>
-      </div>
-    </section>
+        <div class="tree-actions">
+          <button id="add-bone" class="small-button"><i data-lucide="plus"></i> Hueso</button
+          ><button id="delete-bone" class="small-button danger" aria-label="Eliminar hueso">
+            <i data-lucide="trash-2"></i>
+          </button>
+        </div>
+        <div class="tree-meta" data-hierarchy-meta>Rig humanoide · Proyecto local</div>
+      </aside>
 
-    <aside class="panel right-panel" data-panel="inspector">
-      <div class="panel-window-bar" data-panel-handle="inspector">
-        <span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="inspector"></span>
-        <span class="panel-window-actions"><button data-panel-float="inspector" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Inspector"><i data-lucide="external-link"></i></button><button data-panel-close="inspector" title="Ocultar panel" aria-label="Ocultar Inspector"><i data-lucide="x"></i></button></span>
-      </div>
-      <div class="right-tabs-content">
-        <div id="inspector-panel">
-          <section class="inspector-section selection-card">
-            <div class="selection-icon"><i data-lucide="bone"></i></div>
-            <div><div id="selected-name" class="selection-name">Torso</div><div id="selected-type" class="selection-type">Hueso · Objetivo: rig</div></div>
+      <aside class="panel left-panel hierarchy-panel" data-panel="tracks" data-hierarchy-kind="tracks">
+        <div class="panel-window-bar" data-panel-handle="tracks">
+          <span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span
+          ><span class="dock-tab-list" data-dock-tabs="tracks"></span
+          ><span class="panel-window-actions"
+            ><button data-panel-float="tracks" aria-label="Desacoplar o acoplar Pistas">
+              <i data-lucide="external-link"></i></button
+            ><button data-panel-close="tracks" aria-label="Ocultar Pistas"><i data-lucide="x"></i></button
+          ></span>
+        </div>
+        <div class="panel-body">
+          <input class="search" data-hierarchy-search type="search" placeholder="Buscar pista…" />
+          <div class="tree" data-hierarchy-tree></div>
+        </div>
+        <div class="multi-selection-menu" data-multi-menu hidden>
+          <button
+            class="small-button"
+            data-selection-action="visibility"
+            title="Ocultar elementos seleccionados"
+            aria-label="Ocultar elementos seleccionados"
+          >
+            <i data-lucide="eye-off"></i>
+          </button>
+          <button
+            class="small-button"
+            data-selection-action="lock"
+            title="Bloquear elementos seleccionados"
+            aria-label="Bloquear elementos seleccionados"
+          >
+            <i data-lucide="lock-keyhole"></i>
+          </button>
+          <button
+            class="small-button"
+            data-selection-action="copy"
+            title="Copiar selección (Ctrl+C)"
+            aria-label="Copiar selección"
+          >
+            <i data-lucide="copy"></i>
+          </button>
+          <button
+            class="small-button"
+            data-selection-action="paste"
+            title="Pegar elementos copiados (Ctrl+V)"
+            aria-label="Pegar elementos copiados"
+          >
+            <i data-lucide="clipboard-paste"></i>
+          </button>
+          <button
+            class="small-button danger"
+            data-selection-action="delete"
+            title="Eliminar elementos seleccionados"
+            aria-label="Eliminar elementos seleccionados"
+          >
+            <i data-lucide="trash-2"></i>
+          </button>
+          <button
+            class="small-button"
+            data-selection-action="clear"
+            title="Cancelar selección"
+            aria-label="Cancelar selección"
+          >
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="tree-meta" data-hierarchy-meta></div>
+      </aside>
+
+      <aside class="panel left-panel hierarchy-panel" data-panel="layers" data-hierarchy-kind="layers">
+        <div class="panel-window-bar" data-panel-handle="layers">
+          <span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span
+          ><span class="dock-tab-list" data-dock-tabs="layers"></span
+          ><span class="panel-window-actions"
+            ><button data-panel-float="layers" aria-label="Desacoplar o acoplar Capas">
+              <i data-lucide="external-link"></i></button
+            ><button data-panel-close="layers" aria-label="Ocultar Capas"><i data-lucide="x"></i></button
+          ></span>
+        </div>
+        <div class="panel-body">
+          <input class="search" data-hierarchy-search type="search" placeholder="Buscar capa…" />
+          <div class="tree" data-hierarchy-tree></div>
+        </div>
+        <div class="multi-selection-menu" data-multi-menu hidden>
+          <button
+            class="small-button"
+            data-selection-action="visibility"
+            title="Ocultar elementos seleccionados"
+            aria-label="Ocultar elementos seleccionados"
+          >
+            <i data-lucide="eye-off"></i>
+          </button>
+          <button
+            class="small-button"
+            data-selection-action="lock"
+            title="Bloquear elementos seleccionados"
+            aria-label="Bloquear elementos seleccionados"
+          >
+            <i data-lucide="lock-keyhole"></i>
+          </button>
+          <button
+            class="small-button"
+            data-selection-action="copy"
+            title="Copiar selección (Ctrl+C)"
+            aria-label="Copiar selección"
+          >
+            <i data-lucide="copy"></i>
+          </button>
+          <button
+            class="small-button"
+            data-selection-action="paste"
+            title="Pegar elementos copiados (Ctrl+V)"
+            aria-label="Pegar elementos copiados"
+          >
+            <i data-lucide="clipboard-paste"></i>
+          </button>
+          <button
+            class="small-button danger"
+            data-selection-action="delete"
+            title="Eliminar elementos seleccionados"
+            aria-label="Eliminar elementos seleccionados"
+          >
+            <i data-lucide="trash-2"></i>
+          </button>
+          <button
+            class="small-button"
+            data-selection-action="clear"
+            title="Cancelar selección"
+            aria-label="Cancelar selección"
+          >
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="tree-actions">
+          <button
+            id="group-layers"
+            class="small-button"
+            title="Agrupar capas seleccionadas"
+            aria-label="Agrupar capas seleccionadas"
+            disabled
+          >
+            <i data-lucide="folder-plus"></i></button
+          ><button id="import-layers" class="small-button primary"><i data-lucide="image-plus"></i> Importar</button
+          ><button id="delete-layer" class="small-button danger"><i data-lucide="trash-2"></i></button>
+        </div>
+        <div class="tree-meta" data-hierarchy-meta></div>
+      </aside>
+
+      <section class="workspace">
+        <div class="toolbar">
+          <div class="tool-group">
+            <button
+              class="tool-button active"
+              data-tool="select"
+              title="Seleccionar y mover objetivo (V) · Mayús para selección múltiple"
+              aria-label="Seleccionar y mover"
+            >
+              <i data-lucide="mouse-pointer-2"></i>
+            </button>
+            <button class="tool-button" data-tool="pan" title="Mover vista (H)" aria-label="Mover vista">
+              <i data-lucide="hand"></i>
+            </button>
+            <button class="tool-button" data-tool="rotate" title="Rotar (R)" aria-label="Rotar">
+              <i data-lucide="rotate-cw"></i>
+            </button>
+            <button class="tool-button" data-tool="scale" title="Escalar objetivo (S)" aria-label="Escalar">
+              <i data-lucide="scaling"></i>
+            </button>
+            <button id="fit" class="tool-button" title="Centrar" aria-label="Centrar vista">
+              <i data-lucide="scan"></i>
+            </button>
+          </div>
+          <div class="tool-group">
+            <label class="inline-control"><input id="grid" type="checkbox" checked /> Cuadrícula</label>
+            <label class="inline-control"><input id="bones" type="checkbox" checked /> Huesos</label>
+            <label class="inline-control"><input id="ghost" type="checkbox" checked /> Vista fantasma</label>
+            <label class="inline-control"
+              >Opacidad <input id="ghost-alpha" class="opacity-slider" type="range" min="5" max="70" value="28"
+            /></label>
+            <output id="ghost-label" class="ghost-label">Sin referencia</output>
+          </div>
+          <div class="tool-group">
+            <button id="zoomout" class="tool-button" aria-label="Alejar"><i data-lucide="zoom-out"></i></button>
+            <input id="zoom" class="zoom-slider" type="range" min="40" max="220" value="100" aria-label="Zoom" />
+            <output id="zoom-label" class="zoom-output">100 %</output>
+            <button id="zoomin" class="tool-button" aria-label="Acercar"><i data-lucide="zoom-in"></i></button>
+            <button id="fullscreen" class="tool-button" title="Pantalla completa" aria-label="Pantalla completa">
+              <i data-lucide="maximize-2"></i>
+            </button>
+          </div>
+        </div>
+        <div id="viewport" class="viewport">
+          <canvas id="canvas" tabindex="0" aria-label="Lienzo del personaje y su esqueleto"></canvas>
+          <section class="preview-card" aria-label="Vista previa">
+            <div class="preview-title">
+              <span>Vista previa</span
+              ><span id="preview-state" class="preview-state" role="img" aria-label="Detenido"></span>
+            </div>
+            <canvas id="preview-canvas"></canvas>
+            <div class="preview-footer">
+              <select id="preview-clip-select" aria-label="Clip de vista previa"></select
+              ><span id="preview-duration">1000 ms · 24 fps</span
+              ><button
+                id="preview-play"
+                class="small-button icon-button playback-toggle"
+                aria-label="Reproducir vista previa"
+              >
+                <i class="when-stopped" data-lucide="play"></i><i class="when-playing" data-lucide="square"></i>
+              </button>
+            </div>
           </section>
+          <div id="canvas-status" class="canvas-status">Zoom: 100 % · Animación · 0 ms</div>
+          <section id="mode-overlay" class="mode-overlay" hidden></section>
+        </div>
+      </section>
 
-          <div id="animation-inspector">
-            <section class="inspector-section">
-              <h2>Transformación relativa</h2>
-              <div class="field-grid">
-                <div><label for="key-x">Posición X</label><input id="key-x" type="number" step=".5"></div>
-                <div><label for="key-y">Posición Y</label><input id="key-y" type="number" step=".5"></div>
-                <div><label for="key-angle">Rotación</label><input id="key-angle" type="number" step="1"></div>
-                <div><label for="key-alpha">Opacidad Δ</label><input id="key-alpha" type="number" min="-1" max="0" step=".05"></div>
-                <div><label for="key-scale-x">Escala X Δ</label><input id="key-scale-x" type="number" step=".01"></div>
-                <div><label for="key-scale-y">Escala Y Δ</label><input id="key-scale-y" type="number" step=".01"></div>
-              </div>
-              <div class="stack-field"><label for="key-ease">Interpolación hacia esta clave</label><select id="key-ease"></select></div>
-              <p id="draft-status" class="draft-status">Sin cambios pendientes</p>
-              <div class="button-row">
-                <button id="set-key" class="small-button primary">Guardar fotograma</button>
-                <button id="discard-key-draft" class="small-button">Descartar cambios</button>
-                <button id="duplicate-key" class="small-button">Duplicar</button>
-                <button id="reset-transform" class="small-button">Restablecer</button>
-                <button id="mirror-pose" class="small-button">Reflejar pose</button>
-                <button id="delete-key" class="small-button danger">Eliminar</button>
-              </div>
-            </section>
-            <section class="inspector-section">
-              <h2>Propiedades de animación</h2>
-              <div class="stack-field"><label for="clip-label">Nombre visible</label><input id="clip-label" type="text" maxlength="100"></div>
-              <div class="stack-field"><label for="clip-description">Descripción</label><textarea id="clip-description" maxlength="300"></textarea></div>
-              <div class="field-grid">
-                <div><label for="clip-category">Categoría</label><input id="clip-category" type="text"></div>
-                <div><label for="clip-state">Estado</label><select id="clip-state"><option value="idle">Reposo</option><option value="locomotion">Locomoción</option><option value="action">Acción</option><option value="hit">Daño</option><option value="defeated">Derrota</option></select></div>
+      <aside class="panel right-panel" data-panel="inspector">
+        <div class="panel-window-bar" data-panel-handle="inspector">
+          <span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span
+          ><span class="dock-tab-list" data-dock-tabs="inspector"></span>
+          <span class="panel-window-actions"
+            ><button
+              data-panel-float="inspector"
+              title="Desacoplar o acoplar panel"
+              aria-label="Desacoplar o acoplar Inspector"
+            >
+              <i data-lucide="external-link"></i></button
+            ><button data-panel-close="inspector" title="Ocultar panel" aria-label="Ocultar Inspector">
+              <i data-lucide="x"></i></button
+          ></span>
+        </div>
+        <div class="right-tabs-content">
+          <div id="inspector-panel">
+            <section class="inspector-section selection-card">
+              <div class="selection-icon"><i data-lucide="bone"></i></div>
+              <div>
+                <div id="selected-name" class="selection-name">Torso</div>
+                <div id="selected-type" class="selection-type">Hueso · Objetivo: rig</div>
               </div>
             </section>
+
+            <div id="animation-inspector">
+              <section class="inspector-section">
+                <h2>Transformación relativa</h2>
+                <div class="field-grid">
+                  <div><label for="key-x">Posición X</label><input id="key-x" type="number" step=".5" /></div>
+                  <div><label for="key-y">Posición Y</label><input id="key-y" type="number" step=".5" /></div>
+                  <div><label for="key-angle">Rotación</label><input id="key-angle" type="number" step="1" /></div>
+                  <div>
+                    <label for="key-alpha">Opacidad Δ</label
+                    ><input id="key-alpha" type="number" min="-1" max="0" step=".05" />
+                  </div>
+                  <div>
+                    <label for="key-scale-x">Escala X Δ</label><input id="key-scale-x" type="number" step=".01" />
+                  </div>
+                  <div>
+                    <label for="key-scale-y">Escala Y Δ</label><input id="key-scale-y" type="number" step=".01" />
+                  </div>
+                </div>
+                <div class="stack-field">
+                  <label for="key-ease">Interpolación hacia esta clave</label
+                  ><select id="key-ease"></select>
+                </div>
+                <p id="draft-status" class="draft-status">Sin cambios pendientes</p>
+                <div class="button-row">
+                  <button id="set-key" class="small-button primary">Guardar fotograma</button>
+                  <button id="discard-key-draft" class="small-button">Descartar cambios</button>
+                  <button id="duplicate-key" class="small-button">Duplicar</button>
+                  <button id="reset-transform" class="small-button">Restablecer</button>
+                  <button id="mirror-pose" class="small-button">Reflejar pose</button>
+                  <button id="delete-key" class="small-button danger">Eliminar</button>
+                </div>
+              </section>
+              <section class="inspector-section">
+                <h2>Propiedades de animación</h2>
+                <div class="stack-field">
+                  <label for="clip-label">Nombre visible</label><input id="clip-label" type="text" maxlength="100" />
+                </div>
+                <div class="stack-field">
+                  <label for="clip-description">Descripción</label
+                  ><textarea id="clip-description" maxlength="300"></textarea>
+                </div>
+                <div class="field-grid">
+                  <div><label for="clip-category">Categoría</label><input id="clip-category" type="text" /></div>
+                  <div>
+                    <label for="clip-state">Estado</label
+                    ><select id="clip-state">
+                      <option value="idle">Reposo</option>
+                      <option value="locomotion">Locomoción</option>
+                      <option value="action">Acción</option>
+                      <option value="hit">Daño</option>
+                      <option value="defeated">Derrota</option>
+                    </select>
+                  </div>
+                </div>
+              </section>
+              <section class="inspector-section">
+                <h2>Evento de sprite</h2>
+                <div class="field-grid">
+                  <div><label for="event-slot">Ranura</label><input id="event-slot" value="handRight" /></div>
+                  <div><label for="event-variant">Variante</label><input id="event-variant" value="grip" /></div>
+                </div>
+                <div class="button-row">
+                  <button id="add-event" class="small-button">Insertar en el tiempo actual</button>
+                </div>
+                <p class="muted">El evento se exporta por ID; no incrusta imágenes ni prendas.</p>
+              </section>
+            </div>
+
+            <div id="calibration-inspector" hidden>
+              <section class="inspector-section">
+                <h2>Capa seleccionada</h2>
+                <div class="stack-field">
+                  <label for="part-name">Nombre</label><input id="part-name" type="text" maxlength="80" />
+                </div>
+                <div class="stack-field">
+                  <label for="part-bone">Hueso vinculado</label
+                  ><select id="part-bone"></select>
+                </div>
+                <div class="field-grid">
+                  <div><label for="part-x">Posición X</label><input id="part-x" type="number" step=".5" /></div>
+                  <div><label for="part-y">Posición Y</label><input id="part-y" type="number" step=".5" /></div>
+                  <div>
+                    <label for="part-rotation">Rotación</label><input id="part-rotation" type="number" step="1" />
+                  </div>
+                  <div>
+                    <label for="part-scale">Escala</label
+                    ><input id="part-scale" type="number" min=".1" max="4" step=".05" />
+                  </div>
+                </div>
+                <div class="button-row">
+                  <button id="flip-part" class="small-button">Voltear X</button
+                  ><button id="layer-up" class="small-button">Subir capa</button
+                  ><button id="layer-down" class="small-button">Bajar capa</button
+                  ><button id="remove-part" class="small-button danger">Eliminar capa</button>
+                </div>
+              </section>
+              <section class="inspector-section">
+                <h2>Constructor de rig</h2>
+                <div class="stack-field">
+                  <label for="bone-name">Nombre del hueso</label><input id="bone-name" type="text" maxlength="80" />
+                </div>
+                <div class="stack-field">
+                  <label for="bone-parent">Hueso padre</label
+                  ><select id="bone-parent"></select>
+                </div>
+                <div class="field-grid">
+                  <div><label for="bone-x">Pivote X</label><input id="bone-x" type="number" step="1" /></div>
+                  <div><label for="bone-y">Pivote Y</label><input id="bone-y" type="number" step="1" /></div>
+                </div>
+                <p class="muted">Selecciona un hueso en Esqueleto para editar su pivote y jerarquía.</p>
+                <div class="button-row">
+                  <button id="inspector-add-bone" class="small-button primary">Añadir hijo</button
+                  ><button id="inspector-delete-bone" class="small-button danger">Eliminar hueso</button>
+                </div>
+              </section>
+            </div>
+
             <section class="inspector-section">
-              <h2>Evento de sprite</h2>
-              <div class="field-grid"><div><label for="event-slot">Ranura</label><input id="event-slot" value="handRight"></div><div><label for="event-variant">Variante</label><input id="event-variant" value="grip"></div></div>
-              <div class="button-row"><button id="add-event" class="small-button">Insertar en el tiempo actual</button></div>
-              <p class="muted">El evento se exporta por ID; no incrusta imágenes ni prendas.</p>
+              <h2>Estado</h2>
+              <p id="status" class="status">Listo</p>
             </section>
           </div>
+        </div>
+      </aside>
 
-          <div id="calibration-inspector" hidden>
-            <section class="inspector-section">
-              <h2>Capa seleccionada</h2>
-              <div class="stack-field"><label for="part-name">Nombre</label><input id="part-name" type="text" maxlength="80"></div>
-              <div class="stack-field"><label for="part-bone">Hueso vinculado</label><select id="part-bone"></select></div>
-              <div class="field-grid">
-                <div><label for="part-x">Posición X</label><input id="part-x" type="number" step=".5"></div>
-                <div><label for="part-y">Posición Y</label><input id="part-y" type="number" step=".5"></div>
-                <div><label for="part-rotation">Rotación</label><input id="part-rotation" type="number" step="1"></div>
-                <div><label for="part-scale">Escala</label><input id="part-scale" type="number" min=".1" max="4" step=".05"></div>
-              </div>
-              <div class="button-row"><button id="flip-part" class="small-button">Voltear X</button><button id="layer-up" class="small-button">Subir capa</button><button id="layer-down" class="small-button">Bajar capa</button><button id="remove-part" class="small-button danger">Eliminar capa</button></div>
-            </section>
-            <section class="inspector-section">
-              <h2>Constructor de rig</h2>
-              <div class="stack-field"><label for="bone-name">Nombre del hueso</label><input id="bone-name" type="text" maxlength="80"></div>
-              <div class="stack-field"><label for="bone-parent">Hueso padre</label><select id="bone-parent"></select></div>
-              <div class="field-grid"><div><label for="bone-x">Pivote X</label><input id="bone-x" type="number" step="1"></div><div><label for="bone-y">Pivote Y</label><input id="bone-y" type="number" step="1"></div></div>
-              <p class="muted">Selecciona un hueso en Esqueleto para editar su pivote y jerarquía.</p>
-              <div class="button-row"><button id="inspector-add-bone" class="small-button primary">Añadir hijo</button><button id="inspector-delete-bone" class="small-button danger">Eliminar hueso</button></div>
-            </section>
+      <aside class="panel right-panel" data-panel="presets">
+        <div class="panel-window-bar" data-panel-handle="presets">
+          <span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span
+          ><span class="dock-tab-list" data-dock-tabs="presets"></span
+          ><span class="panel-window-actions"
+            ><button data-panel-float="presets" aria-label="Desacoplar o acoplar Presets">
+              <i data-lucide="external-link"></i></button
+            ><button data-panel-close="presets" aria-label="Ocultar Presets"><i data-lucide="x"></i></button
+          ></span>
+        </div>
+        <div id="presets-panel" class="right-tabs-content">
+          <section class="inspector-section">
+            <h2>Curvas permitidas</h2>
+            <div id="preset-grid" class="preset-grid"></div>
+            <p class="muted">Cada preset corresponde a una curva comprendida por Studio y por el runtime del juego.</p>
+          </section>
+        </div>
+      </aside>
+
+      <aside class="panel right-panel" data-panel="curves">
+        <div class="panel-window-bar" data-panel-handle="curves">
+          <span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span
+          ><span class="dock-tab-list" data-dock-tabs="curves"></span
+          ><span class="panel-window-actions"
+            ><button data-panel-float="curves" aria-label="Desacoplar o acoplar Curvas">
+              <i data-lucide="external-link"></i></button
+            ><button data-panel-close="curves" aria-label="Ocultar Curvas"><i data-lucide="x"></i></button
+          ></span>
+        </div>
+        <div id="curves-panel" class="right-tabs-content">
+          <section class="inspector-section">
+            <h2>Vista de interpolación</h2>
+            <canvas id="curve-canvas"></canvas>
+            <p id="curve-label" class="muted">Linear</p>
+          </section>
+        </div>
+      </aside>
+
+      <section class="timeline" data-panel="timeline">
+        <div class="panel-window-bar" data-panel-handle="timeline">
+          <span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span
+          ><span class="dock-tab-list" data-dock-tabs="timeline"></span>
+          <span class="panel-window-actions"
+            ><button
+              data-panel-float="timeline"
+              title="Desacoplar o acoplar panel"
+              aria-label="Desacoplar o acoplar Línea de tiempo"
+            >
+              <i data-lucide="external-link"></i></button
+            ><button data-panel-close="timeline" title="Ocultar panel" aria-label="Ocultar Línea de tiempo">
+              <i data-lucide="x"></i></button
+          ></span>
+        </div>
+        <div class="timeline-top">
+          <div class="timeline-tabs"><span class="timeline-tab active" aria-current="page">Línea de tiempo</span></div>
+          <button id="first" class="tool-button" aria-label="Primer fotograma"><i data-lucide="skip-back"></i></button>
+          <button id="previous-key" class="tool-button" title="Clave anterior (Mayús+←)" aria-label="Clave anterior">
+            <i data-lucide="step-back"></i>
+          </button>
+          <button id="play" class="tool-button playback-toggle" aria-label="Reproducir">
+            <i class="when-stopped" data-lucide="play"></i><i class="when-playing" data-lucide="square"></i>
+          </button>
+          <button id="next-key" class="tool-button" title="Clave siguiente (Mayús+→)" aria-label="Clave siguiente">
+            <i data-lucide="step-forward"></i>
+          </button>
+          <button id="last" class="tool-button" aria-label="Último fotograma">
+            <i data-lucide="skip-forward"></i>
+          </button>
+          <span id="clock" class="timeline-time">0.00 / 1.00 s</span>
+          <input id="scrub" type="range" min="0" max="1000" value="0" step="1" aria-label="Tiempo" />
+          <label class="inline-control"
+            >FPS
+            <select id="fps">
+              <option>12</option>
+              <option selected>24</option>
+              <option>30</option>
+              <option>60</option>
+            </select></label
+          >
+          <label class="inline-control"
+            >Duración
+            <input id="duration" type="number" min="100" max="60000" step="50" value="1000" style="width: 82px"
+          /></label>
+          <label class="inline-control"><input id="loop" type="checkbox" /> Bucle</label>
+          <label class="inline-control timeline-zoom-control"
+            >Zoom tiempo <input id="timeline-zoom" type="range" min="100" max="250" value="100" step="10"
+          /></label>
+          <button id="copy-keys" class="tool-button" title="Copiar claves" aria-label="Copiar claves">
+            <i data-lucide="copy"></i>
+          </button>
+          <button id="paste-keys" class="tool-button" title="Pegar claves" aria-label="Pegar claves">
+            <i data-lucide="clipboard-paste"></i>
+          </button>
+        </div>
+        <div id="timeline-scroll" class="timeline-scroll">
+          <div id="timeline-content" class="timeline-content">
+            <div class="ruler-row">
+              <div class="ruler-label"></div>
+              <div id="ruler" class="ruler"></div>
+            </div>
+            <div id="tracks"></div>
           </div>
+        </div>
+      </section>
 
-          <section class="inspector-section"><h2>Estado</h2><p id="status" class="status">Listo</p></section>
+      <div id="dock-overlay" class="dock-overlay" hidden aria-hidden="true">
+        <div class="dock-target dock-target-left" data-dock-target="left"><span>Acoplar a la izquierda</span></div>
+        <div class="dock-target dock-target-right" data-dock-target="right"><span>Acoplar a la derecha</span></div>
+        <div class="dock-target dock-target-bottom" data-dock-target="bottom"><span>Acoplar abajo</span></div>
+      </div>
+      <button
+        class="layout-divider layout-divider-left"
+        data-layout-divider="left"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Cambiar ancho del panel izquierdo"
+        aria-valuemin="170"
+        aria-valuemax="600"
+        title="Arrastra para cambiar el ancho del panel izquierdo"
+      ></button>
+      <button
+        class="layout-divider layout-divider-right"
+        data-layout-divider="right"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Cambiar ancho del panel derecho"
+        aria-valuemin="200"
+        aria-valuemax="600"
+        title="Arrastra para cambiar el ancho del panel derecho"
+      ></button>
+      <button
+        class="layout-divider layout-divider-bottom"
+        data-layout-divider="bottom"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Cambiar altura de la línea de tiempo"
+        aria-valuemin="150"
+        aria-valuemax="600"
+        title="Arrastra para cambiar la altura de la línea de tiempo"
+      ></button>
+    </main>
+
+    <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-dialog-title">
+      <div class="help-dialog-header">
+        <div>
+          <span class="eyebrow">Referencia de Kinetra</span>
+          <h2 id="help-dialog-title">Atajos de teclado</h2>
+        </div>
+        <button id="help-dialog-close" class="icon-button" aria-label="Cerrar ayuda"><i data-lucide="x"></i></button>
+      </div>
+      <div id="help-dialog-body" class="help-dialog-body"></div>
+    </dialog>
+
+    <dialog id="new-project-dialog" class="help-dialog template-dialog" aria-labelledby="new-project-title">
+      <div class="help-dialog-header">
+        <div>
+          <span class="eyebrow">Nuevo proyecto</span>
+          <h2 id="new-project-title">Elige una plantilla</h2>
+        </div>
+        <button id="new-project-close" class="icon-button" aria-label="Cerrar selector de plantilla">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="template-dialog-body">
+        <p>
+          La plantilla reemplazará el proyecto guardado localmente. Después podrás modificar todas sus capas y huesos.
+        </p>
+        <div id="template-grid" class="template-grid"></div>
+      </div>
+    </dialog>
+
+    <dialog id="duplicate-dialog" class="help-dialog duplicate-dialog" aria-labelledby="duplicate-title">
+      <div class="help-dialog-header">
+        <div>
+          <span class="eyebrow">Nombre duplicado</span>
+          <h2 id="duplicate-title">Ya existe un elemento con este nombre</h2>
         </div>
       </div>
-    </aside>
-
-    <aside class="panel right-panel" data-panel="presets">
-      <div class="panel-window-bar" data-panel-handle="presets"><span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="presets"></span><span class="panel-window-actions"><button data-panel-float="presets" aria-label="Desacoplar o acoplar Presets"><i data-lucide="external-link"></i></button><button data-panel-close="presets" aria-label="Ocultar Presets"><i data-lucide="x"></i></button></span></div>
-      <div id="presets-panel" class="right-tabs-content"><section class="inspector-section"><h2>Curvas permitidas</h2><div id="preset-grid" class="preset-grid"></div><p class="muted">Cada preset corresponde a una curva comprendida por Studio y por el runtime del juego.</p></section></div>
-    </aside>
-
-    <aside class="panel right-panel" data-panel="curves">
-      <div class="panel-window-bar" data-panel-handle="curves"><span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="curves"></span><span class="panel-window-actions"><button data-panel-float="curves" aria-label="Desacoplar o acoplar Curvas"><i data-lucide="external-link"></i></button><button data-panel-close="curves" aria-label="Ocultar Curvas"><i data-lucide="x"></i></button></span></div>
-      <div id="curves-panel" class="right-tabs-content"><section class="inspector-section"><h2>Vista de interpolación</h2><canvas id="curve-canvas"></canvas><p id="curve-label" class="muted">Linear</p></section></div>
-    </aside>
-
-    <section class="timeline" data-panel="timeline">
-      <div class="panel-window-bar" data-panel-handle="timeline">
-        <span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span><span class="dock-tab-list" data-dock-tabs="timeline"></span>
-        <span class="panel-window-actions"><button data-panel-float="timeline" title="Desacoplar o acoplar panel" aria-label="Desacoplar o acoplar Línea de tiempo"><i data-lucide="external-link"></i></button><button data-panel-close="timeline" title="Ocultar panel" aria-label="Ocultar Línea de tiempo"><i data-lucide="x"></i></button></span>
-      </div>
-      <div class="timeline-top">
-        <div class="timeline-tabs"><span class="timeline-tab active" aria-current="page">Línea de tiempo</span></div>
-        <button id="first" class="tool-button" aria-label="Primer fotograma"><i data-lucide="skip-back"></i></button>
-        <button id="previous-key" class="tool-button" title="Clave anterior (Mayús+←)" aria-label="Clave anterior"><i data-lucide="step-back"></i></button>
-        <button id="play" class="tool-button playback-toggle" aria-label="Reproducir"><i class="when-stopped" data-lucide="play"></i><i class="when-playing" data-lucide="square"></i></button>
-        <button id="next-key" class="tool-button" title="Clave siguiente (Mayús+→)" aria-label="Clave siguiente"><i data-lucide="step-forward"></i></button>
-        <button id="last" class="tool-button" aria-label="Último fotograma"><i data-lucide="skip-forward"></i></button>
-        <span id="clock" class="timeline-time">0.00 / 1.00 s</span>
-        <input id="scrub" type="range" min="0" max="1000" value="0" step="1" aria-label="Tiempo">
-        <label class="inline-control">FPS <select id="fps"><option>12</option><option selected>24</option><option>30</option><option>60</option></select></label>
-        <label class="inline-control">Duración <input id="duration" type="number" min="100" max="60000" step="50" value="1000" style="width:82px"></label>
-        <label class="inline-control"><input id="loop" type="checkbox"> Bucle</label>
-        <label class="inline-control timeline-zoom-control">Zoom tiempo <input id="timeline-zoom" type="range" min="100" max="250" value="100" step="10"></label>
-        <button id="copy-keys" class="tool-button" title="Copiar claves" aria-label="Copiar claves"><i data-lucide="copy"></i></button>
-        <button id="paste-keys" class="tool-button" title="Pegar claves" aria-label="Pegar claves"><i data-lucide="clipboard-paste"></i></button>
-      </div>
-      <div id="timeline-scroll" class="timeline-scroll">
-        <div id="timeline-content" class="timeline-content">
-          <div class="ruler-row"><div class="ruler-label"></div><div id="ruler" class="ruler"></div></div>
-          <div id="tracks"></div>
+      <div class="help-dialog-body">
+        <p id="duplicate-copy"></p>
+        <label class="duplicate-apply-all"
+          ><input id="duplicate-apply-all" type="checkbox" /> Aplicar esta decisión a los demás elementos
+          duplicados</label
+        >
+        <div class="duplicate-actions">
+          <button class="small-button primary" data-duplicate-choice="replace">Reemplazar el existente</button>
+          <button class="small-button" data-duplicate-choice="keep">Mantener todos</button>
+          <button class="small-button" data-duplicate-choice="cancel">Cancelar</button>
         </div>
       </div>
-    </section>
+    </dialog>
 
-    <div id="dock-overlay" class="dock-overlay" hidden aria-hidden="true">
-      <div class="dock-target dock-target-left" data-dock-target="left"><span>Acoplar a la izquierda</span></div>
-      <div class="dock-target dock-target-right" data-dock-target="right"><span>Acoplar a la derecha</span></div>
-      <div class="dock-target dock-target-bottom" data-dock-target="bottom"><span>Acoplar abajo</span></div>
+    <div id="tutorial-overlay" class="tutorial-overlay" hidden aria-live="polite">
+      <div id="tutorial-dimmers" class="tutorial-dimmers"></div>
+      <div id="tutorial-spotlights" class="tutorial-spotlights"></div>
+      <section
+        id="tutorial-card"
+        class="tutorial-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tutorial-title"
+      >
+        <div class="tutorial-card-header">
+          <span id="tutorial-progress" class="eyebrow"></span
+          ><button id="tutorial-close" class="icon-button" aria-label="Cerrar tutorial"><i data-lucide="x"></i></button>
+        </div>
+        <h2 id="tutorial-title"></h2>
+        <p id="tutorial-copy"></p>
+        <div class="tutorial-actions">
+          <button id="tutorial-back" class="small-button"><i data-lucide="arrow-left"></i> Anterior</button
+          ><button id="tutorial-next" class="small-button primary">Siguiente <i data-lucide="arrow-right"></i></button>
+        </div>
+      </section>
     </div>
-    <button class="layout-divider layout-divider-left" data-layout-divider="left" role="separator" aria-orientation="vertical" aria-label="Cambiar ancho del panel izquierdo" aria-valuemin="170" aria-valuemax="600" title="Arrastra para cambiar el ancho del panel izquierdo"></button>
-    <button class="layout-divider layout-divider-right" data-layout-divider="right" role="separator" aria-orientation="vertical" aria-label="Cambiar ancho del panel derecho" aria-valuemin="200" aria-valuemax="600" title="Arrastra para cambiar el ancho del panel derecho"></button>
-    <button class="layout-divider layout-divider-bottom" data-layout-divider="bottom" role="separator" aria-orientation="horizontal" aria-label="Cambiar altura de la línea de tiempo" aria-valuemin="150" aria-valuemax="600" title="Arrastra para cambiar la altura de la línea de tiempo"></button>
-  </main>
 
-  <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-dialog-title">
-    <div class="help-dialog-header"><div><span class="eyebrow">Referencia de Kinetra</span><h2 id="help-dialog-title">Atajos de teclado</h2></div><button id="help-dialog-close" class="icon-button" aria-label="Cerrar ayuda"><i data-lucide="x"></i></button></div>
-    <div id="help-dialog-body" class="help-dialog-body"></div>
-  </dialog>
-
-  <dialog id="new-project-dialog" class="help-dialog template-dialog" aria-labelledby="new-project-title">
-    <div class="help-dialog-header"><div><span class="eyebrow">Nuevo proyecto</span><h2 id="new-project-title">Elige una plantilla</h2></div><button id="new-project-close" class="icon-button" aria-label="Cerrar selector de plantilla"><i data-lucide="x"></i></button></div>
-    <div class="template-dialog-body">
-      <p>La plantilla reemplazará el proyecto guardado localmente. Después podrás modificar todas sus capas y huesos.</p>
-      <div id="template-grid" class="template-grid"></div>
-    </div>
-  </dialog>
-
-  <dialog id="duplicate-dialog" class="help-dialog duplicate-dialog" aria-labelledby="duplicate-title">
-    <div class="help-dialog-header"><div><span class="eyebrow">Nombre duplicado</span><h2 id="duplicate-title">Ya existe un elemento con este nombre</h2></div></div>
-    <div class="help-dialog-body">
-      <p id="duplicate-copy"></p>
-      <label class="duplicate-apply-all"><input id="duplicate-apply-all" type="checkbox"> Aplicar esta decisión a los demás elementos duplicados</label>
-      <div class="duplicate-actions">
-        <button class="small-button primary" data-duplicate-choice="replace">Reemplazar el existente</button>
-        <button class="small-button" data-duplicate-choice="keep">Mantener todos</button>
-        <button class="small-button" data-duplicate-choice="cancel">Cancelar</button>
-      </div>
-    </div>
-  </dialog>
-
-  <div id="tutorial-overlay" class="tutorial-overlay" hidden aria-live="polite">
-    <div id="tutorial-dimmers" class="tutorial-dimmers"></div>
-    <div id="tutorial-spotlights" class="tutorial-spotlights"></div>
-    <section id="tutorial-card" class="tutorial-card" role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
-      <div class="tutorial-card-header"><span id="tutorial-progress" class="eyebrow"></span><button id="tutorial-close" class="icon-button" aria-label="Cerrar tutorial"><i data-lucide="x"></i></button></div>
-      <h2 id="tutorial-title"></h2>
-      <p id="tutorial-copy"></p>
-      <div class="tutorial-actions"><button id="tutorial-back" class="small-button"><i data-lucide="arrow-left"></i> Anterior</button><button id="tutorial-next" class="small-button primary">Siguiente <i data-lucide="arrow-right"></i></button></div>
-    </section>
-  </div>
-
-  <input id="file" type="file" accept=".json,application/json">
-  <input id="image-files" type="file" accept="image/png,image/webp,image/jpeg,.psd,image/vnd.adobe.photoshop,image/psd" multiple>
-  <script type="module" src="./src/studio/editor.js?v=0.11.0"></script>
-</body>
+    <input id="file" type="file" accept=".json,application/json" />
+    <input
+      id="image-files"
+      type="file"
+      accept="image/png,image/webp,image/jpeg,.psd,image/vnd.adobe.photoshop,image/psd"
+      multiple
+    />
+    <script type="module" src="./src/studio/editor.js?v=0.13.0"></script>
+  </body>
 </html>
