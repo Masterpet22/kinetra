@@ -39,36 +39,36 @@ const MALE_PARTS = [
 ];
 
 const FEMALE_PARTS = [
-  { id: "brazo_izquierdo", name: "Brazo izquierdo", sourceId: "antebrazo_izquierdo", boneId: "shoulderLeft", crop: [1257, 693, 210, 292], x: 338, y: -185, z: 0 },
-  { id: "antebrazo_izquierdo", name: "Antebrazo izquierdo", sourceId: "brazo_izquierdo", boneId: "elbowLeft", crop: [1411, 959, 188, 231], x: 481, y: 50.5, z: 1 },
-  { id: "mano_izquierda", name: "Mano izquierda", boneId: "wristLeft", crop: [1544, 1206, 117, 188], x: 578.5, y: 276, z: 2 },
-  { id: "muslo_izquierdo", name: "Muslo izquierdo", boneId: "hipLeft", crop: [1032, 1185, 189, 353], x: 102.5, y: 337.5, z: 3 },
-  { id: "pierna_izquierda", name: "Pierna izquierda", boneId: "kneeLeft", crop: [1042, 1553, 148, 250], x: 92, y: 654, z: 4 },
-  { id: "pie_izquierdo", name: "Pie izquierdo", boneId: "ankleLeft", crop: [1063, 1809, 219, 179], x: 148.5, y: 874.5, z: 5 },
-  { id: "torso", name: "Pieza del torso", boneId: "rig", crop: [817, 652, 364, 616], x: -25, y: -64, z: 6 },
-  { id: "muslo_derecho", name: "Muslo derecho", boneId: "hipRight", crop: [797, 1185, 199, 362], x: -127.5, y: 342, z: 7 },
-  { id: "pierna_derecha", name: "Pierna derecha", boneId: "kneeRight", crop: [766, 1563, 158, 251], x: -179, y: 664.5, z: 8 },
-  { id: "pie_derecho", name: "Pie derecho", boneId: "ankleRight", crop: [735, 1830, 148, 168], x: -215, y: 890, z: 9 },
-  { id: "brazo_derecho", name: "Brazo derecho", sourceId: "antebrazo_derecho", boneId: "shoulderRight", crop: [489, 673, 220, 312], x: -425, y: -195, z: 10 },
-  { id: "antebrazo_derecho", name: "Antebrazo derecho", sourceId: "brazo_derecho", boneId: "elbowRight", crop: [449, 990, 117, 241], x: -516.5, y: 86.5, z: 11 },
-  { id: "mano_derecha", name: "Mano derecha", boneId: "wristRight", crop: [459, 1235, 147, 190], x: -491.5, y: 306, z: 12 },
-  { id: "cabeza", name: "Cabeza", boneId: "neck", crop: [889, 253, 261, 393], x: -4.5, y: -574.5, z: 13 }
+  { id: "brazo_izquierdo", name: "Brazo izquierdo", sourceId: "antebrazo_izquierdo", boneId: "shoulderLeft", crop: [1257, 693, 210, 292], x: 137.717778, y: -155.855556, z: 0 },
+  { id: "antebrazo_izquierdo", name: "Antebrazo izquierdo", sourceId: "brazo_izquierdo", boneId: "elbowLeft", crop: [1411, 959, 188, 231], x: 228.835556, y: 13.19, z: 1 },
+  { id: "mano_izquierda", name: "Mano izquierda", boneId: "wristLeft", crop: [1544, 1206, 117, 188], x: 304.218889, y: 166.491111, z: 2 },
+  { id: "muslo_izquierdo", name: "Muslo izquierdo", boneId: "hipLeft", crop: [1032, 1185, 189, 353], x: 69.366667, y: 227.555556, z: 3 },
+  { id: "pierna_izquierda", name: "Pierna izquierda", boneId: "kneeLeft", crop: [1042, 1553, 148, 250], x: 80.96, y: 460.936667, z: 4 },
+  { id: "pie_izquierdo", name: "Pie izquierdo", boneId: "ankleLeft", crop: [1063, 1809, 219, 179], x: 130.68, y: 613.31, z: 5 },
+  { id: "torso", name: "Pieza del torso", boneId: "rig", crop: [817, 652, 364, 616], x: -22, y: -56.32, z: 6 },
+  { id: "muslo_derecho", name: "Muslo derecho", boneId: "hipRight", crop: [797, 1185, 199, 362], x: -87.894444, y: 231.515556, z: 7 },
+  { id: "pierna_derecha", name: "Pierna derecha", boneId: "kneeRight", crop: [766, 1563, 158, 251], x: -119.325556, y: 466.704444, z: 8 },
+  { id: "pie_derecho", name: "Pie derecho", boneId: "ankleRight", crop: [735, 1830, 148, 168], x: -147.533333, y: 616.533333, z: 9 },
+  { id: "brazo_derecho", name: "Brazo derecho", sourceId: "antebrazo_derecho", boneId: "shoulderRight", crop: [489, 673, 220, 312], x: -186.5, y: -143.822222, rotation: -12, z: 10 },
+  { id: "antebrazo_derecho", name: "Antebrazo derecho", sourceId: "brazo_derecho", boneId: "elbowRight", crop: [449, 990, 117, 241], x: -235.77, y: 62.231111, rotation: 6, z: 11 },
+  { id: "mano_derecha", name: "Mano derecha", boneId: "wristRight", crop: [459, 1235, 147, 190], x: -234.603333, y: 213.724444, rotation: 4, z: 12 },
+  { id: "cabeza", name: "Cabeza", boneId: "neck", crop: [889, 253, 261, 393], x: -3.96, y: -443.06, z: 13 }
 ];
 
 const FEMALE_JOINTS = Object.freeze({
-  neck: { x: 0, y: -390 },
-  shoulderRight: { x: -320, y: -345 },
-  elbowRight: { x: -515, y: -35 },
-  wristRight: { x: -515, y: 210 },
-  shoulderLeft: { x: 320, y: -345 },
-  elbowLeft: { x: 520, y: -45 },
-  wristLeft: { x: 560, y: 195 },
-  hipRight: { x: -105, y: 160 },
-  kneeRight: { x: -180, y: 525 },
-  ankleRight: { x: -210, y: 805 },
-  hipLeft: { x: 100, y: 160 },
-  kneeLeft: { x: 105, y: 525 },
-  ankleLeft: { x: 115, y: 805 }
+  neck: { x: 0, y: -343.2 },
+  shoulderRight: { x: -281.6, y: -303.6 },
+  elbowRight: { x: -453.2, y: -30.8 },
+  wristRight: { x: -453.2, y: 184.8 },
+  shoulderLeft: { x: 281.6, y: -303.6 },
+  elbowLeft: { x: 457.6, y: -39.6 },
+  wristLeft: { x: 492.8, y: 171.6 },
+  hipRight: { x: -92.4, y: 140.8 },
+  kneeRight: { x: -158.4, y: 462 },
+  ankleRight: { x: -184.8, y: 708.4 },
+  hipLeft: { x: 88, y: 140.8 },
+  kneeLeft: { x: 92.4, y: 462 },
+  ankleLeft: { x: 101.2, y: 708.4 }
 });
 
 export const PROJECT_TEMPLATES = Object.freeze([
@@ -77,7 +77,7 @@ export const PROJECT_TEMPLATES = Object.freeze([
   { id: "blank", name: "Proyecto vacío", description: "Empieza sin capas ni huesos." }
 ]);
 
-const layer = ({ id, name, assetId, boneId = "rig", x, y, z, crop, scale = 1 }) => ({
+const layer = ({ id, name, assetId, boneId = "rig", x, y, rotation = 0, z, crop, scale = 1 }) => ({
   id,
   name,
   assetId,
@@ -85,7 +85,7 @@ const layer = ({ id, name, assetId, boneId = "rig", x, y, z, crop, scale = 1 }) 
   boneId,
   x,
   y,
-  rotation: 0,
+  rotation,
   scaleX: scale,
   scaleY: scale,
   visible: true,
@@ -137,23 +137,23 @@ function maleProject() {
 }
 
 function femaleProject() {
-  const size = 0.88;
   return {
     version: 4,
     fps: 24,
     templateId: "female",
     assets: splitAssets("female", FEMALE_PARTS),
-    rig: humanoidRig("humanoid_female", "Humano femenino", size, FEMALE_JOINTS),
+    rig: humanoidRig("humanoid_female", "Humano femenino", 1, FEMALE_JOINTS),
     parts: FEMALE_PARTS.map((item) => layer({
       id: item.id,
       name: item.name,
       assetId: `female_${item.sourceId || item.id}`,
       boneId: item.boneId,
-      x: item.x * size,
-      y: item.y * size,
+      x: item.x,
+      y: item.y,
+      rotation: item.rotation || 0,
       z: item.z,
       crop: { x: item.crop[0], y: item.crop[1], width: item.crop[2], height: item.crop[3] },
-      scale: size
+      scale: 0.88
     })),
     clip: createKinetraClip()
   };
