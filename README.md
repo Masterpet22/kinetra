@@ -77,6 +77,14 @@ npm test
 
 La rama `main` se prueba y publica automáticamente mediante GitHub Actions.
 
+La versión se define una sola vez en `package.json`. Para preparar una nueva versión usa `npm version patch`, `npm version minor` o `npm version major`; el script de ciclo de vida sincroniza automáticamente las referencias de caché del HTML, los módulos y las pruebas. También puedes ejecutar `npm run version:check` para verificar que no existan referencias desactualizadas.
+
+Consulta [CHANGELOG.md](./CHANGELOG.md) para conocer los cambios publicados y [roadmap.md](./roadmap.md) para revisar las siguientes fases del proyecto.
+
+## Licencia
+
+Kinetra se distribuye bajo la [licencia MIT](./LICENSE).
+
 ## Compatibilidad de proyectos
 
 Kinetra importa y exporta paquetes `kinetra/v2`. El paquete autocontenido incluye rig, capas, imágenes y clips de animación.
