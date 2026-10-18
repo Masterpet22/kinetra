@@ -80,6 +80,45 @@ test("inicia aunque el navegador rechace las preferencias locales", async ({ pag
   await expect(page.locator("[data-panel='layers'] .tree-row")).toHaveCount(14);
 });
 
+test("aísla copias incompatibles de IndexedDB y arranca con un proyecto limpio", async ({ page }) => {
+  await page.evaluate(async () => {
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("kinetra-studio", 2);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const transaction = database.transaction("projects", "readwrite");
+    const damaged = { clips: [], rig: null, parts: "incompatible", assets: [] };
+    transaction.objectStore("projects").put({ key: "current", updatedAt: 2, dirty: false, project: damaged });
+    transaction.objectStore("projects").put({ key: "recovery", updatedAt: 3, dirty: true, project: damaged });
+    await new Promise((resolve, reject) => {
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+    });
+    database.close();
+  });
+
+  await page.reload();
+  await expect(page.locator("#save-state")).toHaveText("Proyecto local incompatible aislado; se inició uno nuevo");
+  await expect(page.locator("[data-panel='layers'] .tree-row")).toHaveCount(14);
+  const quarantineCount = await page.evaluate(async () => {
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("kinetra-studio", 2);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const transaction = database.transaction("quarantine", "readonly");
+    const count = await new Promise((resolve, reject) => {
+      const request = transaction.objectStore("quarantine").count();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    database.close();
+    return count;
+  });
+  expect(quarantineCount).toBe(2);
+});
+
 test("no contiene infracciones críticas de accesibilidad", async ({ page }) => {
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations.filter((violation) => ["critical", "serious"].includes(violation.impact))).toEqual([]);

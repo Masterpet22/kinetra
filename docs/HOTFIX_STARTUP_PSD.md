@@ -13,6 +13,9 @@
 
 ## Reparación
 
+- El build de producción sustituye las versiones estáticas de recursos por `versión-commit`, de modo que cada despliegue obtiene URLs nuevas incluso sin publicar otro release.
+- Si un Service Worker retirado todavía controla la página, se elimina y se realiza una sola recarga protegida por `sessionStorage`.
+- Los registros incompatibles de IndexedDB se mueven al almacén `quarantine`. Se intenta restaurar `recovery` de forma independiente; si ambas copias fallan, el editor inicia limpio y conserva el diagnóstico.
 - Las lecturas, escrituras y eliminaciones de preferencias usan funciones tolerantes a excepciones. IndexedDB continúa siendo el almacenamiento principal del proyecto.
 - Toda capa PSD con píxeles no transparentes se incorpora visible. Si el PSD la marcaba como oculta, el estado de la importación informa que fue revelada.
 - `Image.onerror` muestra el nombre de la capa cuyo recurso no pudo visualizarse.

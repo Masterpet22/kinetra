@@ -10,11 +10,13 @@
     />
     <link rel="icon" href="./assets/favicon.png?v=0.13.0" type="image/png" />
     <script>
-      // Retira trabajadores antiguos sin detener ni recargar la navegación actual.
-      (() => {
+      // Retira trabajadores antiguos y abandona su contexto una sola vez si aún controla esta carga.
+      (async () => {
         if (!("serviceWorker" in navigator)) return;
         const scope = new URL("./", window.location.href).href;
-        Promise.all([
+        const reloadKey = "kinetra:service-worker-retired";
+        const controlled = Boolean(navigator.serviceWorker.controller);
+        await Promise.all([
           navigator.serviceWorker
             .getRegistrations()
             .then((registrations) =>
@@ -31,8 +33,21 @@
                   Promise.all(keys.filter((key) => key.startsWith("kinetra-assets-")).map((key) => caches.delete(key)))
                 )
             : Promise.resolve()
-        ]).catch((error) => console.warn("No se pudo retirar una caché antigua", error));
-      })();
+        ]);
+        if (!controlled) {
+          try {
+            sessionStorage.removeItem(reloadKey);
+          } catch {}
+          return;
+        }
+        try {
+          if (sessionStorage.getItem(reloadKey) === "true") return;
+          sessionStorage.setItem(reloadKey, "true");
+          window.location.reload();
+        } catch {
+          console.warn("El navegador no permitió abandonar automáticamente el Service Worker antiguo");
+        }
+      })().catch((error) => console.warn("No se pudo retirar una caché antigua", error));
     </script>
     <script>
       try {

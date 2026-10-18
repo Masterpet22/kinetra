@@ -78,7 +78,7 @@ npm run quality
 npm run build
 ```
 
-`npm run quality` ejecuta ESLint, `checkJs`, pruebas unitarias, presupuestos de tamaño, Playwright en Chromium y Firefox y auditoría de accesibilidad. `npm run build` crea en `dist/` el artefacto estático de producción, sin pruebas ni configuración de desarrollo.
+`npm run quality` ejecuta ESLint, `checkJs`, pruebas unitarias, presupuestos de tamaño, Playwright en Chromium y Firefox y auditoría de accesibilidad. `npm run build` crea en `dist/` el artefacto estático de producción, sin pruebas ni configuración de desarrollo. Durante el build, las URLs del punto de entrada, CSS, imágenes iniciales y todo el grafo de módulos JavaScript reciben un identificador `versión-commit`, por lo que un despliegue nuevo no reutiliza recursos de otro commit aunque conserve el mismo número de release.
 
 La rama `main` se verifica y publica mediante flujos separados de GitHub Actions. Los tags `v*` publican una release únicamente cuando la versión coincide y todos los controles terminan correctamente.
 

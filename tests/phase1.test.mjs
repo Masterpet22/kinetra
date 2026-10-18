@@ -116,6 +116,36 @@ assert.equal(
   "La recuperación debe conservar todos los clips"
 );
 
+const quarantined = [];
+const damagedPersistence = createPersistenceController({
+  adapter: {
+    async load(key) {
+      if (key === "current") throw new Error("metadatos dañados");
+      return { project, updatedAt: Date.now(), dirty: true };
+    },
+    async quarantine(key, error) {
+      quarantined.push({ key, message: error.message });
+    }
+  }
+});
+const recoveredAfterDamage = await damagedPersistence.loadLatest();
+assert.equal(recoveredAfterDamage.project.activeClipId, project.activeClipId);
+assert.deepEqual(quarantined, [{ key: "current", message: "metadatos dañados" }]);
+
+const failedStates = [];
+const fullyDamagedPersistence = createPersistenceController({
+  adapter: {
+    async load(key) {
+      throw new Error(`${key} dañado`);
+    },
+    async quarantine() {}
+  },
+  onState: (state) => failedStates.push(state)
+});
+assert.equal(await fullyDamagedPersistence.loadLatest(), null);
+assert.equal(failedStates.at(-1).state, "repaired");
+assert.equal(failedStates.at(-1).error.code, "corrupt-project");
+
 const largeProject = migrateAuthoringProject(createTemplateProject("blank"));
 const imageBytes = 24 * 1024 * 1024;
 largeProject.assets.push({

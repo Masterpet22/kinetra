@@ -1,7 +1,7 @@
-import { migrateAuthoringProject, serializeAuthoringProject } from "./project-model.js";
+import { assertUsableAuthoringProject, migrateAuthoringProject, serializeAuthoringProject } from "./project-model.js";
 
 export const DATABASE_NAME = "kinetra-studio";
-export const DATABASE_VERSION = 1;
+export const DATABASE_VERSION = 2;
 export const AUTOSAVE_DELAY = 700;
 
 export function readStorageValue(storage, key, fallback = null) {
@@ -64,6 +64,9 @@ export function openKinetraDatabase(indexedDBFactory = globalThis.indexedDB) {
       const database = request.result;
       if (!database.objectStoreNames.contains("projects")) database.createObjectStore("projects", { keyPath: "key" });
       if (!database.objectStoreNames.contains("assets")) database.createObjectStore("assets", { keyPath: "id" });
+      if (!database.objectStoreNames.contains("quarantine")) {
+        database.createObjectStore("quarantine", { keyPath: "id" });
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -134,7 +137,24 @@ export async function createIndexedDbAdapter({ indexedDBFactory = globalThis.ind
       const assetStore = transaction.objectStore("assets");
       const project = await hydrateProjectAssets(record.project, (id) => requestResult(assetStore.get(id)));
       await transactionDone(transaction);
-      return { ...record, project };
+      return { ...record, project: assertUsableAuthoringProject(project) };
+    },
+    async quarantine(key, error) {
+      const transaction = database.transaction(["projects", "quarantine"], "readwrite");
+      const projects = transaction.objectStore("projects");
+      const record = await requestResult(projects.get(key));
+      if (record) {
+        const quarantinedAt = Date.now();
+        transaction.objectStore("quarantine").put({
+          id: `${key}:${quarantinedAt}`,
+          sourceKey: key,
+          quarantinedAt,
+          reason: error?.message || String(error),
+          record
+        });
+        projects.delete(key);
+      }
+      await transactionDone(transaction);
     },
     async clearRecovery() {
       const transaction = database.transaction("projects", "readwrite");
@@ -210,12 +230,50 @@ export function createPersistenceController({ adapter, onState = (_state) => {},
   }
 
   async function loadLatest() {
-    const [current, recovery] = await Promise.all([adapter.load("current"), adapter.load("recovery")]);
+    const failures = [];
+    const loadCandidate = async (key) => {
+      try {
+        const record = await adapter.load(key);
+        if (record?.project) assertUsableAuthoringProject(record.project);
+        return record;
+      } catch (error) {
+        failures.push({ key, error });
+        try {
+          await adapter.quarantine?.(key, error);
+        } catch (quarantineError) {
+          console.warn(`No se pudo aislar la copia local ${key}`, quarantineError);
+        }
+        return null;
+      }
+    };
+    const [current, recovery] = await Promise.all([loadCandidate("current"), loadCandidate("recovery")]);
     if (recovery?.dirty && (!current || recovery.updatedAt > current.updatedAt)) {
-      onState({ state: "recovered", dirty: true, message: "Copia de recuperación restaurada" });
+      onState({
+        state: "recovered",
+        dirty: true,
+        message: failures.length
+          ? "Proyecto dañado aislado; copia de recuperación restaurada"
+          : "Copia de recuperación restaurada"
+      });
       return { ...recovery, recovered: true };
     }
-    return current ? { ...current, recovered: false } : null;
+    if (current) {
+      if (failures.length) onState({ state: "recovered", dirty: false, message: "Copia dañada aislada" });
+      return { ...current, recovered: false };
+    }
+    if (failures.length) {
+      onState({
+        state: "repaired",
+        dirty: false,
+        message: "Proyecto local incompatible aislado; se inició uno nuevo",
+        error: new KinetraStorageError(
+          "corrupt-project",
+          "Las copias locales no se pudieron restaurar",
+          failures[0].error
+        )
+      });
+    }
+    return null;
   }
 
   return { schedule, saveNow, saveRecovery, loadLatest, isDirty: () => dirty };

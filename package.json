@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "pretest": "npm run version:check",
-    "test": "node tests/studio-format.test.mjs && node tests/templates.test.mjs && node tests/kinetra-v2.test.mjs && node tests/gizmo.test.mjs && node tests/ik.test.mjs && node tests/phase1.test.mjs && node tests/studio-ui.test.mjs && node tests/button-audit.test.mjs",
+    "test": "node tests/studio-format.test.mjs && node tests/templates.test.mjs && node tests/kinetra-v2.test.mjs && node tests/gizmo.test.mjs && node tests/ik.test.mjs && node tests/phase1.test.mjs && node tests/build.test.mjs && node tests/studio-ui.test.mjs && node tests/button-audit.test.mjs",
     "serve": "node scripts/serve.mjs",
     "lint": "eslint .",
     "typecheck": "tsc -p jsconfig.json",

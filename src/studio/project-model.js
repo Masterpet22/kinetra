@@ -2,6 +2,27 @@ import { createKinetraClip, normalizeKinetraClip } from "../animations/studio-fo
 
 export const AUTHORING_VERSION = 5;
 
+export function assertUsableAuthoringProject(project) {
+  const errors = [];
+  if (!project || typeof project !== "object") errors.push("el proyecto no es un objeto");
+  if (!Array.isArray(project?.clips) || !project.clips.length) errors.push("no contiene clips");
+  if (!project?.rig || !Array.isArray(project.rig.bones)) errors.push("el rig no contiene una lista de huesos");
+  if (!Array.isArray(project?.parts)) errors.push("las capas no son una lista");
+  if (!Array.isArray(project?.assets)) errors.push("los recursos no son una lista");
+  const assetIds = new Set((project?.assets || []).map((asset) => asset?.id).filter(Boolean));
+  const layerIds = new Set();
+  (project?.parts || []).forEach((part, index) => {
+    if (!part?.id || layerIds.has(part.id)) errors.push(`la capa ${index} no tiene un ID único`);
+    layerIds.add(part?.id);
+    if (!part?.assetId) errors.push(`la capa ${part?.id || index} no tiene recurso`);
+    else if (part.source !== "builtin" && !assetIds.has(part.assetId)) {
+      errors.push(`la capa ${part.id || index} referencia un recurso inexistente`);
+    }
+  });
+  if (errors.length) throw new Error(`Proyecto local incompatible: ${errors.join("; ")}`);
+  return project;
+}
+
 function safeId(value, fallback = "clip") {
   const normalized = String(value || "")
     .normalize("NFKD")
@@ -60,8 +81,18 @@ export function migrateAuthoringProject(source) {
     templateId: source.templateId,
     assets: structuredClone(source.assets || []),
     layerGroups: structuredClone(source.layerGroups || []),
-    rig: structuredClone(source.rig || { id: "custom", name: "Rig personalizado", bones: [] }),
-    parts: structuredClone(source.parts || source.layers || []),
+    rig: {
+      ...structuredClone(source.rig || { id: "custom", name: "Rig personalizado" }),
+      bones: structuredClone(Array.isArray(source.rig?.bones) ? source.rig.bones : [])
+    },
+    parts: structuredClone(source.parts || source.layers || []).map((part, z) => ({
+      visible: true,
+      rotation: 0,
+      scaleX: 1,
+      scaleY: 1,
+      z,
+      ...part
+    })),
     clips,
     activeClipId
   };

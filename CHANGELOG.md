@@ -8,6 +8,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ### Fixed
 
+- Cada artefacto publicado identifica sus recursos con el commit del despliegue, evitando reutilizar JavaScript o CSS de una versión anterior con el mismo número de release.
+- La retirada de Service Workers antiguos abandona su contexto mediante una única recarga controlada.
+- Los proyectos incompatibles de IndexedDB se aíslan en cuarentena; Kinetra intenta la copia de recuperación y, si también falla, inicia un proyecto limpio sin repetir el error en cada carga.
 - El editor ya no aborta con “Error de inicio” cuando el navegador bloquea o agota `localStorage`; las preferencias visuales se degradan a sus valores predeterminados sin impedir el render.
 - Las capas PSD con contenido se importan visibles aunque estuvieran ocultas en el documento o en un grupo padre, y se informa cuántas fueron reveladas.
 - Los recursos de imagen que no pueden decodificarse muestran un mensaje de diagnóstico en vez de fallar silenciosamente.
