@@ -4,6 +4,34 @@ export const DATABASE_NAME = "kinetra-studio";
 export const DATABASE_VERSION = 1;
 export const AUTOSAVE_DELAY = 700;
 
+export function readStorageValue(storage, key, fallback = null) {
+  try {
+    return storage?.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function writeStorageValue(storage, key, value) {
+  if (!storage) return false;
+  try {
+    storage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function removeStorageValue(storage, key) {
+  if (!storage) return false;
+  try {
+    storage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export class KinetraStorageError extends Error {
   constructor(code, message, cause) {
     super(message, { cause });
@@ -193,9 +221,10 @@ export function createPersistenceController({ adapter, onState = (_state) => {},
   return { schedule, saveNow, saveRecovery, loadLatest, isDirty: () => dirty };
 }
 
-export function readLegacyProject(storage = globalThis.localStorage, key = "kinetra:project") {
+export function readLegacyProject(storage, key = "kinetra:project") {
   try {
-    const source = storage?.getItem(key);
+    const target = storage === undefined ? globalThis.localStorage : storage;
+    const source = target?.getItem(key);
     return source ? migrateAuthoringProject(JSON.parse(source)) : null;
   } catch {
     return null;

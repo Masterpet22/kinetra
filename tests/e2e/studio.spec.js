@@ -69,6 +69,17 @@ test("deshacer/rehacer y controles de clips no pierden el estado", async ({ page
   await page.screenshot({ path: test.info().outputPath("studio-desktop.png"), fullPage: true });
 });
 
+test("inicia aunque el navegador rechace las preferencias locales", async ({ page }) => {
+  await page.addInitScript(() => {
+    Storage.prototype.setItem = () => {
+      throw new DOMException("Access denied", "SecurityError");
+    };
+  });
+  await page.reload();
+  await expect(page.locator("#save-state")).not.toHaveText("Error de inicio");
+  await expect(page.locator("[data-panel='layers'] .tree-row")).toHaveCount(14);
+});
+
 test("no contiene infracciones críticas de accesibilidad", async ({ page }) => {
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations.filter((violation) => ["critical", "serious"].includes(violation.impact))).toEqual([]);

@@ -13,7 +13,31 @@ import {
   serializeAuthoringProject
 } from "../src/studio/project-model.js";
 import { createCommandHistory } from "../src/studio/history.js";
-import { createIndexedDbAdapter, createPersistenceController, KinetraStorageError } from "../src/studio/persistence.js";
+import {
+  createIndexedDbAdapter,
+  createPersistenceController,
+  KinetraStorageError,
+  readStorageValue,
+  removeStorageValue,
+  writeStorageValue
+} from "../src/studio/persistence.js";
+
+const deniedStorage = {
+  getItem() {
+    throw new DOMException("denied", "SecurityError");
+  },
+  setItem() {
+    throw new DOMException("denied", "SecurityError");
+  },
+  removeItem() {
+    throw new DOMException("denied", "SecurityError");
+  }
+};
+assert.equal(readStorageValue(deniedStorage, "theme", "noche"), "noche");
+assert.equal(writeStorageValue(deniedStorage, "theme", "aurora"), false);
+assert.equal(removeStorageValue(deniedStorage, "theme"), false);
+assert.equal(writeStorageValue(null, "theme", "aurora"), false);
+assert.equal(removeStorageValue(null, "theme"), false);
 
 const legacy = createTemplateProject("male");
 const project = migrateAuthoringProject(legacy);

@@ -32,7 +32,14 @@ import {
 import { createCommandHistory } from "./history.js";
 import { createCommandBus } from "./commands.js";
 import { createStudioState } from "./state.js";
-import { createIndexedDbAdapter, createPersistenceController, readLegacyProject } from "./persistence.js";
+import {
+  createIndexedDbAdapter,
+  createPersistenceController,
+  readLegacyProject,
+  readStorageValue,
+  removeStorageValue,
+  writeStorageValue
+} from "./persistence.js";
 import { downloadJson, exportPortableBundle } from "./project-io.js";
 import { effectiveLayerRotation } from "./canvas-renderer.js";
 import { collectKeyTimes, clampTimelineTime, trimClipToDuration } from "./timeline.js";
@@ -53,6 +60,13 @@ const STORAGE_KEY = "kinetra:project";
 const PANEL_STORAGE_KEY = "kinetra:panels";
 const PREVIEW_STORAGE_KEY = "kinetra:preview-visible";
 const THEME_STORAGE_KEY = "kinetra:theme";
+const preferenceStorage = (() => {
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return null;
+  }
+})();
 const LABELS = {
   rig: "Torso",
   torso: "Pieza del torso",
@@ -212,10 +226,9 @@ let layoutSizes = initialPanelLayout.sizes;
 let panelDrag = null;
 let dividerDrag = null;
 let panelZ = 120;
-let previewVisible = localStorage.getItem(PREVIEW_STORAGE_KEY) !== "false";
-let theme = ["noche", "grafito", "aurora"].includes(localStorage.getItem(THEME_STORAGE_KEY))
-  ? localStorage.getItem(THEME_STORAGE_KEY)
-  : "noche";
+let previewVisible = readStorageValue(preferenceStorage, PREVIEW_STORAGE_KEY) !== "false";
+const storedTheme = readStorageValue(preferenceStorage, THEME_STORAGE_KEY);
+let theme = ["noche", "grafito", "aurora"].includes(storedTheme) ? storedTheme : "noche";
 let tutorialRun = null;
 
 const canvas = $("canvas");
@@ -247,7 +260,7 @@ function closeApplicationMenus(except = null) {
 
 function loadPanelLayout() {
   try {
-    const saved = JSON.parse(localStorage.getItem(PANEL_STORAGE_KEY) || "{}");
+    const saved = JSON.parse(readStorageValue(preferenceStorage, PANEL_STORAGE_KEY, "{}"));
     const storedPanels = saved.panels || saved;
     const panels = Object.fromEntries(
       Object.entries(PANEL_DEFAULTS).map(([id, defaults]) => {
@@ -293,7 +306,11 @@ function loadPanelLayout() {
 }
 
 function savePanelStates() {
-  localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(panelLayoutPayload(panelStates, dockActive, layoutSizes)));
+  writeStorageValue(
+    preferenceStorage,
+    PANEL_STORAGE_KEY,
+    JSON.stringify(panelLayoutPayload(panelStates, dockActive, layoutSizes))
+  );
 }
 
 function visiblePanelsInDock(zone) {
@@ -812,10 +829,10 @@ async function loadInitialProject() {
     persistence = createPersistenceController({ adapter, onState: updatePersistenceState });
     const saved = await persistence.loadLatest();
     if (saved?.project) return attachActiveClip(saved.project);
-    const legacy = readLegacyProject(localStorage, STORAGE_KEY);
+    const legacy = readLegacyProject(preferenceStorage, STORAGE_KEY);
     if (legacy) {
       await persistence.saveNow(legacy);
-      localStorage.removeItem(STORAGE_KEY);
+      removeStorageValue(preferenceStorage, STORAGE_KEY);
       updatePersistenceState({ state: "migrated", message: "Proyecto local migrado" });
       return legacy;
     }
@@ -896,6 +913,10 @@ function ensureImages() {
     image.dataset.source = source;
     image.src = source;
     image.onload = draw;
+    image.onerror = () => {
+      image.dataset.state = "error";
+      status(`No se pudo visualizar la imagen de la capa “${item.name || item.id}”`);
+    };
     images[item.id] = image;
   });
 }
@@ -2788,6 +2809,7 @@ async function extractPsdLayers(file, usedFilenames) {
   const outputLayers = [];
   let expandedSize = 0;
   let transparentLayers = 0;
+  let hiddenLayersRevealed = 0;
   for (const { layer, visible } of layers) {
     const bounds = cropCanvasToVisiblePixels(layer.canvas);
     if (!bounds) {
@@ -2805,16 +2827,17 @@ async function extractPsdLayers(file, usedFilenames) {
     if (expandedSize > 24 * 1024 * 1024) {
       throw new Error(`${file.name} genera más de 24 MB en PNG; reduce el tamaño del documento`);
     }
+    if (!visible) hiddenLayersRevealed += 1;
     outputLayers.push({
       name: layerName,
       filename,
       blob,
-      visible,
+      visible: true,
       x: (Number(layer.left) || 0) + bounds.left + bounds.canvas.width / 2 - psd.width / 2,
       y: (Number(layer.top) || 0) + bounds.top + bounds.canvas.height / 2 - psd.height / 2
     });
   }
-  return { layers: outputLayers, transparentLayers };
+  return { layers: outputLayers, transparentLayers, hiddenLayersRevealed };
 }
 
 async function importImageLayers(files) {
@@ -2827,11 +2850,13 @@ async function importImageLayers(files) {
   const importedLayers = [];
   const usedFilenames = new Set();
   let transparentLayers = 0;
+  let hiddenLayersRevealed = 0;
   let expandedSize = 0;
   for (const file of accepted) {
     if (isPsdFile(file)) {
       const extracted = await extractPsdLayers(file, usedFilenames);
       transparentLayers += extracted.transparentLayers;
+      hiddenLayersRevealed += extracted.hiddenLayersRevealed;
       for (const layer of extracted.layers) {
         expandedSize += layer.blob.size;
         importedLayers.push({
@@ -2926,7 +2951,10 @@ async function importImageLayers(files) {
   selectedParts = new Set([lastLayer.id]);
   ensureImages();
   commit(`${importedLayers.length} imagen(es) importadas como capas reales`);
-  if (transparentLayers) status(`Se omitieron ${transparentLayers} capa(s) PSD totalmente transparentes`);
+  const psdNotices = [];
+  if (transparentLayers) psdNotices.push(`se omitieron ${transparentLayers} capa(s) totalmente transparentes`);
+  if (hiddenLayersRevealed) psdNotices.push(`se mostraron ${hiddenLayersRevealed} capa(s) ocultas en el PSD`);
+  if (psdNotices.length) status(`Importación completada: ${psdNotices.join("; ")}`);
   setMode("calibrador");
   showRightTab("layers");
 }
@@ -3120,7 +3148,7 @@ function createProjectFromTemplate(templateId) {
 function applyPreviewVisibility() {
   document.querySelector(".preview-card").hidden = !previewVisible;
   $("preview-toggle").checked = previewVisible;
-  localStorage.setItem(PREVIEW_STORAGE_KEY, String(previewVisible));
+  writeStorageValue(preferenceStorage, PREVIEW_STORAGE_KEY, String(previewVisible));
   if (previewVisible) requestAnimationFrame(drawPreview);
 }
 
@@ -3130,7 +3158,7 @@ function applyTheme(next, persist = true) {
   document.querySelectorAll("[data-theme-choice]").forEach((input) => {
     input.checked = input.value === theme;
   });
-  if (persist) localStorage.setItem(THEME_STORAGE_KEY, theme);
+  if (persist) writeStorageValue(preferenceStorage, THEME_STORAGE_KEY, theme);
   draw();
 }
 

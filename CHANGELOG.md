@@ -6,6 +6,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+### Fixed
+
+- El editor ya no aborta con “Error de inicio” cuando el navegador bloquea o agota `localStorage`; las preferencias visuales se degradan a sus valores predeterminados sin impedir el render.
+- Las capas PSD con contenido se importan visibles aunque estuvieran ocultas en el documento o en un grupo padre, y se informa cuántas fueron reveladas.
+- Los recursos de imagen que no pueden decodificarse muestran un mensaje de diagnóstico en vez de fallar silenciosamente.
+
 ## [0.13.0] - 2026-10-16
 
 ### Added

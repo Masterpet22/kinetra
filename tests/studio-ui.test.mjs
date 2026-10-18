@@ -416,6 +416,16 @@ assert.match(
 assert.match(editor, /async function extractPsdLayers\(/, "Los PSD deben separarse por capas y convertirse a PNG");
 assert.match(
   editor,
+  /hiddenLayersRevealed[\s\S]*?visible: true/,
+  "Las capas PSD con píxeles deben mostrarse aunque estuvieran ocultas en el documento fuente"
+);
+assert.match(
+  editor,
+  /image\.onerror[\s\S]*?No se pudo visualizar la imagen de la capa/,
+  "Los fallos de decodificación de sprites deben informarse al usuario"
+);
+assert.match(
+  editor,
   /const layerName = String\(layer\.name \|\| "capa"\)\.replace\(\/\\s\/g, "_"\)/,
   "Los espacios en blanco de nombres PSD deben convertirse en guiones bajos"
 );
