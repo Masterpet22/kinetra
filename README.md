@@ -2,6 +2,8 @@
 
 Kinetra es un editor web estático para ensamblar y animar personajes 2D construidos con sprites articulados. Permite importar imágenes propias, convertirlas en capas reales, construir un esqueleto jerárquico y exportar el personaje completo a un formato portable para juegos web.
 
+[Conoce Kinetra](https://masterpet22.github.io/kinetra/landing/) · [Abre el editor](https://masterpet22.github.io/kinetra/)
+
 ## Crear un personaje propio
 
 1. Usa `Archivo > Nuevo` y elige Humano masculino, Humano femenino o Proyecto vacío.
@@ -62,7 +64,7 @@ Cada herramienta usa un tamaño flotante apropiado y el dock inferior mantiene u
 
 ## Uso
 
-Abre la versión publicada en [GitHub Pages](https://masterpet22.github.io/kinetra/) o sirve el repositorio mediante un servidor HTTP local:
+Visita la [landing de producto](https://masterpet22.github.io/kinetra/landing/), abre el [editor publicado en GitHub Pages](https://masterpet22.github.io/kinetra/) o sirve el repositorio mediante un servidor HTTP local:
 
 ```bash
 npm run serve

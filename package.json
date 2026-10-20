@@ -1,7 +1,7 @@
 {
   "name": "kinetra",
   "version": "0.13.0",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "private": true,
   "type": "module",
   "scripts": {
