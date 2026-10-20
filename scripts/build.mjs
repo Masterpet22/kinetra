@@ -37,6 +37,7 @@ for (const path of [
   "README.md",
   "src",
   "assets",
+  "landing",
   "docs/kinetra-v2.schema.json"
 ]) {
   const source = new URL(path, root);
