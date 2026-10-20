@@ -25,7 +25,11 @@ assert.match(
   "El Studio debe retirar cachés heredadas antes de iniciar"
 );
 assert.match(html, /navigator\.serviceWorker\.controller/, "Debe detectar si un trabajador antiguo controla la carga");
-assert.match(html, /sessionStorage\.setItem\(reloadKey, "true"\)/, "La recarga de retirada debe ejecutarse una sola vez");
+assert.match(
+  html,
+  /sessionStorage\.setItem\(reloadKey, "true"\)/,
+  "La recarga de retirada debe ejecutarse una sola vez"
+);
 assert.match(html, /window\.location\.reload\(\)/, "Debe abandonar el contexto del trabajador retirado");
 assert.doesNotMatch(html, /window\.stop\(\)/, "La limpieza del Studio no debe abortar la navegación actual");
 assert.match(html, /id=["']timeline-zoom["']/, "El timeline debe tener zoom temporal independiente");
