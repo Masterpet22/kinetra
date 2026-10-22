@@ -69,6 +69,63 @@ test("deshacer/rehacer y controles de clips no pierden el estado", async ({ page
   await page.screenshot({ path: test.info().outputPath("studio-desktop.png"), fullPage: true });
 });
 
+test("reordena como un bloque las capas seleccionadas y muestra el punto de inserción", async ({ page }) => {
+  await switchWorkspace(page, "calibrador");
+  const layerRows = page.locator("[data-panel='layers'] [data-hierarchy-tree] .tree-row[data-hierarchy-id]");
+  const initialOrder = await layerRows.evaluateAll((rows) => rows.map((row) => row.dataset.hierarchyId));
+  const [firstId, secondId, , , targetId, nextId] = initialOrder;
+
+  await page.locator(`[data-panel='layers'] [data-hierarchy-id='${firstId}'] .tree-select`).click();
+  await page
+    .locator(`[data-panel='layers'] [data-hierarchy-id='${secondId}'] .tree-select`)
+    .click({ modifiers: ["Control"] });
+
+  const source = page.locator(`[data-panel='layers'] [data-hierarchy-id='${firstId}']`);
+  const tree = page.locator("[data-panel='layers'] [data-hierarchy-tree]");
+  const sourceBounds = await source.boundingBox();
+  const nextBounds = await tree.locator(`[data-hierarchy-id='${nextId}']`).boundingBox();
+  await page.mouse.move(sourceBounds.x + sourceBounds.width / 2, sourceBounds.y + sourceBounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(sourceBounds.x + sourceBounds.width / 2, sourceBounds.y + sourceBounds.height / 2 + 8);
+  await page.mouse.move(sourceBounds.x + sourceBounds.width / 2, nextBounds.y + 1, {
+    steps: 8
+  });
+  await expect(tree.locator(".layer-drop-before, .layer-drop-after")).toHaveCount(1);
+  await page.mouse.up();
+
+  const finalOrder = await layerRows.evaluateAll((rows) => rows.map((row) => row.dataset.hierarchyId));
+  expect(finalOrder.slice(0, 5)).toEqual([initialOrder[2], initialOrder[3], targetId, firstId, secondId]);
+});
+
+test("agrupa las capas seleccionadas al soltarlas sobre otra capa", async ({ page }) => {
+  await switchWorkspace(page, "calibrador");
+  const tree = page.locator("[data-panel='layers'] [data-hierarchy-tree]");
+  const layerRows = tree.locator(".tree-row[data-hierarchy-id]");
+  const [firstId, secondId, targetId] = await layerRows
+    .evaluateAll((rows) => rows.slice(0, 3).map((row) => row.dataset.hierarchyId));
+  await tree.locator(`[data-hierarchy-id='${firstId}'] .tree-select`).click();
+  await tree.locator(`[data-hierarchy-id='${secondId}'] .tree-select`).click({ modifiers: ["Control"] });
+
+  const sourceBounds = await tree.locator(`[data-hierarchy-id='${firstId}']`).boundingBox();
+  const targetBounds = await tree.locator(`[data-hierarchy-id='${targetId}']`).boundingBox();
+  await page.mouse.move(sourceBounds.x + sourceBounds.width / 2, sourceBounds.y + sourceBounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(sourceBounds.x + sourceBounds.width / 2, sourceBounds.y + sourceBounds.height / 2 + 8);
+  await page.mouse.move(targetBounds.x + targetBounds.width / 2, targetBounds.y + targetBounds.height / 2, {
+    steps: 8
+  });
+  const adjustedTargetBounds = await tree.locator(`[data-hierarchy-id='${targetId}']`).boundingBox();
+  await page.mouse.move(
+    adjustedTargetBounds.x + adjustedTargetBounds.width / 2,
+    adjustedTargetBounds.y + adjustedTargetBounds.height / 2
+  );
+  await expect(tree.locator(`[data-hierarchy-id='${targetId}']`)).toHaveClass(/layer-group-target/);
+  await page.mouse.up();
+
+  await expect(tree.locator(".tree-group-row")).toHaveCount(1);
+  await expect(tree.locator(".tree-layer-in-group")).toHaveCount(3);
+});
+
 test("inicia aunque el navegador rechace las preferencias locales", async ({ page }) => {
   await page.addInitScript(() => {
     Storage.prototype.setItem = () => {

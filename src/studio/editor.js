@@ -194,6 +194,8 @@ let lastTick = 0;
 let animationFrame = 0;
 let interaction = null;
 let dragKey = null;
+let layerDrag = null;
+let layerAutoScrollFrame = 0;
 const commandHistory = createCommandHistory();
 let persistence = null;
 const studioState = createStudioState(project);
@@ -1353,6 +1355,21 @@ function nearestCanvasTarget(clientX, clientY, state) {
   return result?.target || null;
 }
 
+function nearestCanvasLayer(clientX, clientY) {
+  const world = toWorld(clientX, clientY);
+  let result = null;
+  [...project.parts]
+    .filter((item) => item.visible !== false)
+    .sort((left, right) => right.z - left.z)
+    .forEach((item) => {
+      const image = images[item.id];
+      const source = layerSourceRect(item, image);
+      const score = Math.hypot((world.x - item.x) / (source.width / 2), (world.y - item.y) / (source.height / 2));
+      if (score < 1.4 && (!result || score < result.score)) result = { id: item.id, score };
+    });
+  return result?.id || null;
+}
+
 function cursorForGizmoHit(hit) {
   if (!hit) return "default";
   if (hit.type === "rotate") return "crosshair";
@@ -1562,6 +1579,206 @@ function appendTreeNode(node, depth, search, host) {
   (node.children || []).forEach((child) => appendTreeNode(child, depth + 1, search, host));
 }
 
+function clearLayerDropIndicator() {
+  document.querySelectorAll("[data-hierarchy-kind='layers'] .tree-row.layer-drop-before, [data-hierarchy-kind='layers'] .tree-row.layer-drop-after, [data-hierarchy-kind='layers'] .tree-row.layer-group-target").forEach((row) => {
+    row.classList.remove("layer-drop-before", "layer-drop-after", "layer-group-target");
+    delete row.dataset.dropPosition;
+  });
+}
+
+function finishLayerDrag() {
+  cancelAnimationFrame(layerAutoScrollFrame);
+  layerAutoScrollFrame = 0;
+  clearLayerDropIndicator();
+  document.querySelectorAll("[data-hierarchy-kind='layers'] .tree-row.layer-dragging").forEach((row) => {
+    row.classList.remove("layer-dragging");
+    row.removeAttribute("aria-grabbed");
+  });
+  document.body.classList.remove("layer-reordering");
+  layerDrag = null;
+}
+
+function reorderDraggedLayers(targetId, position) {
+  if (!layerDrag || layerDrag.ids.has(targetId)) return false;
+  const ordered = [...project.parts].sort((left, right) => right.z - left.z);
+  const moving = ordered.filter((item) => layerDrag.ids.has(item.id));
+  const remaining = ordered.filter((item) => !layerDrag.ids.has(item.id));
+  const targetIndex = remaining.findIndex((item) => item.id === targetId);
+  const target = remaining[targetIndex];
+  if (!moving.length || !target) return false;
+
+  const before = ordered.map((item) => `${item.id}:${item.groupId || ""}`).join("|");
+  const insertionIndex = targetIndex + (position === "after" ? 1 : 0);
+  remaining.splice(insertionIndex, 0, ...moving);
+  moving.forEach((item) => {
+    if (target.groupId) item.groupId = target.groupId;
+    else delete item.groupId;
+  });
+  remaining.forEach((item, index) => {
+    item.z = remaining.length - index - 1;
+  });
+  pruneLayerGroups();
+  const after = remaining.map((item) => `${item.id}:${item.groupId || ""}`).join("|");
+  if (before === after) return false;
+
+  commit(moving.length > 1 ? `${moving.length} capas reordenadas` : "Capa reordenada");
+  refresh();
+  return true;
+}
+
+function groupDraggedLayers(targetId) {
+  if (!layerDrag || layerDrag.ids.has(targetId)) return false;
+  const target = project.parts.find((item) => item.id === targetId);
+  const moving = project.parts.filter((item) => layerDrag.ids.has(item.id));
+  if (!target || !moving.length) return false;
+
+  let group = target.groupId ? layerGroups().find((item) => item.id === target.groupId) : null;
+  if (!group) {
+    const groupNumber = layerGroups().length + 1;
+    group = {
+      id: uniqueId(`grupo_${groupNumber}`, new Set(layerGroups().map((item) => item.id))),
+      name: uniqueDuplicateName(
+        `Grupo ${groupNumber}`,
+        layerGroups().map((item) => item.name)
+      ),
+      collapsed: false
+    };
+    layerGroups().push(group);
+    target.groupId = group.id;
+  }
+  moving.forEach((item) => {
+    item.groupId = group.id;
+  });
+  pruneLayerGroups();
+  selectedParts = new Set([target.id, ...moving.map((item) => item.id)]);
+  selectedPart = moving.at(-1)?.id || target.id;
+  commit(`${moving.length + 1} capas agrupadas en ${group.name}`);
+  refresh();
+  return true;
+}
+
+function layerDropPoint(host, clientY) {
+  if (!layerDrag) return null;
+  const rows = [...host.querySelectorAll(".tree-row[data-hierarchy-id]")].filter(
+    (row) => !layerDrag.ids.has(row.dataset.hierarchyId)
+  );
+  if (!rows.length) return null;
+  const containingRow = rows.find((row) => {
+    const bounds = row.getBoundingClientRect();
+    return clientY >= bounds.top && clientY <= bounds.bottom;
+  });
+  if (containingRow) {
+    const bounds = containingRow.getBoundingClientRect();
+    const positionInRow = (clientY - bounds.top) / bounds.height;
+    const position = positionInRow < 0.1 ? "before" : positionInRow > 0.9 ? "after" : "group";
+    return { row: containingRow, targetId: containingRow.dataset.hierarchyId, position };
+  }
+  const nextRow = rows.find((row) => clientY < row.getBoundingClientRect().top);
+  if (nextRow) return { row: nextRow, targetId: nextRow.dataset.hierarchyId, position: "before" };
+  const lastRow = rows.at(-1);
+  return { row: lastRow, targetId: lastRow.dataset.hierarchyId, position: "after" };
+}
+
+function showLayerDropPoint(point) {
+  clearLayerDropIndicator();
+  if (layerDrag) layerDrag.dropPoint = point;
+  if (!point) return;
+  point.row.classList.add(point.position === "group" ? "layer-group-target" : `layer-drop-${point.position}`);
+  point.row.dataset.dropPosition = point.position;
+}
+
+function updateLayerAutoScroll() {
+  if (!layerDrag) return;
+  const container = layerDrag.scrollContainer;
+  const bounds = container.getBoundingClientRect();
+  const edgeSize = 64;
+  const maxSpeed = 2.25;
+  const distanceFromTop = layerDrag.clientY - bounds.top;
+  const distanceFromBottom = bounds.bottom - layerDrag.clientY;
+  let speed = 0;
+  if (distanceFromTop < edgeSize) speed = -maxSpeed * Math.min(1, (edgeSize - distanceFromTop) / edgeSize);
+  else if (distanceFromBottom < edgeSize)
+    speed = maxSpeed * Math.min(1, (edgeSize - distanceFromBottom) / edgeSize);
+  if (speed) {
+    const previousScrollTop = container.scrollTop;
+    container.scrollTop += speed;
+    if (container.scrollTop !== previousScrollTop) {
+      showLayerDropPoint(layerDropPoint(layerDrag.host, layerDrag.clientY));
+    }
+  }
+  layerAutoScrollFrame = requestAnimationFrame(updateLayerAutoScroll);
+}
+
+function startLayerPointerDrag(row, item, host, clientY) {
+  if (!selectedParts.has(item.id)) {
+    selectedParts = new Set([item.id]);
+    selectedPart = item.id;
+    hierarchyAnchors.layers = item.id;
+    hierarchyFocus.layers = item.id;
+  }
+  activeHierarchyKind = "layers";
+  layerDrag = {
+    ids: new Set([...selectedParts].filter((id) => project.parts.some((partItem) => partItem.id === id))),
+    host,
+    scrollContainer: host.closest(".panel-body"),
+    clientY
+  };
+  document.querySelectorAll("[data-hierarchy-kind='layers'] [data-hierarchy-id]").forEach((candidate) => {
+    const selected = layerDrag.ids.has(candidate.dataset.hierarchyId);
+    candidate.classList.toggle("active", selected);
+    candidate.classList.toggle("layer-dragging", selected);
+    if (selected) candidate.setAttribute("aria-grabbed", "true");
+  });
+  document.body.classList.add("layer-reordering");
+  showLayerDropPoint(layerDropPoint(host, clientY));
+  cancelAnimationFrame(layerAutoScrollFrame);
+  layerAutoScrollFrame = requestAnimationFrame(updateLayerAutoScroll);
+}
+
+function bindLayerDrag(row, item, host) {
+  row.title = "Arrastra para cambiar el orden de las capas";
+  let pointerStart = null;
+  let suppressClick = false;
+  row.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target.closest(".tree-multi, .tree-toggle, .tree-rename-input")) return;
+    pointerStart = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  });
+  row.addEventListener("pointermove", (event) => {
+    if (!pointerStart || event.pointerId !== pointerStart.id) return;
+    if (!layerDrag && Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) < 5) return;
+    if (!layerDrag) {
+      row.setPointerCapture(event.pointerId);
+      startLayerPointerDrag(row, item, host, event.clientY);
+    }
+    layerDrag.clientY = event.clientY;
+    showLayerDropPoint(layerDropPoint(host, event.clientY));
+    event.preventDefault();
+  });
+  row.addEventListener("pointerup", (event) => {
+    if (!pointerStart || event.pointerId !== pointerStart.id) return;
+    pointerStart = null;
+    if (!layerDrag) return;
+    const point = layerDrag.dropPoint || layerDropPoint(host, event.clientY);
+    if (point?.position === "group") groupDraggedLayers(point.targetId);
+    else if (point) reorderDraggedLayers(point.targetId, point.position);
+    suppressClick = true;
+    finishLayerDrag();
+    event.preventDefault();
+    setTimeout(() => {
+      suppressClick = false;
+    });
+  });
+  row.addEventListener("pointercancel", () => {
+    pointerStart = null;
+    if (layerDrag) finishLayerDrag();
+  });
+  row.addEventListener("click", (event) => {
+    if (!suppressClick) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  });
+}
+
 function renderLayerRow(item, host) {
   const itemLabel = item.name || label(item.id);
   const row = document.createElement("div");
@@ -1617,6 +1834,7 @@ function renderLayerRow(item, host) {
   rename.setAttribute("aria-label", `Renombrar ${itemLabel}`);
   rename.onclick = () => renameLayer(item);
   row.append(icon, multi, button, toggle, lock, rename);
+  bindLayerDrag(row, item, host);
   host.append(row);
 }
 
@@ -4107,21 +4325,7 @@ function bindCanvas() {
       return;
     }
     if (mode === "calibrador") {
-      let chosen = null;
-      let distance = Infinity;
-      [...project.parts]
-        .sort((left, right) => right.z - left.z)
-        .forEach((item) => {
-          const image = images[item.id];
-          const source = layerSourceRect(item, image);
-          const width = source.width;
-          const height = source.height;
-          const score = Math.hypot((world.x - item.x) / (width / 2), (world.y - item.y) / (height / 2));
-          if (score < 1.4 && score < distance) {
-            chosen = item.id;
-            distance = score;
-          }
-        });
+      const chosen = nearestCanvasLayer(event.clientX, event.clientY);
       if (chosen) {
         selectLayer(chosen);
         if (!lockedParts.has(chosen))
@@ -4175,10 +4379,19 @@ function bindCanvas() {
   canvas.onpointermove = (event) => {
     if (!interaction) {
       if (tool === "pan") canvas.style.cursor = "grab";
+      else if (mode === "calibrador" && tool === "select") {
+        const chosen = nearestCanvasLayer(event.clientX, event.clientY);
+        canvas.style.cursor = chosen && !lockedParts.has(chosen) ? "move" : "default";
+      }
       else if (mode === "animador") {
         const state = matrices(time);
         const hit = hitTransformGizmo(event.clientX, event.clientY, state);
-        canvas.style.cursor = cursorForGizmoHit(hit);
+        const editableSelection = [...selectedTargets].some((target) => !lockedTargets.has(target));
+        if (hit && editableSelection) canvas.style.cursor = cursorForGizmoHit(hit);
+        else if (tool === "select") {
+          const chosen = nearestCanvasTarget(event.clientX, event.clientY, state);
+          canvas.style.cursor = chosen && !lockedTargets.has(chosen) ? "move" : "default";
+        } else canvas.style.cursor = "default";
       }
       return;
     }

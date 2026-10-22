@@ -102,6 +102,22 @@ assert.match(
   /data-tool=["']select["'][^>]*title=["']Seleccionar y mover objetivo \(V\).*selección múltiple["']/,
   "La herramienta principal debe anunciar el desplazamiento y la selección múltiple"
 );
+assert.doesNotMatch(
+  css,
+  /\.viewport\.select #canvas\s*\{[^}]*cursor:\s*move/,
+  "La herramienta de selección no debe mostrar el cursor de movimiento sobre todo el lienzo"
+);
+assert.match(editor, /function nearestCanvasLayer\(clientX, clientY\)/, "El Calibrador debe detectar la capa bajo el cursor");
+assert.match(
+  editor,
+  /chosen && !lockedParts\.has\(chosen\) \? "move" : "default"/,
+  "Solo una capa desbloqueada debe mostrar el cursor de movimiento"
+);
+assert.match(
+  editor,
+  /chosen && !lockedTargets\.has\(chosen\) \? "move" : "default"/,
+  "Solo un objetivo desbloqueado debe mostrar el cursor de movimiento"
+);
 assert.match(
   editor,
   /beginTransformInteraction\(/,
@@ -488,6 +504,48 @@ assert.match(
 );
 assert.match(editor, /item\.groupId = id/, "Las capas seleccionadas deben quedar vinculadas al nuevo grupo");
 assert.match(editor, /function renderLayerGroup\(/, "Los grupos deben aparecer como contenedores en el árbol de capas");
+assert.match(editor, /function bindLayerDrag\(row, item, host\)/, "Las capas deben poder reordenarse arrastrándolas");
+assert.match(
+  editor,
+  /layerDrag = \{[\s\S]*?ids: new Set\(\[\.\.\.selectedParts\]/,
+  "El arrastre debe incluir todas las capas seleccionadas"
+);
+assert.match(
+  editor,
+  /function reorderDraggedLayers\(targetId, position\)/,
+  "El bloque arrastrado debe poder insertarse antes o después de otra capa"
+);
+assert.match(
+  editor,
+  /function updateLayerAutoScroll\(\)[\s\S]*?const maxSpeed = 2\.25/,
+  "El desplazamiento automático al arrastrar debe tener una velocidad humana limitada"
+);
+assert.match(
+  editor,
+  /row\.addEventListener\("pointerup"[\s\S]*?reorderDraggedLayers\(point\.targetId, point\.position\)/,
+  "Soltar directamente sobre la línea de separación debe reordenar las capas"
+);
+assert.match(
+  editor,
+  /function groupDraggedLayers\(targetId\)/,
+  "Soltar capas sobre otra capa debe crear o ampliar un grupo"
+);
+assert.match(
+  editor,
+  /point\?\.position === "group"[\s\S]*?groupDraggedLayers\(point\.targetId\)/,
+  "La zona central de la capa debe activar la agrupación"
+);
+assert.match(css, /\.tree-row\.layer-group-target/, "El destino de agrupación debe indicarse visualmente");
+assert.match(
+  css,
+  /\.tree-row\.layer-drop-before[\s\S]*?margin-top: 10px/,
+  "La lista debe abrir una brecha antes del destino"
+);
+assert.match(
+  css,
+  /\.tree-row\.layer-drop-after[\s\S]*?margin-bottom: 10px/,
+  "La lista debe abrir una brecha después del destino"
+);
 assert.match(
   editor,
   /rename\.onclick = \(\) => renameLayerGroup\(group, name\)/,

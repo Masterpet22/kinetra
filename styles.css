@@ -739,10 +739,12 @@ textarea {
   gap: 2px;
 }
 .tree-row {
+  position: relative;
   display: flex;
   align-items: center;
   min-height: 31px;
   border-radius: 4px;
+  transition: opacity 120ms ease;
 }
 .tree-row:hover {
   background: #142941;
@@ -750,6 +752,48 @@ textarea {
 .tree-row.active {
   background: #1d4778;
   box-shadow: inset 3px 0 var(--blue);
+}
+.tree-row[data-hierarchy-id] {
+  cursor: grab;
+}
+.tree-row[data-hierarchy-id]:active,
+.layer-reordering,
+.layer-reordering * {
+  cursor: grabbing;
+}
+.layer-reordering {
+  user-select: none;
+}
+.tree-row.layer-dragging {
+  opacity: 0.45;
+}
+.tree-row.layer-drop-before {
+  margin-top: 10px;
+}
+.tree-row.layer-drop-after {
+  margin-bottom: 10px;
+}
+.tree-row.layer-group-target {
+  background: color-mix(in srgb, var(--cyan) 24%, #142941);
+  box-shadow: inset 0 0 0 2px var(--cyan), 0 0 8px color-mix(in srgb, var(--cyan) 42%, transparent);
+}
+.tree-row.layer-drop-before::before,
+.tree-row.layer-drop-after::after {
+  position: absolute;
+  right: 4px;
+  left: 4px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--cyan);
+  box-shadow: 0 0 0 1px #07111d, 0 0 8px color-mix(in srgb, var(--cyan) 72%, transparent);
+  content: "";
+  pointer-events: none;
+}
+.tree-row.layer-drop-before::before {
+  top: -7px;
+}
+.tree-row.layer-drop-after::after {
+  bottom: -7px;
 }
 .tree-row:focus-within {
   outline: 2px solid var(--cyan);
@@ -970,9 +1014,6 @@ textarea {
   height: 100%;
   touch-action: none;
   cursor: default;
-}
-.viewport.select #canvas {
-  cursor: move;
 }
 .viewport.pan #canvas {
   cursor: grab;
