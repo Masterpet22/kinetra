@@ -102,4 +102,24 @@ const tracksClip = structuredClone(project);
 tracksClip.clips[0].tracks = [{ target: "brazo", duration: 100, to: { angle: 5 } }];
 assert.match(validateKinetraProject(tracksClip).join("\n"), /tracks no es compatible con Kinetra v2/);
 
+const torsoBound = structuredClone(project);
+torsoBound.rig.bones[0] = {
+  ...torsoBound.rig.bones[0],
+  parent: null,
+  x: 0,
+  y: -10,
+  followTarget: "torso",
+  motionLimits: { x: 5, y: 4, angle: 15 }
+};
+const torsoBoundRig = resolveKinetraRig(torsoBound, {
+  torso: { x: 20, y: 30 },
+  brazo: { x: 100, y: -100, angle: 90 }
+});
+assert.ok(Math.abs(torsoBoundRig.brazo[4] - 25) < 0.001, "El cuello debe seguir el desplazamiento del torso");
+assert.ok(Math.abs(torsoBoundRig.brazo[5] - 16) < 0.001, "El desplazamiento del cuello debe permanecer limitado");
+assert.ok(
+  Math.abs(torsoBoundRig.brazo[0] - Math.cos((15 * Math.PI) / 180)) < 0.0001,
+  "La rotación del cuello debe permanecer limitada"
+);
+
 console.log("Pruebas del runtime Kinetra v2 superadas.");

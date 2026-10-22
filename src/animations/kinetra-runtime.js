@@ -35,6 +35,17 @@ export function transformMatrix(transform = {}) {
   );
 }
 
+export function constrainKinetraTransform(transform = {}, limits = {}) {
+  const constrained = { ...transform };
+  ["x", "y", "angle"].forEach((property) => {
+    const limit = limits[property];
+    if (Number.isFinite(limit) && Number.isFinite(constrained[property])) {
+      constrained[property] = Math.max(-limit, Math.min(limit, constrained[property]));
+    }
+  });
+  return constrained;
+}
+
 export function validateKinetraProject(project) {
   const errors = [];
   if (!project || typeof project !== "object") return ["El proyecto debe ser un objeto"];
@@ -53,6 +64,14 @@ export function validateKinetraProject(project) {
   (project.rig?.bones || []).forEach((bone, index) => {
     if (!bone?.id || boneIds.has(bone.id)) errors.push(`rig.bones[${index}].id inválido o duplicado`);
     else boneIds.add(bone.id);
+    if (bone?.followTarget !== undefined && bone.followTarget !== "torso")
+      errors.push(`rig.bones[${index}].followTarget no es compatible`);
+    if (bone?.parent && bone?.followTarget) errors.push(`rig.bones[${index}] no puede tener parent y followTarget`);
+    Object.entries(bone?.motionLimits || {}).forEach(([property, limit]) => {
+      if (!["x", "y", "angle"].includes(property) || !Number.isFinite(limit) || limit < 0) {
+        errors.push(`rig.bones[${index}].motionLimits.${property} no es válido`);
+      }
+    });
     if (!Number.isFinite(bone?.x) || !Number.isFinite(bone?.y))
       errors.push(`rig.bones[${index}] necesita pivote numérico`);
   });
@@ -104,7 +123,8 @@ export function validateKinetraProject(project) {
     if (!layer?.id || layerIds.has(layer.id)) errors.push(`layers[${index}].id inválido o duplicado`);
     layerIds.add(layer?.id);
     if (!assetIds.has(layer?.assetId) && layer?.source !== "builtin") errors.push(`layers[${index}].assetId no existe`);
-    if (layer?.boneId && !boneIds.has(layer.boneId)) errors.push(`layers[${index}].boneId no existe`);
+    if (layer?.boneId && layer.boneId !== "torso" && !boneIds.has(layer.boneId))
+      errors.push(`layers[${index}].boneId no existe`);
     if (layer?.crop) {
       const cropValid =
         ["x", "y", "width", "height"].every((field) => Number.isFinite(layer.crop[field])) &&
@@ -157,7 +177,7 @@ export function sampleKinetraClip(project, clipId, time) {
 export function resolveKinetraRig(project, pose = {}) {
   const bones = new Map((project.rig?.bones || []).map((bone) => [bone.id, bone]));
   const root = transformMatrix(pose.rig);
-  const matrices = { rig: root };
+  const matrices = { rig: root, torso: multiplyMatrix(root, transformMatrix(pose.torso)) };
   const resolving = new Set();
   function resolve(id) {
     if (matrices[id]) return matrices[id];
@@ -165,12 +185,12 @@ export function resolveKinetraRig(project, pose = {}) {
     if (!bone || resolving.has(id)) return root;
     resolving.add(id);
     const parent = bone.parent && bones.has(bone.parent) ? bones.get(bone.parent) : null;
-    const parentMatrix = parent ? resolve(parent.id) : root;
+    const parentMatrix = parent ? resolve(parent.id) : matrices[bone.followTarget] || root;
     const fromX = parent?.x || 0;
     const fromY = parent?.y || 0;
     matrices[id] = multiplyMatrix(
       multiplyMatrix(parentMatrix, translateMatrix(bone.x - fromX, bone.y - fromY)),
-      transformMatrix(pose[id])
+      transformMatrix(constrainKinetraTransform(pose[id], bone.motionLimits))
     );
     resolving.delete(id);
     return matrices[id];

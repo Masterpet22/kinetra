@@ -17,6 +17,26 @@ assert.doesNotMatch(html, /data-mode=["']sprites["']/, "Calibrador y Sprites deb
 for (const id of ["canvas", "preview-canvas", "inspector-panel", "timeline-scroll", "tracks"]) {
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control ${id}`);
 }
+for (const axis of ["x", "y"]) {
+  assert.match(html, new RegExp(`id=["']bone-lock-${axis}["']`), `Debe existir el bloqueo del eje ${axis}`);
+  assert.ok(editor.includes(`bone-lock-${axis}").onchange`), `El control del eje ${axis} debe tener un evento`);
+  assert.ok(
+    editor.includes(`updateBonePositionLimits(["${axis}"], $("bone-lock-${axis}").checked)`),
+    `El bloqueo del eje ${axis} debe actualizar los límites del hueso`
+  );
+}
+assert.match(html, /id=["']bone-lock-both["']/, "Debe existir un control para fijar ambos ejes");
+assert.ok(
+  editor.includes(
+    '$("bone-lock-both").onchange = () => updateBonePositionLimits(["x", "y"], $("bone-lock-both").checked);'
+  ),
+  "El control conjunto debe fijar o liberar ambos ejes"
+);
+assert.match(
+  editor,
+  /\$\("bone-lock-both"\)\.indeterminate = \$\("bone-lock-x"\)\.checked !== \$\("bone-lock-y"\)\.checked/
+);
+assert.match(css, /\.bone-position-locks\s*\{/, "Los controles de fijación deben estar agrupados visualmente");
 assert.doesNotMatch(html, /<iframe\b/i, "El Studio unificado no debe depender de vistas embebidas");
 assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=\d+\.\d+\.\d+["']/);
 assert.match(
@@ -119,8 +139,8 @@ assert.match(
 );
 assert.match(
   editor,
-  /chosen && !lockedTargets\.has\(chosen\) \? "move" : "default"/,
-  "Solo un objetivo desbloqueado debe mostrar el cursor de movimiento"
+  /chosen && !lockedTargets\.has\(chosen\) && canTranslateTarget\(chosen\) \? "move" : "default"/,
+  "Solo un objetivo desbloqueado y trasladable debe mostrar el cursor de movimiento"
 );
 assert.match(
   editor,
@@ -496,6 +516,29 @@ for (const id of ["clip-new", "clip-duplicate", "clip-rename", "clip-up", "clip-
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control multiclips ${id}`);
 }
 assert.match(html, /id=["']save-state["']/, "El encabezado debe mostrar el estado de persistencia");
+assert.match(html, /id=["']status["'][^>]*role=["']status["']/, "Los mensajes deben anunciarse como notificaciones");
+assert.match(
+  html,
+  /<header class=["']studio-header["'][\s\S]*id=["']status["'][^>]*role=["']status["'][\s\S]*<\/header>/,
+  "Las notificaciones deben ocupar la zona libre del encabezado"
+);
+assert.match(css, /\.status\.visible\s*\{/, "La notificación debe tener un estado emergente visible");
+assert.match(css, /\.status\s*\{[^}]*position:\s*absolute/s, "La notificación debe quedar anclada al encabezado");
+assert.match(
+  css,
+  /\.status\s*\{[^}]*overflow-wrap:\s*anywhere/s,
+  "Los mensajes largos deben ajustarse al ancho disponible"
+);
+assert.match(
+  css,
+  /@media \(max-width: 1450px\)[\s\S]*\.status\s*\{[^}]*left:\s*33\.3%[^}]*right:\s*8px/s,
+  "En encabezados de dos filas, el aviso debe usar la franja vacía superior"
+);
+assert.match(
+  editor,
+  /statusTimer = window\.setTimeout\([\s\S]*output\.classList\.remove\("visible"\)/,
+  "Las notificaciones deben desaparecer automáticamente"
+);
 assert.match(html, /id=["']emergency-export["']/, "Debe existir la exportación de emergencia");
 assert.match(editor, /function ikChainFor\(/, "La cinemática inversa debe derivarse de cualquier rig personalizado");
 assert.match(editor, /function rigTree\(/, "La jerarquía visual debe generarse desde el rig del proyecto");
@@ -625,6 +668,11 @@ assert.match(
   editor,
   /refreshIcons\(panel\);\s*keepHierarchySelectionVisible\(panel, kind\)/,
   "Cada actualización del árbol debe mantener visible el elemento seleccionado"
+);
+assert.match(
+  editor,
+  /function preserveHierarchyScroll\(kind, update\)[\s\S]*container\.scrollTop = scrollTop/,
+  "Mostrar u ocultar elementos debe conservar la posición de desplazamiento del árbol"
 );
 assert.match(projectIo, /createKinetraBundle/, "La exportación debe producir un paquete Kinetra v2 para runtimes web");
 assert.match(editor, /document\.addEventListener\(["']click["']/, "Los menús deben cerrarse al hacer clic fuera");

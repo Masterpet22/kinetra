@@ -234,11 +234,12 @@
           ><span class="playback-label">Reproducir</span>
         </button>
         <button id="save-local" class="header-action primary"><i data-lucide="save"></i><span>Guardar</span></button>
-        <output id="save-state" class="save-state" role="status">Sin cambios</output>
+        <output id="save-state" class="save-state" aria-live="polite">Sin cambios</output>
         <button id="emergency-export" class="header-action danger" hidden>
           <i data-lucide="download"></i><span>Exportación de emergencia</span>
         </button>
       </div>
+      <output id="status" class="status" role="status" aria-live="polite"></output>
     </header>
 
     <main class="studio-shell">
@@ -668,18 +669,23 @@
                   <div><label for="bone-x">Pivote X</label><input id="bone-x" type="number" step="1" /></div>
                   <div><label for="bone-y">Pivote Y</label><input id="bone-y" type="number" step="1" /></div>
                 </div>
-                <p class="muted">Selecciona un hueso en Esqueleto para editar su pivote y jerarquía.</p>
+                <div class="bone-position-locks">
+                  <h3>Fijación de posición</h3>
+                  <label class="inline-control bone-lock-both"
+                    ><input id="bone-lock-both" type="checkbox" /> Fijar ambos ejes</label
+                  >
+                  <div class="bone-axis-locks">
+                    <label class="inline-control"><input id="bone-lock-x" type="checkbox" /> Eje X</label>
+                    <label class="inline-control"><input id="bone-lock-y" type="checkbox" /> Eje Y</label>
+                  </div>
+                  <p class="muted">Mantiene la articulación en su conexión con el hueso padre; puede rotar.</p>
+                </div>
                 <div class="button-row">
                   <button id="inspector-add-bone" class="small-button primary">Añadir hijo</button
                   ><button id="inspector-delete-bone" class="small-button danger">Eliminar hueso</button>
                 </div>
               </section>
             </div>
-
-            <section class="inspector-section">
-              <h2>Estado</h2>
-              <p id="status" class="status">Listo</p>
-            </section>
           </div>
         </div>
       </aside>

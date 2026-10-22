@@ -6,7 +6,7 @@ import { PUPPET_PART_JOINTS as PART_JOINTS } from "../animations/rig.js";
 import { animationEase } from "../animations/runtime.js";
 import { normalizeKinetraClip, parseKinetraClip, STUDIO_EASES } from "../animations/studio-format.js";
 import { sampleKinetraClip } from "../animations/studio-runtime.js";
-import { validateKinetraProject } from "../animations/kinetra-runtime.js";
+import { constrainKinetraTransform, validateKinetraProject } from "../animations/kinetra-runtime.js";
 import {
   collapseHierarchicalSelection,
   constrainedTranslation,
@@ -20,7 +20,6 @@ import {
 import { solveJointRotation, solveTwoBoneIk } from "./ik.js";
 import { createTemplateProject, PROJECT_TEMPLATES } from "./templates.js";
 import {
-  attachActiveClip,
   createClip,
   deleteClip,
   duplicateClip,
@@ -128,7 +127,9 @@ function rigJoints() {
   );
 }
 function rigParents() {
-  return Object.fromEntries((project.rig?.bones || []).map((bone) => [bone.id, bone.parent || null]));
+  return Object.fromEntries(
+    (project.rig?.bones || []).map((bone) => [bone.id, bone.parent || bone.followTarget || null])
+  );
 }
 function animationTargets() {
   return [...new Set(["rig", "torso", ...(project.rig?.bones || []).map((bone) => bone.id)])];
@@ -232,6 +233,7 @@ let previewVisible = readStorageValue(preferenceStorage, PREVIEW_STORAGE_KEY) !=
 const storedTheme = readStorageValue(preferenceStorage, THEME_STORAGE_KEY);
 let theme = ["noche", "grafito", "aurora"].includes(storedTheme) ? storedTheme : "noche";
 let tutorialRun = null;
+let statusTimer = 0;
 
 const canvas = $("canvas");
 const context = canvas.getContext("2d");
@@ -239,8 +241,18 @@ const previewCanvas = $("preview-canvas");
 const previewContext = previewCanvas.getContext("2d");
 const images = {};
 
-function status(message) {
-  $("status").textContent = message;
+function status(message, state = "info") {
+  const output = $("status");
+  if (!output || !message) return;
+  clearTimeout(statusTimer);
+  output.textContent = message;
+  output.dataset.state = state;
+  output.classList.remove("visible");
+  requestAnimationFrame(() => output.classList.add("visible"));
+  statusTimer = window.setTimeout(
+    () => output.classList.remove("visible"),
+    ["error", "quota"].includes(state) ? 6000 : 3200
+  );
 }
 
 function createIcon(name, className = "") {
@@ -668,6 +680,10 @@ function part() {
 function selectedBone() {
   return project.rig?.bones?.find((item) => item.id === selectedTarget) || null;
 }
+function canTranslateTarget(target) {
+  const limits = project.rig?.bones?.find((bone) => bone.id === target)?.motionLimits;
+  return limits?.x !== 0 || limits?.y !== 0;
+}
 function isBoneDescendant(candidateId, ancestorId) {
   const parents = rigParents();
   let current = candidateId;
@@ -758,7 +774,8 @@ function ensureDraftFrame(target) {
 function setDraftFrame(target, frame) {
   const at = Math.round(time);
   beginDraft(at);
-  draftFrames.set(target, { ...structuredClone(frame), t: at });
+  const limits = project.rig?.bones?.find((bone) => bone.id === target)?.motionLimits;
+  draftFrames.set(target, { ...constrainKinetraTransform(structuredClone(frame), limits), t: at });
   selectedKeys = new Set([...draftFrames.keys()].map((item) => `${item}:${at}`));
   updateDraftUI();
 }
@@ -821,6 +838,7 @@ function updatePersistenceState(detail) {
     output.dataset.state = detail.state;
     output.textContent = detail.message;
   }
+  status(detail.message, detail.state);
   const emergency = $("emergency-export");
   if (emergency) emergency.hidden = !["error", "quota"].includes(detail.state);
 }
@@ -830,13 +848,14 @@ async function loadInitialProject() {
     const adapter = await createIndexedDbAdapter();
     persistence = createPersistenceController({ adapter, onState: updatePersistenceState });
     const saved = await persistence.loadLatest();
-    if (saved?.project) return attachActiveClip(saved.project);
+    if (saved?.project) return migrateAuthoringProject(saved.project);
     const legacy = readLegacyProject(preferenceStorage, STORAGE_KEY);
     if (legacy) {
-      await persistence.saveNow(legacy);
+      const migrated = migrateAuthoringProject(legacy);
+      await persistence.saveNow(migrated);
       removeStorageValue(preferenceStorage, STORAGE_KEY);
       updatePersistenceState({ state: "migrated", message: "Proyecto local migrado" });
-      return legacy;
+      return migrated;
     }
   } catch (error) {
     console.warn("No se pudo iniciar la persistencia escalable", error);
@@ -979,7 +998,7 @@ function parentMatrixForTarget(target, state) {
   if (target === "rig") return [1, 0, 0, 1, 0, 0];
   if (target === "torso") return state.root;
   const parent = rigParents()[target];
-  return parent ? state.joints[parent] : state.root;
+  return parent === "torso" ? targetMatrix(state, "torso") : parent ? state.joints[parent] : state.root;
 }
 
 function matrices(at = time, sampledPose = null) {
@@ -993,13 +1012,15 @@ function matrices(at = time, sampledPose = null) {
     if (memo[id]) return memo[id];
     if (resolving.has(id) || !joints[id]) return root;
     resolving.add(id);
+    const bone = project.rig?.bones?.find((item) => item.id === id);
     const parent = parents[id];
     const current = joints[id];
-    const from = parent ? joints[parent] || { x: 0, y: 0 } : { x: 0, y: 0 };
-    const parentMatrix = parent ? joint(parent) : root;
+    const from = parent && parent !== "torso" ? joints[parent] || { x: 0, y: 0 } : { x: 0, y: 0 };
+    const parentMatrix =
+      parent === "torso" ? multiply(root, transformMatrix(sampled.torso)) : parent ? joint(parent) : root;
     memo[id] = multiply(
       multiply(parentMatrix, translate(current.x - from.x, current.y - from.y)),
-      transformMatrix(sampled[id])
+      transformMatrix(constrainKinetraTransform(sampled[id], bone?.motionLimits))
     );
     resolving.delete(id);
     return memo[id];
@@ -1186,7 +1207,7 @@ function drawBones(at) {
   const parents = rigParents();
   Object.entries(state.joints).forEach(([id, matrix]) => {
     const parent = parents[id];
-    const parentMatrix = parent ? state.joints[parent] : state.root;
+    const parentMatrix = parent === "torso" ? targetMatrix(state, "torso") : parent ? state.joints[parent] : state.root;
     context.strokeStyle = selectedTargets.has(id) ? "#efbd67" : "#63c9ff";
     context.fillStyle = selectedTargets.has(id) ? "#ffd68e" : "#83d9ff";
     context.lineWidth = 3 / (BASE_SCALE * zoom);
@@ -1247,6 +1268,7 @@ function hitTransformGizmo(clientX, clientY, state = matrices(time)) {
   const delta = rotateCanvasDelta(pointer.x - center.x, pointer.y - center.y, transformGizmoAngle(state));
   const { x: dx, y: dy } = delta;
   if (tool === "select") {
+    if (![...selectedTargets].some((target) => !lockedTargets.has(target) && canTranslateTarget(target))) return null;
     const axis = hitMoveGizmo(dx, dy);
     return axis ? { type: "translate", axis } : null;
   }
@@ -1381,6 +1403,7 @@ function cursorForGizmoHit(hit) {
 
 function drawTransformGizmo(at) {
   if (mode !== "animador" || tool === "pan") return;
+  if (tool === "select" && ![...selectedTargets].some((target) => canTranslateTarget(target))) return;
   const state = matrices(at);
   const center = transformGizmoCenter(state).world;
   const orientation = transformGizmoAngle(state);
@@ -1561,9 +1584,12 @@ function appendTreeNode(node, depth, search, host) {
   toggle.append(createIcon(hiddenTargets.has(node.id) ? "eye-off" : "eye"));
   toggle.title = "Mostrar u ocultar en el lienzo";
   toggle.onclick = () => {
-    hiddenTargets.has(node.id) ? hiddenTargets.delete(node.id) : hiddenTargets.add(node.id);
-    renderTree();
-    draw();
+    const kind = host.closest("[data-hierarchy-kind]")?.dataset.hierarchyKind || "skeleton";
+    preserveHierarchyScroll(kind, () => {
+      hiddenTargets.has(node.id) ? hiddenTargets.delete(node.id) : hiddenTargets.add(node.id);
+      renderTree();
+      draw();
+    });
   };
   const lock = document.createElement("button");
   lock.className = "tree-toggle";
@@ -1817,9 +1843,11 @@ function renderLayerRow(item, host) {
   toggle.title = item.visible ? "Ocultar capa" : "Mostrar capa";
   toggle.setAttribute("aria-label", toggle.title);
   toggle.onclick = () => {
-    item.visible = !item.visible;
-    commit("Visibilidad actualizada");
-    refresh();
+    preserveHierarchyScroll("layers", () => {
+      item.visible = !item.visible;
+      commit("Visibilidad actualizada");
+      refresh();
+    });
   };
   const lock = document.createElement("button");
   lock.className = "tree-toggle";
@@ -1872,11 +1900,13 @@ function renderLayerGroup(group, items, host, search) {
   visibility.title = allVisible ? "Ocultar grupo" : "Mostrar grupo";
   visibility.setAttribute("aria-label", visibility.title);
   visibility.onclick = () => {
-    items.forEach((item) => {
-      item.visible = !allVisible;
+    preserveHierarchyScroll("layers", () => {
+      items.forEach((item) => {
+        item.visible = !allVisible;
+      });
+      commit(allVisible ? "Grupo oculto" : "Grupo mostrado");
+      refresh();
     });
-    commit(allVisible ? "Grupo oculto" : "Grupo mostrado");
-    refresh();
   };
   const allLocked = items.every((item) => lockedParts.has(item.id));
   const lock = document.createElement("button");
@@ -2412,20 +2442,22 @@ async function pasteHierarchySelection(kind) {
 }
 
 function setHierarchyVisibility(kind) {
-  const ids = hierarchySelection(kind);
-  const allVisible =
-    kind === "layers"
-      ? ids.every((id) => project.parts.find((item) => item.id === id)?.visible)
-      : ids.every((id) => !hiddenTargets.has(id));
-  if (kind === "layers") {
-    project.parts.forEach((item) => {
-      if (ids.includes(item.id)) item.visible = !allVisible;
-    });
-    commit(allVisible ? "Capas ocultas" : "Capas mostradas");
-  } else {
-    ids.forEach((id) => (allVisible ? hiddenTargets.add(id) : hiddenTargets.delete(id)));
-  }
-  refresh();
+  preserveHierarchyScroll(kind, () => {
+    const ids = hierarchySelection(kind);
+    const allVisible =
+      kind === "layers"
+        ? ids.every((id) => project.parts.find((item) => item.id === id)?.visible)
+        : ids.every((id) => !hiddenTargets.has(id));
+    if (kind === "layers") {
+      project.parts.forEach((item) => {
+        if (ids.includes(item.id)) item.visible = !allVisible;
+      });
+      commit(allVisible ? "Capas ocultas" : "Capas mostradas");
+    } else {
+      ids.forEach((id) => (allVisible ? hiddenTargets.add(id) : hiddenTargets.delete(id)));
+    }
+    refresh();
+  });
 }
 
 function setHierarchyLock(kind) {
@@ -2536,6 +2568,18 @@ function keepHierarchySelectionVisible(panel, kind) {
     scrollContainer.scrollTop += rowBounds.bottom - containerBounds.bottom;
 }
 
+function preserveHierarchyScroll(kind, update) {
+  const panel = document.querySelector(`[data-hierarchy-kind="${kind}"]`);
+  const scrollTop = panel?.querySelector(".panel-body")?.scrollTop ?? 0;
+  update();
+  const restore = () => {
+    const container = panel?.querySelector(".panel-body");
+    if (container) container.scrollTop = scrollTop;
+  };
+  restore();
+  requestAnimationFrame(restore);
+}
+
 function renderTree() {
   document.querySelectorAll("[data-hierarchy-kind]").forEach((panel) => {
     const kind = panel.dataset.hierarchyKind;
@@ -2606,6 +2650,10 @@ function renderInspector() {
     $("bone-name").value = bone?.name || project.rig?.name || "Rig";
     $("bone-x").value = bone?.x ?? 0;
     $("bone-y").value = bone?.y ?? 0;
+    $("bone-lock-x").checked = bone?.motionLimits?.x === 0;
+    $("bone-lock-y").checked = bone?.motionLimits?.y === 0;
+    $("bone-lock-both").checked = $("bone-lock-x").checked && $("bone-lock-y").checked;
+    $("bone-lock-both").indeterminate = $("bone-lock-x").checked !== $("bone-lock-y").checked;
     $("bone-parent").replaceChildren(
       new Option("Rig (raíz)", ""),
       ...(project.rig?.bones || [])
@@ -2614,7 +2662,16 @@ function renderInspector() {
           (candidate) => new Option(candidate.name || candidate.id, candidate.id, false, bone?.parent === candidate.id)
         )
     );
-    ["bone-name", "bone-parent", "bone-x", "bone-y", "inspector-delete-bone"].forEach((id) => {
+    [
+      "bone-name",
+      "bone-parent",
+      "bone-x",
+      "bone-y",
+      "bone-lock-both",
+      "bone-lock-x",
+      "bone-lock-y",
+      "inspector-delete-bone"
+    ].forEach((id) => {
       $(id).disabled = !bone;
     });
     return;
@@ -2630,6 +2687,9 @@ function renderInspector() {
   [...Object.values(TRANSFORM_FIELDS), "key-ease", "set-key", "delete-key"].forEach((id) => {
     $(id).disabled = lockedTargets.has(selectedTarget);
   });
+  const motionLimits = selectedBone()?.motionLimits;
+  $("key-x").disabled ||= motionLimits?.x === 0;
+  $("key-y").disabled ||= motionLimits?.y === 0;
   ["reset-transform", "mirror-pose"].forEach((id) => {
     $(id).disabled = lockedTargets.has(selectedTarget);
   });
@@ -4156,6 +4216,26 @@ function bindControls() {
   };
   $("bone-x").onchange = updateBonePivot;
   $("bone-y").onchange = updateBonePivot;
+  const updateBonePositionLimits = (axes, locked) => {
+    const bone = selectedBone();
+    if (!bone) return;
+    const motionLimits = { ...(bone.motionLimits || {}) };
+    axes.forEach((axis) => {
+      if (locked) motionLimits[axis] = 0;
+      else delete motionLimits[axis];
+    });
+    if (Object.keys(motionLimits).length) bone.motionLimits = motionLimits;
+    else delete bone.motionLimits;
+    commit(
+      axes.length === 2
+        ? "Posición X e Y del hueso actualizada"
+        : `Posición ${axes[0].toUpperCase()} del hueso actualizada`
+    );
+    refresh();
+  };
+  $("bone-lock-both").onchange = () => updateBonePositionLimits(["x", "y"], $("bone-lock-both").checked);
+  $("bone-lock-x").onchange = () => updateBonePositionLimits(["x"], $("bone-lock-x").checked);
+  $("bone-lock-y").onchange = () => updateBonePositionLimits(["y"], $("bone-lock-y").checked);
   $("project-name").onchange = () => {
     renameClip(project, project.activeClipId, { id: $("project-name").value.trim() || "nuevo_movimiento" });
     commit("ID del clip actualizado");
@@ -4365,7 +4445,7 @@ function bindCanvas() {
     if (!chosen) return;
     selectAnimationTarget(chosen);
     selectedKeys.clear();
-    if (tool === "select" && !lockedTargets.has(chosen)) {
+    if (tool === "select" && !lockedTargets.has(chosen) && canTranslateTarget(chosen)) {
       interaction = beginTransformInteraction(
         { type: "translate", axis: "free" },
         state,
@@ -4392,7 +4472,7 @@ function bindCanvas() {
         if (hit && editableSelection) canvas.style.cursor = cursorForGizmoHit(hit);
         else if (tool === "select") {
           const chosen = nearestCanvasTarget(event.clientX, event.clientY, state);
-          canvas.style.cursor = chosen && !lockedTargets.has(chosen) ? "move" : "default";
+          canvas.style.cursor = chosen && !lockedTargets.has(chosen) && canTranslateTarget(chosen) ? "move" : "default";
         } else canvas.style.cursor = "default";
       }
       return;

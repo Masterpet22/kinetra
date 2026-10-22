@@ -1,4 +1,10 @@
-import { PUPPET_JOINTS, PUPPET_JOINT_PARENTS, PUPPET_PART_JOINTS } from "../animations/rig.js";
+import {
+  PUPPET_JOINTS,
+  PUPPET_JOINT_PARENTS,
+  PUPPET_NECK_CONTROL,
+  PUPPET_PART_JOINTS,
+  PUPPET_ROOT_POSITION_LOCK
+} from "../animations/rig.js";
 import { createKinetraClip } from "../animations/studio-format.js";
 
 const HUMAN_LABELS = Object.freeze({
@@ -193,7 +199,7 @@ const layer = ({ id, name, assetId, boneId = "rig", x, y, rotation = 0, restRota
   ...(crop ? { crop } : {})
 });
 
-function humanoidRig(id, name, size = 1, joints = PUPPET_JOINTS) {
+function humanoidRig(id, name, size = 1, joints = PUPPET_JOINTS, boneOptions = {}) {
   return {
     id,
     name,
@@ -202,7 +208,8 @@ function humanoidRig(id, name, size = 1, joints = PUPPET_JOINTS) {
       name: HUMAN_LABELS[boneId] || boneId,
       parent: PUPPET_JOINT_PARENTS[boneId] || null,
       x: pivot.x * size,
-      y: pivot.y * size
+      y: pivot.y * size,
+      ...(boneOptions[boneId] || {})
     }))
   };
 }
@@ -217,12 +224,20 @@ function splitAssets(templateId, parts) {
 }
 
 function maleProject() {
+  const rootBoneOptions = Object.fromEntries(
+    Object.entries(PUPPET_JOINT_PARENTS)
+      .filter(([boneId, parent]) => !parent && boneId !== "neck")
+      .map(([boneId]) => [boneId, { motionLimits: PUPPET_ROOT_POSITION_LOCK }])
+  );
   return {
     version: 4,
     fps: 24,
     templateId: "male",
     assets: splitAssets("male", MALE_PARTS),
-    rig: humanoidRig("humanoid", "Humano masculino"),
+    rig: humanoidRig("humanoid", "Humano masculino", 1, PUPPET_JOINTS, {
+      ...rootBoneOptions,
+      neck: PUPPET_NECK_CONTROL
+    }),
     parts: MALE_PARTS.map((item, z) =>
       layer({
         id: item.id,
@@ -231,7 +246,7 @@ function maleProject() {
         y: item.y,
         z,
         assetId: `male_${item.sourceId || item.id}`,
-        boneId: PUPPET_PART_JOINTS[item.id] || "rig",
+        boneId: item.id === "torso" ? "torso" : PUPPET_PART_JOINTS[item.id] || "rig",
         crop: null
       })
     ),
@@ -240,18 +255,26 @@ function maleProject() {
 }
 
 function femaleProject() {
+  const rootBoneOptions = Object.fromEntries(
+    Object.entries(PUPPET_JOINT_PARENTS)
+      .filter(([boneId, parent]) => !parent && boneId !== "neck")
+      .map(([boneId]) => [boneId, { motionLimits: PUPPET_ROOT_POSITION_LOCK }])
+  );
   return {
     version: 4,
     fps: 24,
     templateId: "female",
     assets: splitAssets("female", FEMALE_PARTS),
-    rig: humanoidRig("humanoid_female", "Humano femenino", 1, FEMALE_JOINTS),
+    rig: humanoidRig("humanoid_female", "Humano femenino", 1, FEMALE_JOINTS, {
+      ...rootBoneOptions,
+      neck: PUPPET_NECK_CONTROL
+    }),
     parts: FEMALE_PARTS.map((item) =>
       layer({
         id: item.id,
         name: item.name,
         assetId: `female_${item.sourceId || item.id}`,
-        boneId: item.boneId,
+        boneId: item.id === "torso" ? "torso" : item.boneId,
         x: item.x,
         y: item.y,
         rotation: 0,
