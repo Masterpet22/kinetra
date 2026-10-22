@@ -46,4 +46,11 @@ export const PUPPET_PART_JOINTS = Object.freeze({
   pie_izquierdo: "ankleLeft"
 });
 
+export const PUPPET_NECK_CONTROL = Object.freeze({
+  followTarget: "torso",
+  motionLimits: Object.freeze({ x: 0, y: 0, angle: 18 })
+});
+
+export const PUPPET_ROOT_POSITION_LOCK = Object.freeze({ x: 0, y: 0 });
+
 export const PUPPET_TARGETS = Object.freeze(["body", "rig", "shadow", "torso", ...Object.keys(PUPPET_JOINTS)]);

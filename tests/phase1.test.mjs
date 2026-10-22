@@ -40,9 +40,32 @@ assert.equal(writeStorageValue(null, "theme", "aurora"), false);
 assert.equal(removeStorageValue(null, "theme"), false);
 
 const legacy = createTemplateProject("male");
+legacy.rig.bones.forEach((bone) => delete bone.motionLimits);
 const project = migrateAuthoringProject(legacy);
 assert.equal(project.clips.length, 1, "La estructura antigua debe migrarse sin perder el clip");
 assert.equal(project.clip.id, project.activeClipId);
+assert.ok(
+  project.rig.bones
+    .filter((bone) => !bone.parent)
+    .every((bone) => bone.motionLimits.x === 0 && bone.motionLimits.y === 0),
+  "La migración debe fijar los huesos conectados directamente a la raíz masculina"
+);
+
+const legacyFemale = createTemplateProject("female");
+legacyFemale.rig.bones.forEach((bone) => {
+  delete bone.followTarget;
+  delete bone.motionLimits;
+});
+legacyFemale.parts.find((part) => part.id === "torso").boneId = "rig";
+const migratedFemale = migrateAuthoringProject(legacyFemale);
+assert.equal(migratedFemale.parts.find((part) => part.id === "torso").boneId, "torso");
+assert.ok(
+  migratedFemale.rig.bones
+    .filter((bone) => !bone.parent)
+    .every((bone) => bone.motionLimits.x === 0 && bone.motionLimits.y === 0),
+  "La migración debe fijar los huesos conectados directamente a la raíz femenina"
+);
+assert.equal(migratedFemale.rig.bones.find((bone) => bone.id === "neck").followTarget, "torso");
 
 for (let index = 2; index <= 5; index += 1) createClip(project, { id: `clip_${index}`, label: `Clip ${index}` });
 assert.equal(project.clips.length, 5);

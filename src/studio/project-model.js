@@ -1,4 +1,5 @@
 import { createKinetraClip, normalizeKinetraClip } from "../animations/studio-format.js";
+import { PUPPET_NECK_CONTROL, PUPPET_ROOT_POSITION_LOCK } from "../animations/rig.js";
 
 export const AUTHORING_VERSION = 5;
 
@@ -96,6 +97,15 @@ export function migrateAuthoringProject(source) {
     clips,
     activeClipId
   };
+  if (["male", "female"].includes(migrated.templateId)) {
+    migrated.rig.bones.forEach((bone) => {
+      if (!bone.parent) bone.motionLimits = { ...bone.motionLimits, ...PUPPET_ROOT_POSITION_LOCK };
+    });
+    const neck = migrated.rig.bones.find((bone) => bone.id === "neck");
+    if (neck) Object.assign(neck, structuredClone(PUPPET_NECK_CONTROL));
+    const torso = migrated.parts.find((part) => part.id === "torso");
+    if (torso) torso.boneId = "torso";
+  }
   return attachActiveClip(migrated);
 }
 

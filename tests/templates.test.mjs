@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { stat } from "node:fs/promises";
-import { createKinetraBundle, validateKinetraProject } from "../src/animations/kinetra-runtime.js";
+import { createKinetraBundle, resolveKinetraRig, validateKinetraProject } from "../src/animations/kinetra-runtime.js";
 import { createTemplateProject, PROJECT_TEMPLATES } from "../src/studio/templates.js";
 
 assert.deepEqual(
@@ -15,7 +15,44 @@ assert.equal(male.rig.bones.length, 13);
 assert.equal(male.templateId, "male");
 assert.ok(male.assets.every((asset) => asset.src.startsWith("./assets/templates/male/")));
 assert.ok(male.parts.every((part) => part.source === "asset"));
+assert.equal(male.parts.find((part) => part.id === "torso")?.boneId, "torso");
+assert.deepEqual(
+  male.rig.bones.find((bone) => bone.id === "neck"),
+  {
+    id: "neck",
+    name: "Cuello",
+    parent: null,
+    x: 0,
+    y: -315,
+    followTarget: "torso",
+    motionLimits: { x: 0, y: 0, angle: 18 }
+  }
+);
+assert.deepEqual(
+  male.rig.bones.filter((bone) => !bone.parent).map(({ id, motionLimits }) => ({ id, motionLimits })),
+  [
+    { id: "neck", motionLimits: { x: 0, y: 0, angle: 18 } },
+    { id: "shoulderRight", motionLimits: { x: 0, y: 0 } },
+    { id: "shoulderLeft", motionLimits: { x: 0, y: 0 } },
+    { id: "hipRight", motionLimits: { x: 0, y: 0 } },
+    { id: "hipLeft", motionLimits: { x: 0, y: 0 } }
+  ],
+  "Las articulaciones conectadas directamente a la raíz masculina deben tener su posición fija"
+);
 assert.deepEqual(validateKinetraProject(createKinetraBundle(male)), []);
+const maleRig = resolveKinetraRig(createKinetraBundle(male), {
+  torso: { x: 30, y: 40 },
+  neck: { x: 100, y: -100, angle: 90 },
+  shoulderRight: { x: 100, y: 100, angle: 25 }
+});
+assert.equal(maleRig.neck[4], 30, "La cabeza masculina no debe trasladarse respecto al torso");
+assert.equal(maleRig.neck[5], -275, "La cabeza masculina debe conservar su anclaje vertical al torso");
+assert.ok(
+  Math.abs(maleRig.neck[0] - Math.cos((18 * Math.PI) / 180)) < 0.0001,
+  "La cabeza masculina solo debe permitir una rotación leve"
+);
+assert.equal(maleRig.shoulderRight[4], -207, "El hombro no debe trasladarse respecto a la raíz masculina");
+assert.equal(maleRig.shoulderRight[5], -310, "El hombro debe conservar su pivote vertical");
 
 const female = createTemplateProject("female");
 assert.equal(female.parts.length, 14);
@@ -24,6 +61,24 @@ assert.equal(female.rig.bones.length, 13);
 assert.ok(female.parts.every((part) => part.crop?.width > 0 && part.crop?.height > 0));
 assert.equal(new Set(female.parts.map((part) => part.assetId)).size, 14);
 assert.ok(female.assets.every((asset) => asset.src.startsWith("./assets/templates/female/")));
+assert.equal(female.parts.find((part) => part.id === "torso")?.boneId, "torso");
+assert.deepEqual(
+  female.rig.bones
+    .filter((bone) => !bone.parent)
+    .map(({ id, followTarget, motionLimits }) => ({
+      id,
+      ...(followTarget ? { followTarget } : {}),
+      motionLimits
+    })),
+  [
+    { id: "neck", followTarget: "torso", motionLimits: { x: 0, y: 0, angle: 18 } },
+    { id: "shoulderRight", motionLimits: { x: 0, y: 0 } },
+    { id: "shoulderLeft", motionLimits: { x: 0, y: 0 } },
+    { id: "hipRight", motionLimits: { x: 0, y: 0 } },
+    { id: "hipLeft", motionLimits: { x: 0, y: 0 } }
+  ],
+  "La plantilla femenina debe fijar sus articulaciones raíz y anclar el cuello al torso"
+);
 assert.deepEqual(Object.fromEntries(female.rig.bones.map(({ id, x, y }) => [id, { x, y }])), {
   neck: { x: 0, y: -292.2 },
   shoulderRight: { x: -167.78, y: -271.37 },
@@ -70,6 +125,19 @@ assert.deepEqual(
   "La orientación visual de los sprites debe conservarse como calibración de reposo"
 );
 assert.deepEqual(validateKinetraProject(createKinetraBundle(female)), []);
+const femaleRig = resolveKinetraRig(createKinetraBundle(female), {
+  torso: { x: -25, y: 35 },
+  neck: { x: 80, y: -80, angle: -90 },
+  hipLeft: { x: 50, y: 50, angle: 20 }
+});
+assert.equal(femaleRig.neck[4], -25, "La cabeza femenina no debe trasladarse respecto al torso");
+assert.equal(femaleRig.neck[5], -257.2, "La cabeza femenina debe conservar su anclaje vertical al torso");
+assert.ok(
+  Math.abs(femaleRig.neck[0] - Math.cos((18 * Math.PI) / 180)) < 0.0001,
+  "La cabeza femenina solo debe permitir una rotación leve"
+);
+assert.equal(femaleRig.hipLeft[4], 88, "La cadera femenina no debe trasladarse respecto a la raíz");
+assert.equal(femaleRig.hipLeft[5], 140.8, "La cadera femenina debe conservar su pivote vertical");
 
 const blank = createTemplateProject("blank");
 assert.equal(blank.parts.length, 0);

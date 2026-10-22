@@ -25,6 +25,16 @@
               "id": { "type": "string", "minLength": 1 },
               "name": { "type": "string", "minLength": 1 },
               "parent": { "type": ["string", "null"] },
+              "followTarget": { "const": "torso" },
+              "motionLimits": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "x": { "type": "number", "minimum": 0 },
+                  "y": { "type": "number", "minimum": 0 },
+                  "angle": { "type": "number", "minimum": 0 }
+                }
+              },
               "x": { "type": "number" },
               "y": { "type": "number" }
             }
