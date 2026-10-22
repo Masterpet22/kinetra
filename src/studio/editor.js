@@ -3035,19 +3035,17 @@ function makeSpriteRow() {
 function renderRuler() {
   const ruler = $("ruler");
   ruler.replaceChildren();
-  ruler.title = "Clic para seleccionar todos los fotogramas alineados en ese tiempo";
-  ruler.tabIndex = 0;
-  ruler.setAttribute("role", "button");
-  ruler.setAttribute("aria-label", "Seleccionar fotogramas por tiempo");
-  ruler.onclick = (event) => {
+  const columnSelector = document.createElement("button");
+  columnSelector.type = "button";
+  columnSelector.className = "ruler-column-selector";
+  columnSelector.title = "Clic para seleccionar todos los fotogramas alineados en ese tiempo";
+  columnSelector.setAttribute("aria-label", "Seleccionar fotogramas por tiempo");
+  columnSelector.onclick = (event) => {
     const box = ruler.getBoundingClientRect();
-    selectKeyColumn(snapTime(((event.clientX - box.left) / box.width) * duration()));
+    const selectedTime = event.detail === 0 ? Math.round(time) : ((event.clientX - box.left) / box.width) * duration();
+    selectKeyColumn(snapTime(selectedTime));
   };
-  ruler.onkeydown = (event) => {
-    if (!["Enter", " "].includes(event.key)) return;
-    event.preventDefault();
-    selectKeyColumn(Math.round(time));
-  };
+  ruler.append(columnSelector);
   const frameCount = Math.max(1, Math.round((duration() / 1000) * fps()));
   const every = Math.max(1, Math.ceil(frameCount / 16));
   for (let frame = 0; frame <= frameCount; frame += every) {
