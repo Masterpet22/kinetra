@@ -107,7 +107,11 @@ assert.doesNotMatch(
   /\.viewport\.select #canvas\s*\{[^}]*cursor:\s*move/,
   "La herramienta de selección no debe mostrar el cursor de movimiento sobre todo el lienzo"
 );
-assert.match(editor, /function nearestCanvasLayer\(clientX, clientY\)/, "El Calibrador debe detectar la capa bajo el cursor");
+assert.match(
+  editor,
+  /function nearestCanvasLayer\(clientX, clientY\)/,
+  "El Calibrador debe detectar la capa bajo el cursor"
+);
 assert.match(
   editor,
   /chosen && !lockedParts\.has\(chosen\) \? "move" : "default"/,

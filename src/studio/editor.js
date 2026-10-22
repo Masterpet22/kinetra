@@ -1580,10 +1580,14 @@ function appendTreeNode(node, depth, search, host) {
 }
 
 function clearLayerDropIndicator() {
-  document.querySelectorAll("[data-hierarchy-kind='layers'] .tree-row.layer-drop-before, [data-hierarchy-kind='layers'] .tree-row.layer-drop-after, [data-hierarchy-kind='layers'] .tree-row.layer-group-target").forEach((row) => {
-    row.classList.remove("layer-drop-before", "layer-drop-after", "layer-group-target");
-    delete row.dataset.dropPosition;
-  });
+  document
+    .querySelectorAll(
+      "[data-hierarchy-kind='layers'] .tree-row.layer-drop-before, [data-hierarchy-kind='layers'] .tree-row.layer-drop-after, [data-hierarchy-kind='layers'] .tree-row.layer-group-target"
+    )
+    .forEach((row) => {
+      row.classList.remove("layer-drop-before", "layer-drop-after", "layer-group-target");
+      delete row.dataset.dropPosition;
+    });
 }
 
 function finishLayerDrag() {
@@ -1697,8 +1701,7 @@ function updateLayerAutoScroll() {
   const distanceFromBottom = bounds.bottom - layerDrag.clientY;
   let speed = 0;
   if (distanceFromTop < edgeSize) speed = -maxSpeed * Math.min(1, (edgeSize - distanceFromTop) / edgeSize);
-  else if (distanceFromBottom < edgeSize)
-    speed = maxSpeed * Math.min(1, (edgeSize - distanceFromBottom) / edgeSize);
+  else if (distanceFromBottom < edgeSize) speed = maxSpeed * Math.min(1, (edgeSize - distanceFromBottom) / edgeSize);
   if (speed) {
     const previousScrollTop = container.scrollTop;
     container.scrollTop += speed;
@@ -4382,8 +4385,7 @@ function bindCanvas() {
       else if (mode === "calibrador" && tool === "select") {
         const chosen = nearestCanvasLayer(event.clientX, event.clientY);
         canvas.style.cursor = chosen && !lockedParts.has(chosen) ? "move" : "default";
-      }
-      else if (mode === "animador") {
+      } else if (mode === "animador") {
         const state = matrices(time);
         const hit = hitTransformGizmo(event.clientX, event.clientY, state);
         const editableSelection = [...selectedTargets].some((target) => !lockedTargets.has(target));

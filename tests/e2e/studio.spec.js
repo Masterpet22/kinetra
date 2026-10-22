@@ -101,8 +101,9 @@ test("agrupa las capas seleccionadas al soltarlas sobre otra capa", async ({ pag
   await switchWorkspace(page, "calibrador");
   const tree = page.locator("[data-panel='layers'] [data-hierarchy-tree]");
   const layerRows = tree.locator(".tree-row[data-hierarchy-id]");
-  const [firstId, secondId, targetId] = await layerRows
-    .evaluateAll((rows) => rows.slice(0, 3).map((row) => row.dataset.hierarchyId));
+  const [firstId, secondId, targetId] = await layerRows.evaluateAll((rows) =>
+    rows.slice(0, 3).map((row) => row.dataset.hierarchyId)
+  );
   await tree.locator(`[data-hierarchy-id='${firstId}'] .tree-select`).click();
   await tree.locator(`[data-hierarchy-id='${secondId}'] .tree-select`).click({ modifiers: ["Control"] });
 
