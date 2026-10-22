@@ -85,6 +85,12 @@ export const TUTORIALS = Object.freeze({
         title: "Mapa de la animación",
         copy: "Cada fila corresponde a una articulación."
       },
+      {
+        target: "#tracks",
+        panel: "timeline",
+        title: "Mueve varias claves",
+        copy: "Selecciona claves con Mayús+clic, o pulsa la regla para seleccionar una columna alineada, y arrastra cualquiera para mover el grupo."
+      },
       { target: "#scrub", title: "Recorre el tiempo", copy: "Arrastra este control para revisar cualquier instante." },
       { target: "#play", title: "Reproduce y detén", copy: "El mismo botón alterna reproducción y detención." },
       {

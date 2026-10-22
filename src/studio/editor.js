@@ -41,7 +41,16 @@ import {
 } from "./persistence.js";
 import { downloadJson, exportPortableBundle } from "./project-io.js";
 import { effectiveLayerRotation } from "./canvas-renderer.js";
-import { collectKeyTimes, clampTimelineTime, trimClipToDuration } from "./timeline.js";
+import {
+  clampKeyframeDelta,
+  collectKeyTimes,
+  clampTimelineTime,
+  keyIdentitiesAtTime,
+  moveKeyframes,
+  previousKeyTime,
+  selectedKeyframes,
+  trimClipToDuration
+} from "./timeline.js";
 import {
   DOCK_ZONES,
   PANEL_DEFAULTS,
@@ -799,6 +808,12 @@ function setGhostFromCommitted(at) {
   ghostPose = structuredClone(committedPose(at));
   ghostTime = Math.round(at);
   updateGhostLabel();
+}
+
+function setGhostToPreviousKey(at) {
+  const previous = previousKeyTime(project.clip, at);
+  if (previous === undefined) return clearGhost();
+  setGhostFromCommitted(previous);
 }
 
 function clearGhost() {
@@ -2792,8 +2807,23 @@ function selectKey(target, at, append = false) {
   else selectedKeys.add(key);
   selectAnimationTarget(target, append);
   time = at;
-  setGhostFromCommitted(at);
+  setGhostToPreviousKey(at);
   refresh();
+}
+
+function selectKeyColumn(at) {
+  selectedKeys = keyIdentitiesAtTime(project.clip, at, animationTargets());
+  const targets = [...selectedKeys].map((identity) => identity.slice(0, identity.lastIndexOf(":")));
+  if (targets.length) {
+    selectedTargets = new Set(targets);
+    if (!selectedTargets.has(selectedTarget)) selectedTarget = targets[0];
+    setGhostToPreviousKey(at);
+  }
+  time = at;
+  refresh();
+  status(
+    selectedKeys.size ? `${selectedKeys.size} fotograma(s) seleccionados en ${at} ms` : `No hay fotogramas en ${at} ms`
+  );
 }
 
 function allKeyTimes() {
@@ -2801,10 +2831,7 @@ function allKeyTimes() {
 }
 
 function resetGhostFromProject(preferredTime = time) {
-  const times = allKeyTimes();
-  if (!times.length) return clearGhost();
-  const at = [...times].reverse().find((candidate) => candidate <= preferredTime) ?? times[0];
-  setGhostFromCommitted(at);
+  setGhostToPreviousKey(preferredTime);
 }
 
 function goToAdjacentKey(direction) {
@@ -2815,7 +2842,7 @@ function goToAdjacentKey(direction) {
   const targets = animationTargets().filter((target) => exactKey(target, next));
   selectedKeys = new Set(targets.map((target) => `${target}:${next}`));
   if (targets.length && !targets.includes(selectedTarget)) selectAnimationTarget(targets[0]);
-  setGhostFromCommitted(next);
+  setGhostToPreviousKey(next);
   refresh();
   status(`Clave ${direction < 0 ? "anterior" : "siguiente"}: ${next} ms`);
 }
@@ -2859,50 +2886,85 @@ function makeTrackRow(target) {
     const identity = `${target}:${frame.t}`;
     const pending = draftTime === frame.t && draftFrames.has(target);
     marker.className = `key-marker${selectedKeys.has(identity) ? " selected" : ""}${lockedTargets.has(target) ? " locked" : ""}${pending ? " draft" : ""}`;
+    marker.dataset.keyIdentity = identity;
     marker.style.left = `${(frame.t / duration()) * 100}%`;
-    marker.title = `${frame.t} ms · ${Object.entries(frame)
+    marker.title = `${frame.t} ms · Mayús+clic añade a la selección · Alt+clic selecciona la columna · ${Object.entries(
+      frame
+    )
       .filter(([field]) => field !== "t" && field !== "ease")
       .map(([field, value]) => `${field}: ${value}`)
       .join(" ")}`;
     marker.onpointerdown = (event) => {
       event.stopPropagation();
+      if (event.altKey) {
+        event.preventDefault();
+        selectKeyColumn(frame.t);
+        return;
+      }
       if (lockedTargets.has(target)) return status(`${label(target)} está bloqueado`);
       marker.setPointerCapture(event.pointerId);
       if (!event.shiftKey && !selectedKeys.has(identity)) selectedKeys.clear();
       selectedKeys.add(identity);
       selectAnimationTarget(target, event.shiftKey);
       time = frame.t;
+      setGhostToPreviousKey(frame.t);
       marker.classList.add("selected");
       updateTimeDisplays();
       draw();
-      dragKey = { marker, target, originalTime: frame.t, startX: event.clientX, width: line.clientWidth };
+      const keys = selectedKeyframes(project.clip, selectedKeys).filter(
+        ({ target: keyTarget }) => !lockedTargets.has(keyTarget)
+      );
+      const markers = new Map(
+        [...document.querySelectorAll(".key-marker[data-key-identity]")].map((item) => [item.dataset.keyIdentity, item])
+      );
+      dragKey = {
+        marker,
+        originalTime: frame.t,
+        startX: event.clientX,
+        width: line.clientWidth,
+        keys,
+        markers,
+        delta: 0
+      };
     };
     marker.onpointermove = (event) => {
       if (!dragKey || dragKey.marker !== marker) return;
-      const delta = ((event.clientX - dragKey.startX) / dragKey.width) * duration();
-      const next = snapTime(dragKey.originalTime + delta);
-      marker.style.left = `${(next / duration()) * 100}%`;
-      marker.dataset.nextTime = String(next);
+      const rawDelta = ((event.clientX - dragKey.startX) / dragKey.width) * duration();
+      const snappedDelta = snapTime(dragKey.originalTime + rawDelta) - dragKey.originalTime;
+      dragKey.delta = clampKeyframeDelta(dragKey.keys, snappedDelta, duration());
+      dragKey.keys.forEach(({ identity: keyIdentity, time: originalTime }) => {
+        const selectedMarker = dragKey.markers.get(keyIdentity);
+        if (selectedMarker) selectedMarker.style.left = `${((originalTime + dragKey.delta) / duration()) * 100}%`;
+      });
     };
     marker.onpointerup = () => {
       if (!dragKey || dragKey.marker !== marker) return;
-      const next = Number(marker.dataset.nextTime ?? dragKey.originalTime);
-      const frames = project.clip.keys[target];
-      const moving = frames.find((item) => item.t === dragKey.originalTime);
-      if (moving && next !== moving.t) {
-        const occupied = frames.find((item) => item !== moving && item.t === next);
-        if (occupied) Object.assign(occupied, moving);
-        else moving.t = next;
-        frames.sort((left, right) => left.t - right.t);
-        selectedKeys = new Set([`${target}:${next}`]);
-        time = next;
-        commit("Fotograma desplazado");
+      const result = moveKeyframes(
+        project.clip,
+        new Set(dragKey.keys.map(({ identity: keyIdentity }) => keyIdentity)),
+        dragKey.delta
+      );
+      if (result.delta !== 0) {
+        marker.dataset.dragged = "true";
+        selectedKeys = result.identities;
+        time = dragKey.originalTime + result.delta;
+        setGhostToPreviousKey(time);
+        commit(
+          `${result.count} fotograma(s) desplazados${result.overwritten ? ` · ${result.overwritten} reemplazado(s)` : ""}`
+        );
       }
+      dragKey = null;
+      refresh();
+    };
+    marker.onpointercancel = () => {
+      if (!dragKey || dragKey.marker !== marker) return;
       dragKey = null;
       refresh();
     };
     marker.onclick = (event) => {
       event.stopPropagation();
+      if (event.altKey) return;
+      if (marker.dataset.dragged === "true") return;
       selectKey(target, frame.t, event.shiftKey);
     };
     line.append(marker);
@@ -2973,6 +3035,19 @@ function makeSpriteRow() {
 function renderRuler() {
   const ruler = $("ruler");
   ruler.replaceChildren();
+  ruler.title = "Clic para seleccionar todos los fotogramas alineados en ese tiempo";
+  ruler.tabIndex = 0;
+  ruler.setAttribute("role", "button");
+  ruler.setAttribute("aria-label", "Seleccionar fotogramas por tiempo");
+  ruler.onclick = (event) => {
+    const box = ruler.getBoundingClientRect();
+    selectKeyColumn(snapTime(((event.clientX - box.left) / box.width) * duration()));
+  };
+  ruler.onkeydown = (event) => {
+    if (!["Enter", " "].includes(event.key)) return;
+    event.preventDefault();
+    selectKeyColumn(Math.round(time));
+  };
   const frameCount = Math.max(1, Math.round((duration() / 1000) * fps()));
   const every = Math.max(1, Math.ceil(frameCount / 16));
   for (let frame = 0; frame <= frameCount; frame += every) {
@@ -3773,7 +3848,7 @@ function setKey() {
   selectedKeys = new Set(editable.map(([target]) => `${target}:${at}`));
   clearDraft();
   commit(`${editable.length} objetivo(s) guardado(s) en ${at} ms`);
-  setGhostFromCommitted(at);
+  setGhostToPreviousKey(at);
   time = at;
   refresh();
 }

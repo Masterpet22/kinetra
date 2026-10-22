@@ -127,6 +127,76 @@ test("agrupa las capas seleccionadas al soltarlas sobre otra capa", async ({ pag
   await expect(tree.locator(".tree-layer-in-group")).toHaveCount(3);
 });
 
+test("desplaza juntas varias claves seleccionadas", async ({ page }) => {
+  await page.locator("#scrub").evaluate((input) => {
+    input.value = "200";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator("#set-key").click();
+  await page.locator("#scrub").evaluate((input) => {
+    input.value = "400";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator("#key-x").fill("12");
+  await page.locator("#set-key").click();
+
+  const markers = page.locator(".key-marker:not(.draft):not(.locked)");
+  await expect(markers).not.toHaveCount(0);
+  await markers.nth(0).click();
+  await page
+    .locator(".key-marker:not(.draft):not(.locked)")
+    .nth(1)
+    .click({ modifiers: ["Shift"] });
+  await expect(page.locator(".key-marker.selected:not(.draft)")).toHaveCount(2);
+
+  const before = await page
+    .locator(".key-marker.selected:not(.draft)")
+    .evaluateAll((items) => items.map((item) => Number.parseFloat(item.style.left)));
+  const source = page.locator(".key-marker.selected:not(.draft)").first();
+  const bounds = await source.boundingBox();
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width / 2 + 80, bounds.y + bounds.height / 2, { steps: 8 });
+  await page.mouse.up();
+
+  const selected = page.locator(".key-marker.selected:not(.draft)");
+  await expect(selected).toHaveCount(2);
+  const after = await selected.evaluateAll((items) => items.map((item) => Number.parseFloat(item.style.left)));
+  expect(after[0]).toBeGreaterThan(before[0]);
+  expect(after[0] - before[0]).toBeCloseTo(after[1] - before[1], 5);
+});
+
+test("selecciona una columna de claves desde la regla temporal", async ({ page }) => {
+  await page.locator("#scrub").evaluate((input) => {
+    input.value = "250";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator("#set-key").click();
+  await page.locator(".track-label button").nth(1).click();
+  await page.locator("#set-key").click();
+  await expect(page.locator("[data-key-identity$=':250']")).toHaveCount(2);
+
+  const ruler = page.locator("#ruler");
+  const bounds = await ruler.boundingBox();
+  await page.mouse.click(bounds.x + bounds.width * 0.25, bounds.y + bounds.height / 2);
+  await expect(page.locator("[data-key-identity$=':250'].selected")).toHaveCount(2);
+});
+
+test("muestra como fantasma la clave anterior y ninguna para la primera", async ({ page }) => {
+  for (const at of [200, 400]) {
+    await page.locator("#scrub").evaluate((input, value) => {
+      input.value = String(value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }, at);
+    await page.locator("#set-key").click();
+  }
+
+  await page.locator("[data-key-identity='rig:200']").click();
+  await expect(page.locator("#ghost-label")).toHaveText("Sin referencia");
+  await page.locator("[data-key-identity='rig:400']").click();
+  await expect(page.locator("#ghost-label")).toHaveText("Guardado · 200 ms");
+});
+
 test("inicia aunque el navegador rechace las preferencias locales", async ({ page }) => {
   await page.addInitScript(() => {
     Storage.prototype.setItem = () => {

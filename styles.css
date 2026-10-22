@@ -1425,6 +1425,7 @@ textarea {
   height: 27px;
   border-bottom: 1px solid var(--line);
   background: #0a1522;
+  cursor: crosshair;
 }
 .ruler-tick {
   position: absolute;
