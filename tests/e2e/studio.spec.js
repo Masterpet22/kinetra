@@ -69,6 +69,25 @@ test("deshacer/rehacer y controles de clips no pierden el estado", async ({ page
   await page.screenshot({ path: test.info().outputPath("studio-desktop.png"), fullPage: true });
 });
 
+test("distingue el guardado del proyecto y los cambios pendientes del fotograma", async ({ page }) => {
+  await expect(page.locator("#save-state")).toContainText("Cambios generales sin guardar");
+  await expect(page.locator("#frame-change-state")).toContainText("Sin cambios pendientes");
+
+  await page.locator("#save-local").click();
+  await expect(page.locator("#save-state")).toContainText("Guardado en este navegador");
+  await page.locator("#key-angle").fill("18");
+  await expect(page.locator("#save-state")).toContainText("Guardado en este navegador");
+  await expect(page.locator("#frame-change-state")).toContainText("1 elemento(s) con cambios pendientes");
+
+  await page.locator("#save-local").click();
+  await expect(page.locator("#save-state")).toContainText("Guardado en este navegador");
+  await expect(page.locator("#frame-change-state")).toContainText("cambios pendientes");
+  await page.locator("#set-key").click();
+  await expect(page.locator("#frame-change-state")).toContainText("Sin cambios pendientes");
+  await expect(page.locator("#save-state")).toContainText(/Cambios generales sin guardar|Guardando cambios/);
+  await expect(page.locator("#save-state")).toContainText("Guardado en este navegador");
+});
+
 test("indica si las herramientas transforman capas o huesos", async ({ page }) => {
   await expect(page.locator("#tool-context-kind")).toHaveText("Esqueleto");
   await expect(page.locator("[data-tool='rotate']")).toHaveAttribute("title", /Rotar hueso o selección/);
@@ -81,9 +100,23 @@ test("indica si las herramientas transforman capas o huesos", async ({ page }) =
 test("refleja la capa seleccionada horizontal y verticalmente", async ({ page }) => {
   await switchWorkspace(page, "calibrador");
   await page.locator("#flip-part").click();
-  await expect(page.locator("#status")).toContainText("volteada horizontalmente");
+  await expect(page.locator("#status")).toContainText("Capa reflejada horizontalmente");
   await page.locator("#flip-part-y").click();
-  await expect(page.locator("#status")).toContainText("volteada verticalmente");
+  await expect(page.locator("#status")).toContainText("Capa reflejada verticalmente");
+});
+
+test("transforma conjuntamente las capas seleccionadas", async ({ page }) => {
+  await switchWorkspace(page, "calibrador");
+  const rows = page.locator("[data-panel='layers'] .tree-row[data-hierarchy-id]");
+  await rows.nth(0).locator(".tree-select").click();
+  await rows.nth(1).locator(".tree-multi").click();
+  await expect(page.locator("#tool-context-kind")).toHaveText("Capas seleccionadas");
+  await expect(page.locator("#tool-context-target")).toContainText("2 capas");
+
+  await page.locator("#flip-part").click();
+  await expect(page.locator("#status")).toContainText("2 capas reflejadas horizontalmente");
+  await page.locator("[data-tool='rotate']").click();
+  await expect(page.locator("[data-tool='rotate']")).toHaveAttribute("title", /Rotar capa o selección/);
 });
 
 test("escala una capa desde el visor y ajusta el personaje a la vista", async ({ page }) => {
@@ -133,13 +166,19 @@ test("muestra posición y rotación junto al cursor durante el arrastre", async 
 
 test("aplica una curva de interpolación a los cambios pendientes", async ({ page }) => {
   await page.locator(".dock-tab:visible", { hasText: "Interpolación" }).click();
-  await page.locator("#preset-grid button", { hasText: "Sobrepaso" }).click();
+  const smooth = page.locator("#preset-grid button", { hasText: "Suave" });
+  await smooth.hover();
+  await expect(smooth.locator(".preset-preview-dot")).toHaveCSS("animation-name", "preset-preview-motion");
+  const overshoot = page.locator("#preset-grid button", { hasText: "Sobrepaso" });
+  await overshoot.click();
+  await expect(overshoot).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#preset-active")).toHaveText("Activa: Sobrepaso");
   await expect(page.locator("#status")).toContainText("Interpolación “Sobrepaso” aplicada");
   await page.locator(".dock-tab:visible", { hasText: "Inspector" }).click();
   await expect(page.locator("#draft-status")).toContainText("cambios sin guardar");
 });
 
-test("dibuja huesos libres y encadena desde una articulación existente", async ({ page }) => {
+test("dibuja una cadena continua de huesos hasta pulsar Escape", async ({ page }) => {
   const treeRows = page.locator("[data-panel='skeleton'] [data-hierarchy-tree] .tree-row[data-hierarchy-id]");
   const initialCount = await treeRows.count();
 
@@ -152,18 +191,56 @@ test("dibuja huesos libres y encadena desde una articulación existente", async 
   await page.mouse.move(box.x + 145, box.y + 75, { steps: 5 });
   await page.mouse.up();
   await expect(treeRows).toHaveCount(initialCount + 2);
+  await expect(page.locator("#status")).toContainText("continúa arrastrando");
 
-  await page.locator("#add-bone").click();
-  const centeredBox = await canvas.boundingBox();
-  const center = { x: centeredBox.x + centeredBox.width / 2, y: centeredBox.y + centeredBox.height / 2 };
-  await page.mouse.move(center.x, center.y);
+  // El segundo trazo debe conservar la articulación final como origen aunque el puntero se haya apartado.
+  await page.mouse.move(box.x + 175, box.y + 95);
   await page.mouse.down();
-  await page.mouse.move(center.x + 90, center.y + 50, { steps: 5 });
+  await page.mouse.move(box.x + 235, box.y + 125, { steps: 5 });
   await page.mouse.up();
   await expect(treeRows).toHaveCount(initialCount + 3);
+  await expect(page.locator("#add-bone")).toHaveAttribute("aria-pressed", "true");
 
   await page.keyboard.press("Escape");
   await expect(page.locator("#add-bone")).toHaveAttribute("aria-pressed", "false");
+});
+
+test("asigna nombres anatómicos según la jerarquía del hueso", async ({ page }) => {
+  const boneRows = page.locator("[data-panel='skeleton'] [data-hierarchy-tree] .tree-row[data-hierarchy-id]");
+  await boneRows.filter({ hasText: "Hombro derecho" }).locator(".tree-select").click();
+  await page.locator("#add-bone").click();
+  const canvas = page.locator("#canvas");
+  const box = await canvas.boundingBox();
+  const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+  await page.mouse.move(center.x, center.y);
+  await page.mouse.down();
+  await page.mouse.move(center.x + 80, center.y + 35, { steps: 5 });
+  await page.mouse.up();
+  await expect(boneRows.filter({ hasText: "Brazo derecho" })).toHaveCount(1);
+
+  await page.mouse.move(center.x + 80, center.y + 35);
+  await page.mouse.down();
+  await page.mouse.move(center.x + 145, center.y + 75, { steps: 5 });
+  await page.mouse.up();
+  await expect(boneRows.filter({ hasText: "Antebrazo derecho" })).toHaveCount(1);
+  await expect(page.locator("#bone-name")).toHaveValue("Antebrazo derecho");
+  await page.keyboard.press("Escape");
+});
+
+test("duplica y refleja una cadena con sus capas vinculadas", async ({ page }) => {
+  const boneRows = page.locator("[data-panel='skeleton'] [data-hierarchy-tree] .tree-row[data-hierarchy-id]");
+  const layerRows = page.locator("[data-panel='layers'] [data-hierarchy-tree] .tree-row[data-hierarchy-id]");
+  const initialBones = await boneRows.count();
+  const initialLayers = await layerRows.count();
+
+  await boneRows.filter({ hasText: "Hombro derecho" }).locator(".tree-select").click();
+  await expect(page.locator("#mirror-chain")).toBeEnabled();
+  await page.locator("#mirror-chain").click();
+
+  await expect(boneRows).toHaveCount(initialBones + 3);
+  await expect(layerRows).toHaveCount(initialLayers + 3);
+  await expect(page.locator("#status")).toContainText("Cadena duplicada y reflejada: 3 huesos y 3 capas");
 });
 
 test("ajusta capas a la cuadrícula y rotaciones a intervalos de 15 grados", async ({ page }) => {
@@ -191,6 +268,51 @@ test("ajusta capas a la cuadrícula y rotaciones a intervalos de 15 grados", asy
   await page.mouse.up();
   await page.keyboard.up("Shift");
   expect(Number(await page.locator("#part-rotation").inputValue()) % 15).toBe(0);
+});
+
+test("edita directamente la posición base de una articulación", async ({ page }) => {
+  await switchWorkspace(page, "calibrador");
+  const canvas = page.locator("#canvas");
+  const box = await canvas.boundingBox();
+  const jointX = box.x + box.width / 2 - 207 * 0.32;
+  const jointY = box.y + box.height / 2 - 80 * 0.32 - 310 * 0.32;
+
+  await page.mouse.move(jointX, jointY);
+  await page.mouse.down();
+  await expect(page.locator("#bone-name")).toHaveValue("Hombro derecho");
+  const initialX = Number(await page.locator("#bone-x").inputValue());
+  await page.mouse.move(jointX + 32, jointY + 16, { steps: 5 });
+  await expect(page.locator("#transform-readout")).toContainText(/Posición · X: .* · Y: /);
+  await page.mouse.up();
+
+  expect(Number(await page.locator("#bone-x").inputValue())).toBeGreaterThan(initialX + 90);
+  await expect(page.locator("#status")).toContainText("Posición base de Hombro derecho actualizada");
+});
+
+test("prueba temporalmente el esqueleto sin crear fotogramas clave", async ({ page }) => {
+  await switchWorkspace(page, "calibrador");
+  const canvas = page.locator("#canvas");
+  const box = await canvas.boundingBox();
+  const jointX = box.x + box.width / 2 - 207 * 0.32;
+  const jointY = box.y + box.height / 2 - 80 * 0.32 - 310 * 0.32;
+  const initialKeys = await page.locator(".key-marker").count();
+
+  await page.locator("#rig-test").check();
+  await expect(page.locator("#status")).toContainText("Modo de prueba activo");
+  await page.mouse.move(jointX, jointY);
+  await page.mouse.down();
+  const restX = await page.locator("#bone-x").inputValue();
+  await page.mouse.move(jointX + 32, jointY + 16, { steps: 5 });
+  await page.mouse.up();
+
+  await expect(page.locator("#bone-x")).toHaveValue(restX);
+  await expect(page.locator("#draft-status")).toHaveText("Sin cambios pendientes");
+  await expect(page.locator(".key-marker")).toHaveCount(initialKeys);
+  await expect(page.locator("#status")).toContainText("Pose de prueba actualizada temporalmente");
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#rig-test")).not.toBeChecked();
+  await expect(page.locator("#status")).toContainText("Pose de prueba descartada");
 });
 
 test("reordena como un bloque las capas seleccionadas y muestra el punto de inserción", async ({ page }) => {
@@ -351,7 +473,7 @@ test("aísla copias incompatibles de IndexedDB y arranca con un proyecto limpio"
   });
 
   await page.reload();
-  await expect(page.locator("#save-state")).toHaveText("Proyecto local incompatible aislado; se inició uno nuevo");
+  await expect(page.locator("#save-state")).toContainText("Proyecto local incompatible aislado; se inició uno nuevo");
   await expect(page.locator("[data-panel='layers'] .tree-row")).toHaveCount(14);
   const quarantineCount = await page.evaluate(async () => {
     const database = await new Promise((resolve, reject) => {

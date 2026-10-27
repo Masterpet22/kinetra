@@ -125,6 +125,12 @@ const WORKSPACE_LABELS = Object.freeze({
   exportar: "Exportación",
   proyecto: "Proyecto"
 });
+const INTERPOLATION_PRESETS = Object.freeze([
+  { value: "Linear", label: "Lineal", timing: "linear" },
+  { value: "Sine.inOut", label: "Suave", timing: "cubic-bezier(.37, 0, .63, 1)" },
+  { value: "Cubic.out", label: "Desaceleración", timing: "cubic-bezier(.33, 1, .68, 1)" },
+  { value: "Back.out", label: "Sobrepaso", timing: "cubic-bezier(.34, 1.56, .64, 1)" }
+]);
 
 const prettyId = (id) =>
   String(id)
@@ -227,11 +233,14 @@ const commandBus = createCommandBus({
 });
 function replaceProject(next, reason) {
   project = next;
+  rigTestPose.clear();
   studioState.setProject(next, reason);
   return project;
 }
 let draftTime = null;
 let draftFrames = new Map();
+let rigTestActive = false;
+const rigTestPose = new Map();
 let ghostPose = null;
 let ghostTime = null;
 const initialPanelLayout = loadPanelLayout();
@@ -246,6 +255,11 @@ const storedTheme = readStorageValue(preferenceStorage, THEME_STORAGE_KEY);
 let theme = ["noche", "grafito", "aurora"].includes(storedTheme) ? storedTheme : "noche";
 let tutorialRun = null;
 let statusTimer = 0;
+let persistenceState = {
+  state: "unsaved",
+  dirty: true,
+  message: "Cambios generales sin guardar"
+};
 
 const canvas = $("canvas");
 const context = canvas.getContext("2d");
@@ -792,6 +806,11 @@ function pose(at = time) {
       sampled[target] = { ...(sampled[target] || {}), ...frameTransform(frame) };
     });
   }
+  if (rigTestActive && mode === "calibrador") {
+    rigTestPose.forEach((frame, target) => {
+      sampled[target] = { ...(sampled[target] || {}), ...frameTransform(frame) };
+    });
+  }
   return sampled;
 }
 function hasDraft() {
@@ -835,6 +854,37 @@ function setDraftFrame(target, frame) {
   updateDraftUI();
 }
 
+function ensureInteractionFrame(interaction, target) {
+  if (!interaction.testMode) return ensureDraftFrame(target);
+  if (!rigTestPose.has(target)) rigTestPose.set(target, frameTransform(committedPose(0)[target] || {}));
+  return rigTestPose.get(target);
+}
+
+function setInteractionFrame(interaction, target, frame) {
+  if (!interaction.testMode) return setDraftFrame(target, frame);
+  const limits = project.rig?.bones?.find((bone) => bone.id === target)?.motionLimits;
+  rigTestPose.set(target, constrainKinetraTransform(structuredClone(frame), limits));
+}
+
+function interactionFrame(interaction, target) {
+  return interaction.testMode ? rigTestPose.get(target) : draftFrame(target);
+}
+
+function setRigTestMode(active, announce = true) {
+  rigTestActive = Boolean(active) && mode === "calibrador";
+  rigTestPose.clear();
+  if ($("rig-test")) $("rig-test").checked = rigTestActive;
+  if (rigTestActive && tool !== "select") setTool("select");
+  else draw();
+  if (announce) {
+    status(
+      rigTestActive
+        ? "Modo de prueba activo; arrastra articulaciones para comprobar el esqueleto"
+        : "Pose de prueba descartada; el esqueleto volvió a su estado original"
+    );
+  }
+}
+
 function updateDraftUI() {
   const host = $("draft-status");
   if (!host) return;
@@ -847,6 +897,7 @@ function updateDraftUI() {
     : "Sin cambios pendientes";
   $("set-key")?.classList.toggle("dirty", dirty);
   if ($("discard-key-draft")) $("discard-key-draft").disabled = !dirty;
+  updateGlobalChangeIndicator();
   updateHistoryButtons();
 }
 
@@ -893,12 +944,41 @@ function normalizeLoadedProject(candidate) {
   });
 }
 
-function updatePersistenceState(detail) {
-  const output = $("save-state");
-  if (output) {
-    output.dataset.state = detail.state;
-    output.textContent = detail.message;
+function updateGlobalChangeIndicator() {
+  const projectOutput = $("save-state");
+  const frameOutput = $("frame-change-state");
+  const projectLabels = {
+    unsaved: "Proyecto: Cambios generales sin guardar",
+    pending: "Proyecto: Cambios generales sin guardar",
+    saving: "Proyecto: Guardando cambios…",
+    saved: "Proyecto: Guardado en este navegador",
+    migrated: "Proyecto: Guardado en este navegador · migrado",
+    recovered: persistenceState.dirty
+      ? "Proyecto: Copia recuperada pendiente de guardar"
+      : "Proyecto: Guardado en este navegador",
+    repaired: `Proyecto: Cambios generales sin guardar · ${persistenceState.message}`,
+    error: `Proyecto: Cambios sin guardar · ${persistenceState.message}`,
+    quota: `Proyecto: Cambios sin guardar · ${persistenceState.message}`
+  };
+  if (projectOutput) {
+    projectOutput.dataset.state = persistenceState.state;
+    projectOutput.textContent = projectLabels[persistenceState.state] || `Proyecto: ${persistenceState.message}`;
+    projectOutput.title = projectOutput.textContent;
   }
+  const framePending = hasDraft();
+  if (frameOutput) {
+    frameOutput.dataset.state = framePending ? "pending" : "clear";
+    frameOutput.textContent = framePending
+      ? `Fotograma: ${draftFrames.size} elemento(s) con cambios pendientes`
+      : "Fotograma: Sin cambios pendientes";
+    frameOutput.title = frameOutput.textContent;
+  }
+  $("save-local")?.classList.toggle("dirty", Boolean(persistenceState.dirty));
+}
+
+function updatePersistenceState(detail) {
+  persistenceState = { ...persistenceState, ...detail };
+  updateGlobalChangeIndicator();
   status(detail.message, detail.state);
   const emergency = $("emergency-export");
   if (emergency) emergency.hidden = !["error", "quota"].includes(detail.state);
@@ -909,7 +989,10 @@ async function loadInitialProject() {
     const adapter = await createIndexedDbAdapter();
     persistence = createPersistenceController({ adapter, onState: updatePersistenceState });
     const saved = await persistence.loadLatest();
-    if (saved?.project) return migrateAuthoringProject(saved.project);
+    if (saved?.project) {
+      if (!saved.recovered) updatePersistenceState({ state: "saved", dirty: false, message: "Guardado" });
+      return migrateAuthoringProject(saved.project);
+    }
     const legacy = readLegacyProject(preferenceStorage, STORAGE_KEY);
     if (legacy) {
       const migrated = migrateAuthoringProject(legacy);
@@ -921,6 +1004,9 @@ async function loadInitialProject() {
   } catch (error) {
     console.warn("No se pudo iniciar la persistencia escalable", error);
     updatePersistenceState({ state: "error", message: "Persistencia no disponible" });
+  }
+  if (!["error", "quota", "repaired"].includes(persistenceState.state)) {
+    updatePersistenceState({ state: "unsaved", dirty: true, message: "Cambios generales sin guardar" });
   }
   return freshProject();
 }
@@ -1300,14 +1386,74 @@ function layerGeometry(item, at = 0) {
   return { item, source, matrix, center, canvasCenter, corners, canvasCorners, rotateRadius };
 }
 
-function selectedLayerGeometry(at = 0) {
-  return layerGeometry(part(), at);
+function editableSelectedLayers() {
+  return project.parts.filter((item) => selectedParts.has(item.id) && !lockedParts.has(item.id));
+}
+
+function selectedLayerTransformGeometry(at = 0) {
+  const geometries = editableSelectedLayers()
+    .map((item) => layerGeometry(item, at))
+    .filter(Boolean);
+  if (!geometries.length) return null;
+  if (geometries.length === 1) return { ...geometries[0], geometries };
+  const points = geometries.flatMap((geometry) => geometry.corners);
+  const minX = Math.min(...points.map((corner) => corner.x));
+  const maxX = Math.max(...points.map((corner) => corner.x));
+  const minY = Math.min(...points.map((corner) => corner.y));
+  const maxY = Math.max(...points.map((corner) => corner.y));
+  const center = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+  const corners = [
+    { x: minX, y: minY },
+    { x: maxX, y: minY },
+    { x: maxX, y: maxY },
+    { x: minX, y: maxY }
+  ];
+  const canvasCenter = worldToCanvasPoint(center.x, center.y);
+  const canvasCorners = corners.map(({ x, y }) => worldToCanvasPoint(x, y));
+  const rotateRadius =
+    Math.max(...canvasCorners.map(({ x, y }) => Math.hypot(x - canvasCenter.x, y - canvasCenter.y))) + 22;
+  return { geometries, center, corners, canvasCenter, canvasCorners, rotateRadius };
+}
+
+function layerParentTransform(item, state = matrices(0)) {
+  const targetId = partBoneId(item);
+  const jointId = targetId !== "rig" && targetId !== "torso" ? targetId : null;
+  const parentMatrix =
+    jointId && state.joints[jointId]
+      ? state.joints[jointId]
+      : multiply(state.root, targetId === "torso" ? transformMatrix(state.pose.torso) : [1, 0, 0, 1, 0, 0]);
+  const anchor = jointId ? rigJoints()[jointId] || { x: 0, y: 0 } : { x: 0, y: 0 };
+  return { parentMatrix, anchor };
+}
+
+function layerTransformTargets(geometry, state = matrices(0)) {
+  return geometry.geometries.map(({ item, center }) => {
+    const { parentMatrix, anchor } = layerParentTransform(item, state);
+    return {
+      item,
+      parentMatrix,
+      anchor,
+      center,
+      x: item.x,
+      y: item.y,
+      rotation: item.rotation || 0,
+      scaleX: item.scaleX || 1,
+      scaleY: item.scaleY || 1
+    };
+  });
+}
+
+function setLayerWorldCenter(target, worldCenter) {
+  const local = inverseTransformPoint(target.parentMatrix, worldCenter);
+  if (!local) return;
+  target.item.x = local.x + target.anchor.x;
+  target.item.y = local.y + target.anchor.y;
 }
 
 function hitLayerTransformGizmo(clientX, clientY) {
   if (mode !== "calibrador" || !["rotate", "scale"].includes(tool)) return null;
-  const geometry = selectedLayerGeometry(0);
-  if (!geometry || lockedParts.has(geometry.item.id)) return null;
+  const geometry = selectedLayerTransformGeometry(0);
+  if (!geometry) return null;
   const pointer = toCanvasPoint(clientX, clientY);
   if (tool === "scale") {
     const corner = geometry.canvasCorners.find(
@@ -1409,8 +1555,8 @@ function drawBoneCreationPreview() {
 
 function drawLayerTransformGizmo() {
   if (mode !== "calibrador" || !["rotate", "scale"].includes(tool)) return;
-  const geometry = selectedLayerGeometry(0);
-  if (!geometry || lockedParts.has(geometry.item.id)) return;
+  const geometry = selectedLayerTransformGeometry(0);
+  if (!geometry) return;
   const inverseViewScale = 1 / (BASE_SCALE * zoom);
   context.save();
   context.lineWidth = 2 * inverseViewScale;
@@ -1589,6 +1735,18 @@ function nearestCanvasTarget(clientX, clientY, state) {
     const point = worldToCanvasPoint(matrix[4], matrix[5]);
     const distance = Math.hypot(pointer.x - point.x, pointer.y - point.y);
     if (distance <= 22 && (!result || distance < result.distance)) result = { target, distance };
+  });
+  return result?.target || null;
+}
+
+function nearestCanvasJoint(clientX, clientY, state, maximumDistance = 13) {
+  const pointer = toCanvasPoint(clientX, clientY);
+  let result = null;
+  Object.entries(state.joints).forEach(([target, matrix]) => {
+    if (hiddenTargets.has(target)) return;
+    const joint = worldToCanvasPoint(matrix[4], matrix[5]);
+    const distance = Math.hypot(pointer.x - joint.x, pointer.y - joint.y);
+    if (distance <= maximumDistance && (!result || distance < result.distance)) result = { target, distance };
   });
   return result?.target || null;
 }
@@ -2856,6 +3014,7 @@ function renderInspector() {
         : selectedTargets.size
           ? "Hueso seleccionado"
           : "Sin huesos seleccionados";
+  $("mirror-chain").disabled = !selectedBoneChain().length;
   if (calibration) {
     const current = currentPart;
     $("part-name").value = current?.name || "";
@@ -2875,13 +3034,14 @@ function renderInspector() {
       "part-y",
       "part-rotation",
       "part-scale",
-      "flip-part",
-      "flip-part-y",
       "layer-up",
       "layer-down",
       "remove-part"
     ].forEach((id) => {
       $(id).disabled = !current || lockedParts.has(current.id);
+    });
+    ["flip-part", "flip-part-y"].forEach((id) => {
+      $(id).disabled = !editableSelectedLayers().length;
     });
 
     const bone = selectedBone();
@@ -2922,6 +3082,7 @@ function renderInspector() {
     );
   });
   $("key-ease").value = key?.ease || "Linear";
+  updatePresetSelection();
   [...Object.values(TRANSFORM_FIELDS), "key-ease", "set-key", "delete-key"].forEach((id) => {
     $(id).disabled = lockedTargets.has(selectedTarget);
   });
@@ -2960,15 +3121,17 @@ function updateToolContext(currentPart = part()) {
         : label(selectedTarget);
   }
   const subject = calibration
-    ? currentPart?.name || "la capa seleccionada"
+    ? selectedParts.size > 1
+      ? "la selección de capas"
+      : currentPart?.name || "la capa seleccionada"
     : selectedTargets.size > 1
       ? "la selección de huesos"
       : label(selectedTarget);
   const labels = calibration
     ? {
         select: `Seleccionar y mover capas (V) · Actual: ${subject}`,
-        rotate: `Rotar capa (R) · Actual: ${subject}`,
-        scale: `Escalar capa (S) · Actual: ${subject}`
+        rotate: `Rotar capa o selección (R) · Actual: ${subject}`,
+        scale: `Escalar capa o selección (S) · Actual: ${subject}`
       }
     : {
         select: `Seleccionar y mover huesos (V) · Actual: ${subject}`,
@@ -2985,24 +3148,43 @@ function updateToolContext(currentPart = part()) {
 function renderPresets() {
   const host = $("preset-grid");
   host.replaceChildren();
-  const presets = [
-    ["Linear", "Lineal"],
-    ["Sine.inOut", "Suave"],
-    ["Cubic.out", "Desaceleración"],
-    ["Back.out", "Sobrepaso"]
-  ];
-  presets.forEach(([value, text]) => {
+  INTERPOLATION_PRESETS.forEach(({ value, label: presetLabel, timing }) => {
     const button = document.createElement("button");
-    button.className = "small-button";
-    button.textContent = text;
+    button.className = "small-button preset-button";
+    button.dataset.ease = value;
+    button.style.setProperty("--preset-ease", timing);
+    button.setAttribute("aria-label", `${presetLabel}: aplicar y usar como interpolación activa`);
+    const name = document.createElement("span");
+    name.className = "preset-name";
+    name.textContent = presetLabel;
+    const preview = document.createElement("span");
+    preview.className = "preset-preview";
+    preview.setAttribute("aria-hidden", "true");
+    const dot = document.createElement("span");
+    dot.className = "preset-preview-dot";
+    preview.append(dot);
+    button.append(name, preview);
     button.onclick = () => {
       $("key-ease").value = value;
       previewKeyFromInspector();
+      updatePresetSelection();
       showRightTab("curves");
-      status(`Interpolación “${text}” aplicada a los cambios del fotograma`);
+      status(`Interpolación “${presetLabel}” aplicada a los cambios del fotograma`);
     };
     host.append(button);
   });
+  updatePresetSelection();
+}
+
+function updatePresetSelection() {
+  const ease = $("key-ease")?.value || "Linear";
+  const active = INTERPOLATION_PRESETS.find((preset) => preset.value === ease) || INTERPOLATION_PRESETS[0];
+  document.querySelectorAll("#preset-grid [data-ease]").forEach((button) => {
+    const selected = button.dataset.ease === active.value;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+  if ($("preset-active")) $("preset-active").textContent = `Activa: ${active.label}`;
 }
 
 function drawCurve() {
@@ -3598,12 +3780,64 @@ function removeSelectedLayer() {
   refresh();
 }
 
+function boneNameSource(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase();
+}
+
+function boneSide(name, point) {
+  const source = boneNameSource(name);
+  if (/\b(derech[oa]|right)\b/.test(source)) return "right";
+  if (/\b(izquierd[oa]|left)\b/.test(source)) return "left";
+  if ((Number(point?.x) || 0) < -25) return "right";
+  if ((Number(point?.x) || 0) > 25) return "left";
+  return null;
+}
+
+function sidedBoneName(base, gender, side) {
+  if (!side) return base;
+  const suffix =
+    side === "right" ? (gender === "f" ? "derecha" : "derecho") : gender === "f" ? "izquierda" : "izquierdo";
+  return `${base} ${suffix}`;
+}
+
+function smartBoneName(point, parent = null, { jointOrigin = false } = {}) {
+  const parentBone = parent ? project.rig.bones.find((bone) => bone.id === parent) : null;
+  const parentName = parentBone?.name || parentBone?.id || "";
+  const source = boneNameSource(parentName);
+  const side = boneSide(parentName, point);
+  const anatomicalRules = [
+    [/\b(antebrazo|forearm|muneca|wrist)\b/, "Mano", "f"],
+    [/\b(brazo|arm|codo|elbow)\b/, "Antebrazo", "m"],
+    [/\b(hombro|shoulder)\b/, "Brazo", "m"],
+    [/\b(pierna|leg|tobillo|ankle)\b/, "Pie", "m"],
+    [/\b(muslo|thigh|rodilla|knee)\b/, "Pierna", "f"],
+    [/\b(cadera|hip)\b/, "Muslo", "m"],
+    [/\b(cuello|neck)\b/, "Cabeza", "f"],
+    [/\b(torso|columna|spine)\b/, "Cuello", "m"]
+  ];
+  const anatomical = anatomicalRules.find(([pattern]) => pattern.test(source));
+  if (anatomical) return sidedBoneName(anatomical[1], anatomical[2], side);
+  if (jointOrigin) return sidedBoneName("Origen", "m", side);
+  if (/\borigen\b/.test(source)) return sidedBoneName("Segmento", "m", side);
+  if (/\bsegmento\b/.test(source)) return sidedBoneName("Extremo", "m", side);
+  if (/\b(extremo|extension)\b/.test(source)) return sidedBoneName("Extensión", "f", side);
+  if (parentBone) return `Articulación de ${parentName}`;
+  return sidedBoneName("Articulación", "f", side);
+}
+
 function createBoneAt(point, parent = null, { jointOrigin = false } = {}) {
   const used = new Set(project.rig.bones.map((bone) => bone.id));
   const id = uniqueId("hueso", used);
+  const name = uniqueDuplicateName(
+    smartBoneName(point, parent, { jointOrigin }),
+    project.rig.bones.map((bone) => bone.name || bone.id)
+  );
   const bone = {
     id,
-    name: `Hueso ${project.rig.bones.length + 1}`,
+    name,
     parent,
     x: point.x,
     y: point.y
@@ -3643,9 +3877,11 @@ function finishBoneCreation(completed) {
   boneCreationAnchor = endBone.id;
   commit(requiredBones === 1 ? "Hueso añadido al esqueleto" : "Segmento de hueso añadido al esqueleto");
   refresh();
+  status(`“${endBone.name}” creado; continúa arrastrando para añadir otro o pulsa Escape para finalizar`);
 }
 
 function addBone() {
+  if (rigTestActive) return status("Desactiva Probar esqueleto antes de crear huesos");
   boneCreationAnchor = selectedBone()?.id || null;
   setTool("bone");
   const state = matrices(mode === "animador" ? time : 0);
@@ -3662,6 +3898,145 @@ function addBone() {
       ? "Visor centrado en la articulación seleccionada; arrastra desde ella para crear el hueso"
       : "Arrastra en el visor para crear los puntos de origen y final del hueso"
   );
+}
+
+function preserveWordCase(source, replacement) {
+  if (source === source.toUpperCase()) return replacement.toUpperCase();
+  if (source[0] === source[0].toUpperCase()) return replacement[0].toUpperCase() + replacement.slice(1);
+  return replacement;
+}
+
+function mirroredStructureName(name) {
+  let changed = false;
+  const mirrored = [
+    ["derecho", "izquierdo"],
+    ["derecha", "izquierda"],
+    ["right", "left"]
+  ].reduce(
+    (value, [right, left]) =>
+      value.replace(new RegExp(`\\b(${right}|${left})\\b`, "gi"), (match) => {
+        changed = true;
+        return preserveWordCase(match, match.toLocaleLowerCase() === right ? left : right);
+      }),
+    String(name || "Elemento")
+  );
+  return changed ? mirrored : `${mirrored} reflejado`;
+}
+
+function mirroredKeyframes(frames) {
+  return structuredClone(frames || []).map((frame) => ({
+    ...frame,
+    ...(Object.hasOwn(frame, "x") ? { x: -(Number(frame.x) || 0) } : {}),
+    ...(Object.hasOwn(frame, "angle") ? { angle: -(Number(frame.angle) || 0) } : {})
+  }));
+}
+
+function selectedBoneChain() {
+  const selected = new Set(
+    [...selectedTargets].filter(
+      (id) => id !== "rig" && id !== "torso" && project.rig.bones.some((bone) => bone.id === id)
+    )
+  );
+  if (!selected.size) return [];
+  let added = true;
+  while (added) {
+    added = false;
+    project.rig.bones.forEach((bone) => {
+      if (bone.parent && selected.has(bone.parent) && !selected.has(bone.id)) {
+        selected.add(bone.id);
+        added = true;
+      }
+    });
+  }
+  return project.rig.bones.filter((bone) => selected.has(bone.id));
+}
+
+function duplicateMirroredChain() {
+  if (hasDraft()) return status("Guarda o descarta los cambios del fotograma antes de duplicar la cadena");
+  const bones = selectedBoneChain();
+  if (!bones.length) return status("Selecciona el primer hueso de la cadena que deseas duplicar y reflejar");
+  const boneIds = new Set(bones.map((bone) => bone.id));
+  const linkedLayers = project.parts.filter((item) => boneIds.has(partBoneId(item)));
+  if (project.rig.bones.length + bones.length > KINETRA_LIMITS.bones) {
+    return status(`El esqueleto no puede superar ${KINETRA_LIMITS.bones} huesos`, "error");
+  }
+  if (project.parts.length + linkedLayers.length > KINETRA_LIMITS.layers) {
+    return status(`El proyecto no puede superar ${KINETRA_LIMITS.layers} capas`, "error");
+  }
+
+  const usedBoneIds = new Set(project.rig.bones.map((bone) => bone.id));
+  const boneNames = project.rig.bones.map((bone) => bone.name || bone.id);
+  const idMap = new Map();
+  const nameMap = new Map();
+  bones.forEach((bone) => {
+    const name = uniqueDuplicateName(mirroredStructureName(bone.name || bone.id), boneNames);
+    boneNames.push(name);
+    const id = uniqueId(safeId(name, `${bone.id}_reflejado`), usedBoneIds);
+    usedBoneIds.add(id);
+    idMap.set(bone.id, id);
+    nameMap.set(bone.id, name);
+  });
+
+  const duplicatedBones = bones.map((bone) => {
+    const duplicate = {
+      ...structuredClone(bone),
+      id: idMap.get(bone.id),
+      name: nameMap.get(bone.id),
+      x: -(Number(bone.x) || 0),
+      y: Number(bone.y) || 0
+    };
+    if (duplicate.followTarget) delete duplicate.parent;
+    else duplicate.parent = idMap.get(bone.parent) || bone.parent || null;
+    return duplicate;
+  });
+  project.rig.bones.push(...duplicatedBones);
+
+  (project.clips || [project.clip]).forEach((clip) => {
+    clip.keys ||= {};
+    clip.requires ||= [];
+    bones.forEach((bone) => {
+      const duplicateId = idMap.get(bone.id);
+      clip.keys[duplicateId] = mirroredKeyframes(clip.keys[bone.id]);
+      if (clip.requires.includes(bone.id) && !clip.requires.includes(duplicateId)) clip.requires.push(duplicateId);
+    });
+  });
+
+  const usedLayerIds = new Set(project.parts.map((item) => item.id));
+  const layerNames = project.parts.map((item) => item.name || item.id);
+  const duplicatedLayers = linkedLayers.map((item, index) => {
+    const name = uniqueDuplicateName(mirroredStructureName(item.name || item.id), layerNames);
+    layerNames.push(name);
+    const id = uniqueId(safeId(name, `${item.id}_reflejado`), usedLayerIds);
+    usedLayerIds.add(id);
+    const duplicate = {
+      ...structuredClone(item),
+      id,
+      name,
+      boneId: idMap.get(partBoneId(item)),
+      x: -(Number(item.x) || 0),
+      y: Number(item.y) || 0,
+      rotation: -(Number(item.rotation) || 0),
+      restRotation: -(Number(item.restRotation) || 0),
+      scaleX: -(Number(item.scaleX) || 1),
+      scaleY: Number(item.scaleY) || 1,
+      z: project.parts.length + index
+    };
+    delete duplicate.groupId;
+    return duplicate;
+  });
+  project.parts.push(...duplicatedLayers);
+  project.rig.id = "custom";
+  project.rig.name = project.rig.name === "Humanoide" ? "Esqueleto personalizado" : project.rig.name;
+  selectedTargets = new Set(duplicatedBones.map((bone) => bone.id));
+  selectedTarget = duplicatedBones.at(-1).id;
+  hierarchyAnchors.skeleton = duplicatedBones[0].id;
+  hierarchyFocus.skeleton = selectedTarget;
+  ensureImages();
+  normalizeLayerOrder();
+  const boneSummary = `${duplicatedBones.length} ${duplicatedBones.length === 1 ? "hueso" : "huesos"}`;
+  const layerSummary = `${duplicatedLayers.length} ${duplicatedLayers.length === 1 ? "capa" : "capas"}`;
+  commit(`Cadena duplicada y reflejada: ${boneSummary} y ${layerSummary}`);
+  refresh();
 }
 
 function removeSelectedBone() {
@@ -4100,6 +4475,7 @@ function showRightTab(next) {
 
 function setMode(next) {
   if (next === "sprites") next = "calibrador";
+  if (next !== "calibrador" && rigTestActive) setRigTestMode(false, false);
   if (mode !== "exportar" && mode !== "proyecto" && ["animador", "calibrador"].includes(mode)) lastEditorMode = mode;
   mode = next;
   document
@@ -4112,12 +4488,17 @@ function setMode(next) {
     applyPanelLayout();
   }
   $("ghost").disabled = next !== "animador";
+  $("rig-test").disabled = next !== "calibrador";
   setTool(tool);
   window.history.replaceState(null, "", `#${next}`);
   refresh();
 }
 
 function setTool(next) {
+  if (rigTestActive && !["select", "pan"].includes(next)) {
+    status("En el modo de prueba solo están disponibles Seleccionar y Desplazar vista");
+    return;
+  }
   tool = next;
   if (next !== "bone") boneCreationAnchor = null;
   canvas.style.cursor = "";
@@ -4563,6 +4944,7 @@ function bindControls() {
   $("remove-part").onclick = removeSelectedLayer;
   $("add-bone").onclick = addBone;
   $("inspector-add-bone").onclick = addBone;
+  $("mirror-chain").onclick = duplicateMirroredChain;
   $("delete-bone").onclick = removeSelectedBone;
   $("inspector-delete-bone").onclick = removeSelectedBone;
   $("image-files").onchange = async () => {
@@ -4676,6 +5058,7 @@ function bindControls() {
   });
   $("key-ease").onchange = () => {
     previewKeyFromInspector();
+    updatePresetSelection();
     if (rightTab === "curves") drawCurve();
   };
   $("add-event").onclick = () => {
@@ -4715,12 +5098,25 @@ function bindControls() {
     };
   });
   const flipPart = (axis) => {
-    const current = part();
-    if (!current) return status("Importa o selecciona una capa para reflejarla");
-    if (lockedParts.has(current.id)) return status(`${current.name || current.id} está bloqueado`);
+    const geometry = selectedLayerTransformGeometry(0);
+    if (!geometry) return status("Selecciona al menos una capa desbloqueada para reflejarla");
     const property = axis === "y" ? "scaleY" : "scaleX";
-    current[property] = (current[property] || 1) * -1;
-    commit(axis === "y" ? "Pieza volteada verticalmente" : "Pieza volteada horizontalmente");
+    const state = matrices(0);
+    layerTransformTargets(geometry, state).forEach((target) => {
+      const mirroredCenter = {
+        x: axis === "x" ? geometry.center.x * 2 - target.center.x : target.center.x,
+        y: axis === "y" ? geometry.center.y * 2 - target.center.y : target.center.y
+      };
+      const parentAngle = (Math.atan2(target.parentMatrix[1], target.parentMatrix[0]) * 180) / Math.PI;
+      const restRotation = target.item.restRotation || 0;
+      const effectiveRotation = restRotation + target.rotation;
+      setLayerWorldCenter(target, mirroredCenter);
+      target.item.rotation = -effectiveRotation - parentAngle * 2 - restRotation;
+      target.item[property] = target[property] * -1;
+    });
+    const count = geometry.geometries.length;
+    const direction = axis === "y" ? "verticalmente" : "horizontalmente";
+    commit(count === 1 ? `Capa reflejada ${direction}` : `${count} capas reflejadas ${direction}`);
     refresh();
   };
   $("flip-part").onclick = () => flipPart("x");
@@ -4779,6 +5175,7 @@ function bindControls() {
     status($("snap-grid").checked ? "Ajuste a cuadrícula activado" : "Ajuste a cuadrícula desactivado");
   $("snap-joints").onchange = () =>
     status($("snap-joints").checked ? "Encaje a articulaciones activado" : "Encaje a articulaciones desactivado");
+  $("rig-test").onchange = () => setRigTestMode($("rig-test").checked);
   $("file").onchange = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -4818,7 +5215,8 @@ function bindCanvas() {
     const world = toWorld(event.clientX, event.clientY);
     if (tool === "bone") {
       const state = matrices(mode === "animador" ? time : 0);
-      const startTarget = nearestCanvasTarget(event.clientX, event.clientY, state);
+      const anchoredTarget = boneCreationAnchor && state.joints[boneCreationAnchor] ? boneCreationAnchor : null;
+      const startTarget = anchoredTarget || nearestCanvasTarget(event.clientX, event.clientY, state);
       const startMatrix = startTarget ? targetMatrix(state, startTarget) : null;
       const start = startMatrix
         ? { x: startMatrix[4], y: startMatrix[5] }
@@ -4845,29 +5243,80 @@ function bindCanvas() {
       return;
     }
     if (mode === "calibrador") {
+      if (tool === "select" && $("bones").checked) {
+        const state = matrices(0);
+        const jointTarget = nearestCanvasJoint(event.clientX, event.clientY, state);
+        if (jointTarget) {
+          if (lockedTargets.has(jointTarget)) return status(`${label(jointTarget)} está bloqueado`);
+          selectAnimationTarget(jointTarget);
+          selectedKeys.clear();
+          if (rigTestActive) {
+            interaction = beginTransformInteraction(
+              { type: "translate", axis: "free" },
+              state,
+              world,
+              toCanvasPoint(event.clientX, event.clientY)
+            );
+            interaction.testMode = true;
+          } else {
+            const bone = project.rig.bones.find((item) => item.id === jointTarget);
+            const parent = rigParents()[jointTarget];
+            const parentMatrix =
+              parent === "torso" ? targetMatrix(state, "torso") : parent ? state.joints[parent] : state.root;
+            interaction = {
+              type: "rest-joint",
+              target: jointTarget,
+              start: world,
+              parentMatrix,
+              x: bone.x,
+              y: bone.y,
+              moved: false
+            };
+          }
+          canvas.style.cursor = "grabbing";
+          refresh();
+          status(
+            rigTestActive
+              ? `Probando temporalmente ${label(jointTarget)}`
+              : `Moviendo la posición base de ${label(jointTarget)}`
+          );
+          return;
+        }
+      }
+      if (rigTestActive) return status("Arrastra una articulación visible para probar el esqueleto");
       const gizmoHit = hitLayerTransformGizmo(event.clientX, event.clientY);
       if (gizmoHit) {
         const pointer = toCanvasPoint(event.clientX, event.clientY);
         const { geometry } = gizmoHit;
+        const targets = layerTransformTargets(geometry);
         if (gizmoHit.type === "piece-scale") {
+          const minimumRatio = Math.max(
+            ...targets.flatMap((target) => [0.1 / Math.abs(target.scaleX), 0.1 / Math.abs(target.scaleY)])
+          );
+          const maximumRatio = Math.min(
+            ...targets.flatMap((target) => [4 / Math.abs(target.scaleX), 4 / Math.abs(target.scaleY)])
+          );
           interaction = {
             type: "piece-scale",
             center: geometry.canvasCenter,
+            worldCenter: geometry.center,
             startDistance: Math.max(
               1,
               Math.hypot(pointer.x - geometry.canvasCenter.x, pointer.y - geometry.canvasCenter.y)
             ),
-            scaleX: geometry.item.scaleX,
-            scaleY: geometry.item.scaleY,
+            minimumRatio,
+            maximumRatio,
+            targets,
             moved: false
           };
         } else {
           interaction = {
             type: "piece-rotate",
             center: geometry.canvasCenter,
+            worldCenter: geometry.center,
             startPointerAngle:
               (Math.atan2(pointer.y - geometry.canvasCenter.y, pointer.x - geometry.canvasCenter.x) * 180) / Math.PI,
-            rotation: geometry.item.rotation || 0,
+            targets,
             moved: false
           };
         }
@@ -4876,9 +5325,25 @@ function bindCanvas() {
       }
       const chosen = nearestCanvasLayer(event.clientX, event.clientY);
       if (chosen) {
-        selectLayer(chosen);
-        if (tool === "select" && !lockedParts.has(chosen))
-          interaction = { type: "piece", start: world, x: part().x, y: part().y, moved: false };
+        if (event.shiftKey) {
+          selectLayer(chosen, true);
+          refresh();
+          status(selectedParts.size > 1 ? `${selectedParts.size} capas seleccionadas` : "Selección actualizada");
+          return;
+        }
+        if (!selectedParts.has(chosen)) selectLayer(chosen);
+        if (tool === "select" && !lockedParts.has(chosen)) {
+          const geometry = selectedLayerTransformGeometry(0);
+          if (geometry) {
+            interaction = {
+              type: "piece",
+              start: world,
+              center: geometry.center,
+              targets: layerTransformTargets(geometry),
+              moved: false
+            };
+          }
+        }
         refresh();
         if (tool !== "select") status(`Capa seleccionada; arrastra ${tool === "rotate" ? "el anillo" : "una esquina"}`);
       }
@@ -4934,8 +5399,12 @@ function bindCanvas() {
         const hit = hitLayerTransformGizmo(event.clientX, event.clientY);
         if (hit) canvas.style.cursor = tool === "rotate" ? "crosshair" : "nwse-resize";
         else if (tool === "select") {
-          const chosen = nearestCanvasLayer(event.clientX, event.clientY);
-          canvas.style.cursor = chosen && !lockedParts.has(chosen) ? "move" : "default";
+          const joint = $("bones").checked ? nearestCanvasJoint(event.clientX, event.clientY, matrices(0)) : null;
+          if (joint) canvas.style.cursor = lockedTargets.has(joint) ? "not-allowed" : "grab";
+          else {
+            const chosen = nearestCanvasLayer(event.clientX, event.clientY);
+            canvas.style.cursor = chosen && !lockedParts.has(chosen) ? "move" : "default";
+          }
         } else canvas.style.cursor = "default";
       } else if (mode === "animador") {
         const state = matrices(time);
@@ -4968,39 +5437,100 @@ function bindCanvas() {
       offsetX = interaction.offsetX + event.clientX - interaction.x;
       offsetY = interaction.offsetY + event.clientY - interaction.y;
       draw();
-    } else if (interaction.type === "piece") {
+    } else if (interaction.type === "rest-joint") {
+      const bone = project.rig.bones.find((item) => item.id === interaction.target);
+      const worldDelta = {
+        x: world.x - interaction.start.x,
+        y: world.y - interaction.start.y
+      };
+      const delta = localDelta(interaction.parentMatrix, worldDelta.x, worldDelta.y);
       const position = {
-        x: interaction.x + world.x - interaction.start.x,
-        y: interaction.y + world.y - interaction.start.y
+        x: interaction.x + delta.x,
+        y: interaction.y + delta.y
       };
       const snapped = $("snap-grid").checked ? snapPointToGrid(position) : position;
-      part().x = snapped.x;
-      part().y = snapped.y;
-      interaction.moved = true;
-      draw();
-      showTransformReadout(event, positionReadout(part().x, part().y));
-    } else if (interaction.type === "piece-scale") {
-      const pointer = toCanvasPoint(event.clientX, event.clientY);
-      const distance = Math.hypot(pointer.x - interaction.center.x, pointer.y - interaction.center.y);
-      const ratio = Math.max(0.1, Math.min(4, distance / interaction.startDistance));
-      part().scaleX =
-        Math.sign(interaction.scaleX || 1) * Math.max(0.1, Math.min(4, Math.abs(interaction.scaleX) * ratio));
-      part().scaleY =
-        Math.sign(interaction.scaleY || 1) * Math.max(0.1, Math.min(4, Math.abs(interaction.scaleY) * ratio));
+      bone.x = snapped.x;
+      bone.y = snapped.y;
       interaction.moved = true;
       draw();
       renderInspector();
-      showTransformReadout(event, scaleReadout(part().scaleX, part().scaleY));
+      showTransformReadout(event, positionReadout(bone.x, bone.y));
+    } else if (interaction.type === "piece") {
+      let worldDelta = {
+        x: world.x - interaction.start.x,
+        y: world.y - interaction.start.y
+      };
+      if ($("snap-grid").checked) {
+        const snappedCenter = snapPointToGrid({
+          x: interaction.center.x + worldDelta.x,
+          y: interaction.center.y + worldDelta.y
+        });
+        worldDelta = {
+          x: snappedCenter.x - interaction.center.x,
+          y: snappedCenter.y - interaction.center.y
+        };
+      }
+      interaction.targets.forEach((target) => {
+        const delta = localDelta(target.parentMatrix, worldDelta.x, worldDelta.y);
+        target.item.x = target.x + delta.x;
+        target.item.y = target.y + delta.y;
+      });
+      interaction.moved = true;
+      draw();
+      showTransformReadout(
+        event,
+        positionReadout(interaction.center.x + worldDelta.x, interaction.center.y + worldDelta.y)
+      );
+    } else if (interaction.type === "piece-scale") {
+      const pointer = toCanvasPoint(event.clientX, event.clientY);
+      const distance = Math.hypot(pointer.x - interaction.center.x, pointer.y - interaction.center.y);
+      const ratio = Math.max(
+        interaction.minimumRatio,
+        Math.min(interaction.maximumRatio, distance / interaction.startDistance)
+      );
+      interaction.targets.forEach((target) => {
+        const offset = {
+          x: target.center.x - interaction.worldCenter.x,
+          y: target.center.y - interaction.worldCenter.y
+        };
+        setLayerWorldCenter(target, {
+          x: interaction.worldCenter.x + offset.x * ratio,
+          y: interaction.worldCenter.y + offset.y * ratio
+        });
+        target.item.scaleX = target.scaleX * ratio;
+        target.item.scaleY = target.scaleY * ratio;
+      });
+      interaction.moved = true;
+      draw();
+      renderInspector();
+      showTransformReadout(
+        event,
+        interaction.targets.length > 1
+          ? `Escala del grupo: ${Math.round(ratio * 100)} %`
+          : scaleReadout(interaction.targets[0].item.scaleX, interaction.targets[0].item.scaleY)
+      );
     } else if (interaction.type === "piece-rotate") {
       const pointer = toCanvasPoint(event.clientX, event.clientY);
       const pointerAngle =
         (Math.atan2(pointer.y - interaction.center.y, pointer.x - interaction.center.x) * 180) / Math.PI;
-      const rotation = interaction.rotation + shortestAngleDelta(interaction.startPointerAngle, pointerAngle);
-      part().rotation = event.shiftKey ? Math.round(rotation / 15) * 15 : rotation;
+      const rawDelta = shortestAngleDelta(interaction.startPointerAngle, pointerAngle);
+      const angleDelta = event.shiftKey ? Math.round(rawDelta / 15) * 15 : rawDelta;
+      const radians = (angleDelta * Math.PI) / 180;
+      const cosine = Math.cos(radians);
+      const sine = Math.sin(radians);
+      interaction.targets.forEach((target) => {
+        const offsetX = target.center.x - interaction.worldCenter.x;
+        const offsetY = target.center.y - interaction.worldCenter.y;
+        setLayerWorldCenter(target, {
+          x: interaction.worldCenter.x + offsetX * cosine - offsetY * sine,
+          y: interaction.worldCenter.y + offsetX * sine + offsetY * cosine
+        });
+        target.item.rotation = target.rotation + angleDelta;
+      });
       interaction.moved = true;
       draw();
       renderInspector();
-      showTransformReadout(event, rotationReadout(part().rotation));
+      showTransformReadout(event, rotationReadout(angleDelta));
     } else if (interaction.type === "translate") {
       const worldDelta = constrainedWorldDelta(
         {
@@ -5012,8 +5542,8 @@ function bindCanvas() {
       );
       interaction.targets.forEach((item) => {
         const delta = localDelta(item.parentMatrix, worldDelta.x, worldDelta.y);
-        const current = ensureDraftFrame(item.target);
-        setDraftFrame(item.target, {
+        const current = ensureInteractionFrame(interaction, item.target);
+        setInteractionFrame(interaction, item.target, {
           ...current,
           x: item.x + delta.x,
           y: item.y + delta.y
@@ -5023,7 +5553,7 @@ function bindCanvas() {
       draw();
       renderInspector();
       const primary = interaction.targets.find((item) => item.target === selectedTarget) || interaction.targets[0];
-      const frame = draftFrame(primary.target);
+      const frame = interactionFrame(interaction, primary.target);
       showTransformReadout(event, positionReadout(frame?.x || 0, frame?.y || 0));
     } else if (interaction.type === "ik") {
       const delta = constrainedWorldDelta(
@@ -5040,22 +5570,22 @@ function bindCanvas() {
       };
       const solved = solveTwoBoneIk(interaction.points.root, interaction.points.joint, interaction.points.end, target);
       if (!solved) return status("La cadena no tiene longitud suficiente para aplicar cinemática inversa");
-      const upperFrame = ensureDraftFrame(interaction.chain.upper);
-      const middleFrame = ensureDraftFrame(interaction.chain.middle);
+      const upperFrame = ensureInteractionFrame(interaction, interaction.chain.upper);
+      const middleFrame = ensureInteractionFrame(interaction, interaction.chain.middle);
       const upperAngle = interaction.upperAngle + solved.upperDelta;
       const middleAngle = interaction.middleAngle + solved.lowerDelta;
-      setDraftFrame(interaction.chain.upper, {
+      setInteractionFrame(interaction, interaction.chain.upper, {
         ...upperFrame,
         angle: event.shiftKey ? Math.round(upperAngle / 15) * 15 : upperAngle
       });
-      setDraftFrame(interaction.chain.middle, {
+      setInteractionFrame(interaction, interaction.chain.middle, {
         ...middleFrame,
         angle: event.shiftKey ? Math.round(middleAngle / 15) * 15 : middleAngle
       });
       interaction.moved = true;
       draw();
       renderInspector();
-      showTransformReadout(event, rotationReadout(draftFrame(interaction.chain.middle)?.angle || 0));
+      showTransformReadout(event, rotationReadout(interactionFrame(interaction, interaction.chain.middle)?.angle || 0));
     } else if (interaction.type === "joint") {
       const delta = constrainedWorldDelta(
         {
@@ -5071,30 +5601,30 @@ function bindCanvas() {
       };
       const solved = solveJointRotation(interaction.points.root, interaction.points.joint, target);
       if (!solved) return status("La articulación no puede rotar desde esa posición");
-      const upperFrame = ensureDraftFrame(interaction.chain.upper);
+      const upperFrame = ensureInteractionFrame(interaction, interaction.chain.upper);
       const angle = interaction.upperAngle + solved.angleDelta;
-      setDraftFrame(interaction.chain.upper, {
+      setInteractionFrame(interaction, interaction.chain.upper, {
         ...upperFrame,
         angle: event.shiftKey ? Math.round(angle / 15) * 15 : angle
       });
       interaction.moved = true;
       draw();
       renderInspector();
-      showTransformReadout(event, rotationReadout(draftFrame(interaction.chain.upper)?.angle || 0));
+      showTransformReadout(event, rotationReadout(interactionFrame(interaction, interaction.chain.upper)?.angle || 0));
     } else if (interaction.type === "rotate") {
       const pointerAngle = (Math.atan2(world.y - interaction.center.y, world.x - interaction.center.x) * 180) / Math.PI;
       const delta = shortestAngleDelta(interaction.startPointerAngle, pointerAngle);
       interaction.targets.forEach((item) => {
         const rawAngle = Math.max(-360, Math.min(360, item.angle + delta));
         const angle = event.shiftKey ? Math.round(rawAngle / 15) * 15 : rawAngle;
-        const current = ensureDraftFrame(item.target);
-        setDraftFrame(item.target, { ...current, angle });
+        const current = ensureInteractionFrame(interaction, item.target);
+        setInteractionFrame(interaction, item.target, { ...current, angle });
       });
       interaction.moved = true;
       draw();
       renderInspector();
       const primary = interaction.targets.find((item) => item.target === selectedTarget) || interaction.targets[0];
-      showTransformReadout(event, rotationReadout(draftFrame(primary.target)?.angle || 0));
+      showTransformReadout(event, rotationReadout(interactionFrame(interaction, primary.target)?.angle || 0));
     } else if (interaction.type === "scale") {
       const point = toCanvasPoint(event.clientX, event.clientY);
       const canvasDelta = rotateCanvasDelta(
@@ -5106,14 +5636,14 @@ function bindCanvas() {
         const nextScale = scaleFromDrag({ scaleX: item.scaleX, scaleY: item.scaleY }, canvasDelta, interaction.handle, {
           uniform: event.shiftKey
         });
-        const current = ensureDraftFrame(item.target);
-        setDraftFrame(item.target, { ...current, ...nextScale });
+        const current = ensureInteractionFrame(interaction, item.target);
+        setInteractionFrame(interaction, item.target, { ...current, ...nextScale });
       });
       interaction.moved = true;
       draw();
       renderInspector();
       const primary = interaction.targets.find((item) => item.target === selectedTarget) || interaction.targets[0];
-      const frame = draftFrame(primary.target);
+      const frame = interactionFrame(interaction, primary.target);
       showTransformReadout(event, scaleReadout(1 + (frame?.scaleX || 0), 1 + (frame?.scaleY || 0)));
     }
   };
@@ -5126,9 +5656,19 @@ function bindCanvas() {
       completed.moved =
         Math.hypot(completed.end.x - completed.start.x, completed.end.y - completed.start.y) * BASE_SCALE * zoom >= 4;
     }
-    if (completed?.moved && completed.type === "piece") commit("Pieza desplazada");
-    if (completed?.moved && completed.type === "piece-scale") commit("Escala de la capa actualizada");
-    if (completed?.moved && completed.type === "piece-rotate") commit("Rotación de la capa actualizada");
+    const transformedLayers = completed?.targets?.length || 0;
+    if (completed?.moved && completed.type === "rest-joint")
+      commit(`Posición base de ${label(completed.target)} actualizada`);
+    if (completed?.moved && completed.type === "piece")
+      commit(transformedLayers > 1 ? `${transformedLayers} capas desplazadas` : "Capa desplazada");
+    if (completed?.moved && completed.type === "piece-scale")
+      commit(
+        transformedLayers > 1 ? `Escala de ${transformedLayers} capas actualizada` : "Escala de la capa actualizada"
+      );
+    if (completed?.moved && completed.type === "piece-rotate")
+      commit(
+        transformedLayers > 1 ? `Rotación de ${transformedLayers} capas actualizada` : "Rotación de la capa actualizada"
+      );
     interaction = null;
     hideTransformReadout();
     canvas.style.cursor = tool === "bone" ? "crosshair" : "";
@@ -5137,7 +5677,9 @@ function bindCanvas() {
       return;
     }
     refresh();
-    if (completed?.moved && !["piece", "piece-scale", "piece-rotate"].includes(completed.type)) {
+    if (completed?.moved && completed.testMode) {
+      status("Pose de prueba actualizada temporalmente; desactiva Probar esqueleto para descartarla");
+    } else if (completed?.moved && !["rest-joint", "piece", "piece-scale", "piece-rotate"].includes(completed.type)) {
       const action =
         completed.type === "translate"
           ? "Posición"
@@ -5186,6 +5728,12 @@ function bindKeyboard() {
         interaction = null;
         setTool("select");
         status("Creación de huesos cancelada");
+        return;
+      }
+      if (event.key === "Escape" && rigTestActive) {
+        event.preventDefault();
+        interaction = null;
+        setRigTestMode(false);
         return;
       }
       const command = event.ctrlKey || event.metaKey;
