@@ -7,13 +7,13 @@ export const HELP_TOPICS = Object.freeze({
 
 export const TUTORIALS = Object.freeze({
   animador: {
-    label: "Animador",
+    label: "Animación",
     mode: "animador",
     steps: [
       {
         target: "#workspace-menu",
-        title: "Estás en el Animador",
-        copy: "Este selector cambia de espacio sin separar el proyecto. El Animador modifica poses y crea fotogramas clave."
+        title: "Estás en Animación",
+        copy: "Este selector cambia de espacio sin separar el proyecto. Aquí puedes modificar poses y crear fotogramas clave."
       },
       {
         target: "[data-panel='skeleton'] .tree",
@@ -35,7 +35,7 @@ export const TUTORIALS = Object.freeze({
         target: "#set-key",
         panel: "inspector",
         title: "Guarda el fotograma",
-        copy: "La pose queda como borrador hasta pulsar Guardar fotograma."
+        copy: "Los cambios del fotograma quedan pendientes hasta pulsar Guardar fotograma clave."
       },
       {
         target: "[data-panel='timeline']",
@@ -71,7 +71,7 @@ export const TUTORIALS = Object.freeze({
         target: "#add-bone",
         panel: "skeleton",
         title: "Construye tu esqueleto",
-        copy: "Añade huesos desde la raíz o como hijos del hueso seleccionado."
+        copy: "Dibuja huesos desde la raíz o como hijos del hueso seleccionado."
       }
     ]
   },
@@ -129,7 +129,7 @@ export const TUTORIALS = Object.freeze({
       {
         target: "#download-project",
         title: "Exporta el proyecto completo",
-        copy: "El paquete incluye rig, capas, recursos y todos los clips."
+        copy: "El paquete incluye el esqueleto, las capas, los recursos y todos los clips."
       }
     ]
   }

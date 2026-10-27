@@ -17,6 +17,61 @@ assert.doesNotMatch(html, /data-mode=["']sprites["']/, "Calibrador y Sprites deb
 for (const id of ["canvas", "preview-canvas", "inspector-panel", "timeline-scroll", "tracks"]) {
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control ${id}`);
 }
+assert.match(html, /id=["']tool-context["']/, "La barra debe mostrar qué elemento transformarán sus herramientas");
+assert.match(html, /id=["']transform-readout["']/, "El visor debe incluir información visible durante el arrastre");
+assert.match(editor, /function positionReadout\(/, "El arrastre debe mostrar las coordenadas de posición");
+assert.match(editor, /function rotationReadout\(/, "El arrastre debe mostrar la rotación en grados");
+assert.match(editor, /function scaleReadout\(/, "El arrastre debe mostrar la escala como porcentaje");
+assert.match(css, /\.transform-readout\s*\{/, "La información de transformación debe aparecer junto al cursor");
+for (const id of ["snap-grid", "snap-joints"]) {
+  assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir la opción de ajuste ${id}`);
+}
+assert.match(html, /<kbd>Mayús<\/kbd> Ángulos de 15°/, "La barra debe explicar el ajuste angular con Mayús");
+assert.match(editor, /function snapPointToGrid\(/, "Las posiciones deben poder ajustarse a la cuadrícula");
+assert.match(editor, /function nearbyJoint\(/, "Los extremos de hueso deben detectar articulaciones próximas");
+assert.match(
+  editor,
+  /event\.shiftKey \? Math\.round\([^\n]+ \/ 15\) \* 15/,
+  "Mantener Mayús debe restringir las rotaciones a intervalos de 15 grados"
+);
+assert.match(
+  editor,
+  /function updateToolContext\(/,
+  "El contexto de herramientas debe actualizarse con el espacio y la selección"
+);
+assert.match(
+  editor,
+  /rotate: `Rotar capa \(R\).*rotate: `Rotar hueso o selección \(R\)/s,
+  "Las ayudas de las herramientas deben distinguir capas de huesos"
+);
+assert.match(css, /\.tool-context\s*\{/, "El contexto de herramientas debe diferenciarse visualmente");
+assert.match(html, /<h2>Curvas de interpolación<\/h2>/, "El panel debe explicar que contiene curvas de interpolación");
+assert.match(
+  editor,
+  /\$\("key-ease"\)\.value = value;\s*previewKeyFromInspector\(\);\s*showRightTab\("curves"\)/,
+  "Elegir una interpolación predefinida debe incorporarla a los cambios pendientes"
+);
+assert.match(editor, /function drawLayerTransformGizmo\(\)/, "Ensamblaje debe dibujar controles de escala y rotación");
+assert.match(
+  editor,
+  /interaction\.type === "piece-scale"/,
+  "La herramienta Escalar debe transformar la capa seleccionada"
+);
+assert.match(
+  editor,
+  /transformedRectContainsPoint\(geometry\.matrix, geometry\.source, world\)/,
+  "La selección de capas debe considerar su matriz transformada"
+);
+assert.match(
+  editor,
+  /layerPixelIsVisible\(geometry, local\)/,
+  "La selección debe ignorar las zonas transparentes del sprite"
+);
+assert.match(
+  editor,
+  /availableWidth \/ \(bounds\.width \* BASE_SCALE\)/,
+  "Ajustar a la vista debe calcular el zoom según los límites del personaje"
+);
 for (const axis of ["x", "y"]) {
   assert.match(html, new RegExp(`id=["']bone-lock-${axis}["']`), `Debe existir el bloqueo del eje ${axis}`);
   assert.ok(editor.includes(`bone-lock-${axis}").onchange`), `El control del eje ${axis} debe tener un evento`);
@@ -37,6 +92,23 @@ assert.match(
   /\$\("bone-lock-both"\)\.indeterminate = \$\("bone-lock-x"\)\.checked !== \$\("bone-lock-y"\)\.checked/
 );
 assert.match(css, /\.bone-position-locks\s*\{/, "Los controles de fijación deben estar agrupados visualmente");
+assert.match(editor, /function drawBoneCreationPreview\(\)/, "Debe previsualizar el trazo del nuevo hueso");
+assert.match(
+  editor,
+  /interaction\s*=\s*\{\s*type:\s*"create-bone"/,
+  "El lienzo debe iniciar la creación del hueso al mantener pulsado el puntero"
+);
+assert.match(
+  editor,
+  /const requiredBones = completed\.existingStart \? 1 : 2/,
+  "Un trazo desde una articulación existente solo debe crear el punto final"
+);
+assert.match(editor, /canvas\.focus\(\{ preventScroll: true \}\)/, "Añadir hueso debe enfocar el lienzo");
+assert.match(
+  css,
+  /\.viewport\.bone #canvas\s*\{[^}]*cursor:\s*crosshair/s,
+  "La herramienta debe mostrar un cursor de dibujo"
+);
 assert.doesNotMatch(html, /<iframe\b/i, "El Studio unificado no debe depender de vistas embebidas");
 assert.match(html, /src=["']\.\/src\/studio\/editor\.js\?v=\d+\.\d+\.\d+["']/);
 assert.match(
@@ -119,7 +191,7 @@ assert.doesNotMatch(
 );
 assert.match(
   html,
-  /data-tool=["']select["'][^>]*title=["']Seleccionar y mover objetivo \(V\).*selección múltiple["']/,
+  /data-tool=["']select["'][^>]*title=["']Seleccionar y mover elementos \(V\).*selección múltiple["']/,
   "La herramienta principal debe anunciar el desplazamiento y la selección múltiple"
 );
 assert.doesNotMatch(
@@ -145,7 +217,7 @@ assert.match(
 assert.match(
   editor,
   /beginTransformInteraction\(/,
-  "El Animador debe iniciar interacciones desde los controles visuales"
+  "Animación debe iniciar interacciones desde los controles visuales"
 );
 assert.match(editor, /function localDelta\(/, "El arrastre debe convertir el movimiento al espacio local del hueso");
 assert.match(
@@ -169,7 +241,7 @@ for (const id of [
 ]) {
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control ${id}`);
 }
-assert.match(html, /data-tool=["']scale["']/, "El Animador debe ofrecer escalado visual");
+assert.match(html, /data-tool=["']scale["']/, "Animación debe ofrecer escalado visual");
 assert.match(editor, /sampledPose:\s*ghostPose/, "La vista fantasma debe dibujar una instantánea guardada exacta");
 assert.doesNotMatch(editor, /time\s*[-+]\s*step/, "La vista fantasma no debe usar tiempos interpolados aproximados");
 assert.match(
@@ -445,6 +517,8 @@ assert.match(html, /data-menu-command=["']import-images["']/, "Archivo debe ofre
 for (const id of [
   "part-name",
   "part-bone",
+  "flip-part",
+  "flip-part-y",
   "add-bone",
   "delete-bone",
   "bone-name",
@@ -454,6 +528,21 @@ for (const id of [
 ]) {
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control genérico ${id}`);
 }
+assert.match(
+  editor,
+  /\$\("flip-part"\)\.onclick = \(\) => flipPart\("x"\)/,
+  "Debe poder reflejar capas horizontalmente"
+);
+assert.match(
+  editor,
+  /\$\("flip-part-y"\)\.onclick = \(\) => flipPart\("y"\)/,
+  "Debe poder reflejar capas verticalmente"
+);
+assert.match(
+  editor,
+  /const property = axis === "y" \? "scaleY" : "scaleX"/,
+  "Cada reflejo debe invertir únicamente el eje correspondiente"
+);
 assert.match(editor, /function importImageLayers\(/, "Las imágenes deben convertirse en recursos y capas reales");
 assert.match(
   editor,

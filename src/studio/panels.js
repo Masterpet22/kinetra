@@ -10,10 +10,10 @@ export const PANEL_DEFAULTS = Object.freeze({
 
 export const PANEL_LABELS = Object.freeze({
   skeleton: "Esqueleto",
-  tracks: "Pistas",
+  tracks: "Pistas de animación",
   layers: "Capas",
   inspector: "Inspector",
-  presets: "Presets",
+  presets: "Interpolación",
   curves: "Curvas",
   timeline: "Línea de tiempo"
 });

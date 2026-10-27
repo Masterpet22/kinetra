@@ -8,6 +8,26 @@ import {
   scaleFromDrag,
   shortestAngleDelta
 } from "../src/studio/gizmo.js";
+import { inverseTransformPoint, transformedRectContainsPoint } from "../src/studio/canvas-renderer.js";
+
+const transformedSource = { width: 10, height: 6 };
+const rotatedScaledMatrix = [0, 2, -1, 0, 10, 20];
+assert.deepEqual(inverseTransformPoint(rotatedScaledMatrix, { x: 8, y: 28 }), { x: 4, y: 2 });
+assert.equal(
+  transformedRectContainsPoint(rotatedScaledMatrix, transformedSource, { x: 8, y: 28 }),
+  true,
+  "La selección debe reconocer un punto dentro de una capa rotada y escalada"
+);
+assert.equal(
+  transformedRectContainsPoint(rotatedScaledMatrix, transformedSource, { x: 10, y: 32 }),
+  false,
+  "La selección debe rechazar un punto fuera de la forma transformada"
+);
+assert.deepEqual(
+  inverseTransformPoint([-1, 0, 0, 1, 10, 20], { x: 6, y: 22 }),
+  { x: 4, y: 2 },
+  "La selección debe admitir capas reflejadas"
+);
 
 assert.equal(hitMoveGizmo(0, 0), "free");
 assert.equal(hitMoveGizmo(42, 2), "x");

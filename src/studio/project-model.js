@@ -83,7 +83,7 @@ export function migrateAuthoringProject(source) {
     assets: structuredClone(source.assets || []),
     layerGroups: structuredClone(source.layerGroups || []),
     rig: {
-      ...structuredClone(source.rig || { id: "custom", name: "Rig personalizado" }),
+      ...structuredClone(source.rig || { id: "custom", name: "Esqueleto personalizado" }),
       bones: structuredClone(Array.isArray(source.rig?.bones) ? source.rig.bones : [])
     },
     parts: structuredClone(source.parts || source.layers || []).map((part, z) => ({
