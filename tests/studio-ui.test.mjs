@@ -41,21 +41,45 @@ assert.match(
 );
 assert.match(
   editor,
-  /rotate: `Rotar capa \(R\).*rotate: `Rotar hueso o selección \(R\)/s,
+  /rotate: `Rotar capa o selección \(R\).*rotate: `Rotar hueso o selección \(R\)/s,
   "Las ayudas de las herramientas deben distinguir capas de huesos"
 );
 assert.match(css, /\.tool-context\s*\{/, "El contexto de herramientas debe diferenciarse visualmente");
 assert.match(html, /<h2>Curvas de interpolación<\/h2>/, "El panel debe explicar que contiene curvas de interpolación");
+assert.match(html, /id=["']preset-active["']/, "El panel debe anunciar la interpolación activa");
 assert.match(
   editor,
-  /\$\("key-ease"\)\.value = value;\s*previewKeyFromInspector\(\);\s*showRightTab\("curves"\)/,
+  /\$\("key-ease"\)\.value = value;\s*previewKeyFromInspector\(\);\s*updatePresetSelection\(\);\s*showRightTab\("curves"\)/,
   "Elegir una interpolación predefinida debe incorporarla a los cambios pendientes"
 );
+assert.match(editor, /function updatePresetSelection\(/, "La opción aplicada debe conservar un estado activo visible");
+assert.match(
+  editor,
+  /button\.setAttribute\("aria-pressed", String\(selected\)\)/,
+  "El estado activo debe ser accesible"
+);
+assert.match(css, /\.preset-button\.active\s*\{/, "La interpolación activa debe resaltarse visualmente");
+assert.match(css, /@keyframes preset-preview-motion/, "Las interpolaciones deben incluir una vista previa animada");
 assert.match(editor, /function drawLayerTransformGizmo\(\)/, "Ensamblaje debe dibujar controles de escala y rotación");
 assert.match(
   editor,
   /interaction\.type === "piece-scale"/,
   "La herramienta Escalar debe transformar la capa seleccionada"
+);
+assert.match(
+  editor,
+  /function selectedLayerTransformGeometry\(/,
+  "El manipulador debe abarcar todas las capas seleccionadas"
+);
+assert.match(
+  editor,
+  /interaction\.targets\.forEach\(\(target\) => \{[\s\S]*?setLayerWorldCenter/,
+  "Mover, rotar y escalar deben conservar la disposición conjunta de las capas"
+);
+assert.match(
+  editor,
+  /layerTransformTargets\(geometry, state\)\.forEach/,
+  "El reflejo debe aplicarse a cada capa seleccionada"
 );
 assert.match(
   editor,
@@ -92,6 +116,40 @@ assert.match(
   /\$\("bone-lock-both"\)\.indeterminate = \$\("bone-lock-x"\)\.checked !== \$\("bone-lock-y"\)\.checked/
 );
 assert.match(css, /\.bone-position-locks\s*\{/, "Los controles de fijación deben estar agrupados visualmente");
+assert.match(editor, /function nearestCanvasJoint\(/, "El visor debe detectar articulaciones de forma directa");
+assert.match(
+  editor,
+  /type:\s*"rest-joint"/,
+  "Arrastrar una articulación en Ensamblaje debe iniciar la edición de su posición base"
+);
+assert.match(
+  editor,
+  /interaction\.type === "rest-joint"[\s\S]*?bone\.x = snapped\.x;[\s\S]*?bone\.y = snapped\.y/,
+  "El arrastre debe actualizar las coordenadas base de la articulación"
+);
+assert.match(
+  editor,
+  /Posición base de \$\{label\(completed\.target\)\} actualizada/,
+  "La edición directa debe registrarse en el historial"
+);
+assert.match(html, /id=["']rig-test["']/, "La barra debe ofrecer un modo de prueba del esqueleto");
+assert.match(editor, /const rigTestPose = new Map\(\)/, "La pose de prueba debe mantenerse separada del proyecto");
+assert.match(
+  editor,
+  /rigTestPose\.forEach\(\(frame, target\) => \{\s*sampled\[target\]/,
+  "La pose temporal debe aplicarse únicamente durante la visualización"
+);
+assert.match(
+  editor,
+  /if \(!interaction\.testMode\) return setDraftFrame\(target, frame\)/,
+  "Solo las transformaciones normales deben crear cambios de fotograma"
+);
+assert.match(
+  editor,
+  /Pose de prueba descartada; el esqueleto volvió a su estado original/,
+  "Desactivar la prueba debe explicar que la pose temporal fue descartada"
+);
+assert.match(css, /\.rig-test-control:has\(input:checked\)/, "El modo de prueba activo debe distinguirse visualmente");
 assert.match(editor, /function drawBoneCreationPreview\(\)/, "Debe previsualizar el trazo del nuevo hueso");
 assert.match(
   editor,
@@ -103,6 +161,43 @@ assert.match(
   /const requiredBones = completed\.existingStart \? 1 : 2/,
   "Un trazo desde una articulación existente solo debe crear el punto final"
 );
+assert.match(
+  editor,
+  /const anchoredTarget = boneCreationAnchor && state\.joints\[boneCreationAnchor\] \? boneCreationAnchor : null/,
+  "El siguiente trazo debe comenzar automáticamente en la articulación final"
+);
+assert.match(
+  editor,
+  /continúa arrastrando para añadir otro o pulsa Escape para finalizar/,
+  "La interfaz debe explicar cómo continuar o finalizar la cadena"
+);
+assert.match(editor, /function smartBoneName\(/, "Los huesos nuevos deben recibir nombres contextuales");
+for (const anatomicalName of ["Brazo", "Antebrazo", "Mano", "Muslo", "Pierna", "Pie"]) {
+  assert.match(editor, new RegExp(`"${anatomicalName}"`), `Debe poder sugerirse el nombre anatómico ${anatomicalName}`);
+}
+assert.match(
+  editor,
+  /smartBoneName\(point, parent, \{ jointOrigin \}\)/,
+  "La sugerencia debe considerar la posición, el padre y el tipo de articulación"
+);
+assert.doesNotMatch(
+  editor,
+  /name:\s*`Hueso \$\{project\.rig\.bones\.length \+ 1\}`/,
+  "No debe usarse un contador genérico"
+);
+assert.match(html, /id=["']mirror-chain["']/, "El panel de esqueleto debe ofrecer duplicación reflejada");
+assert.match(editor, /function duplicateMirroredChain\(/, "Debe poder duplicar y reflejar una cadena completa");
+assert.match(
+  editor,
+  /project\.parts\.filter\(\(item\) => boneIds\.has\(partBoneId\(item\)\)\)/,
+  "La duplicación estructural debe incluir las capas vinculadas"
+);
+assert.match(
+  editor,
+  /\(project\.clips \|\| \[project\.clip\]\)\.forEach/,
+  "La duplicación debe reflejar las pistas de la cadena en todos los clips"
+);
+assert.match(editor, /function mirroredStructureName\(/, "Los nombres izquierda y derecha deben intercambiarse");
 assert.match(editor, /canvas\.focus\(\{ preventScroll: true \}\)/, "Añadir hueso debe enfocar el lienzo");
 assert.match(
   css,
@@ -605,6 +700,29 @@ for (const id of ["clip-new", "clip-duplicate", "clip-rename", "clip-up", "clip-
   assert.match(html, new RegExp(`id=["']${id}["']`), `Debe existir el control multiclips ${id}`);
 }
 assert.match(html, /id=["']save-state["']/, "El encabezado debe mostrar el estado de persistencia");
+assert.match(html, /id=["']frame-change-state["']/, "El encabezado debe mostrar los cambios pendientes del fotograma");
+assert.match(html, /id=["']change-indicator["']/, "Los estados del proyecto y del fotograma deben agruparse");
+assert.match(
+  editor,
+  /function updateGlobalChangeIndicator\(/,
+  "El indicador global debe sincronizar la persistencia y el borrador del fotograma"
+);
+assert.match(
+  editor,
+  /Proyecto: Guardado en este navegador/,
+  "Debe distinguirse cuándo el proyecto está guardado localmente"
+);
+assert.match(
+  editor,
+  /Proyecto: Cambios generales sin guardar/,
+  "Debe distinguirse cuándo el proyecto tiene cambios generales pendientes"
+);
+assert.match(
+  editor,
+  /Fotograma: \$\{draftFrames\.size\} elemento\(s\) con cambios pendientes/,
+  "Debe distinguirse el borrador pendiente del fotograma actual"
+);
+assert.match(css, /\.change-indicator\s*\{/, "El indicador global debe permanecer visible en la cabecera");
 assert.match(html, /id=["']status["'][^>]*role=["']status["']/, "Los mensajes deben anunciarse como notificaciones");
 assert.match(
   html,

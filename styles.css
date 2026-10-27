@@ -240,16 +240,31 @@ textarea:focus-visible {
   align-items: center;
   gap: 5px;
 }
-.save-state {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
+.change-indicator {
+  min-width: 190px;
+  display: grid;
+  gap: 3px;
+  font-size: 10px;
+  line-height: 1.15;
+}
+.save-state,
+.frame-change-state {
+  position: relative;
   overflow: hidden;
-  clip: rect(0, 0, 0, 0);
+  padding-left: 11px;
+  color: var(--muted);
+  text-overflow: ellipsis;
   white-space: nowrap;
-  border: 0;
+}
+.save-state::before,
+.frame-change-state::before {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  margin: 3px 0 0 -11px;
+  border-radius: 50%;
+  background: currentColor;
 }
 .save-state[data-state="pending"] {
   color: #ffd38a;
@@ -263,6 +278,15 @@ textarea:focus-visible {
 .save-state[data-state="error"],
 .save-state[data-state="quota"] {
   color: #ff9c9c;
+}
+.save-state[data-state="unsaved"],
+.save-state[data-state="recovered"],
+.save-state[data-state="repaired"],
+.frame-change-state[data-state="pending"] {
+  color: #ffd38a;
+}
+.frame-change-state[data-state="clear"] {
+  color: #9be0b4;
 }
 .header-action.danger {
   border-color: #9b4650;
@@ -285,6 +309,10 @@ textarea:focus-visible {
   border-color: #67b1ff;
   color: #fff;
   font-weight: 700;
+}
+#save-local.dirty {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 45%, transparent);
 }
 .icon-button {
   display: inline-grid;
@@ -1026,6 +1054,14 @@ textarea {
   font-size: 11px;
   white-space: nowrap;
 }
+.rig-test-control:has(input:checked) {
+  padding: 5px 8px;
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+  color: #ffe2aa;
+  font-weight: 700;
+}
 .opacity-slider {
   width: 90px;
 }
@@ -1379,6 +1415,10 @@ textarea {
   .status {
     transition: none;
   }
+  .preset-button:hover .preset-preview-dot,
+  .preset-button:focus-visible .preset-preview-dot {
+    animation: none;
+  }
 }
 .draft-status {
   margin: 10px 0 0;
@@ -1398,6 +1438,65 @@ textarea {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+.preset-active {
+  margin: 0 0 9px;
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 700;
+}
+.preset-button {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  text-align: left;
+}
+.preset-button.active {
+  border-color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 16%, #102238);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 35%, transparent);
+  color: #ffe4ad;
+}
+.preset-button.active .preset-name::after {
+  content: " · Activa";
+  color: var(--gold);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.preset-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preset-preview {
+  position: relative;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #203a55;
+}
+.preset-preview-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 8px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--blue-soft);
+}
+.preset-button:hover .preset-preview-dot,
+.preset-button:focus-visible .preset-preview-dot {
+  animation: preset-preview-motion 950ms var(--preset-ease, linear) infinite;
+}
+@keyframes preset-preview-motion {
+  from {
+    left: 0;
+  }
+  to {
+    left: calc(100% - 8px);
+  }
 }
 #curve-canvas {
   width: 100%;

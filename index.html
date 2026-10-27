@@ -233,8 +233,17 @@
           <i class="when-stopped" data-lucide="play"></i><i class="when-playing" data-lucide="square"></i
           ><span class="playback-label">Reproducir</span>
         </button>
-        <button id="save-local" class="header-action primary"><i data-lucide="save"></i><span>Guardar</span></button>
-        <output id="save-state" class="save-state" aria-live="polite">Sin cambios</output>
+        <button id="save-local" class="header-action primary">
+          <i data-lucide="save"></i><span>Guardar proyecto</span>
+        </button>
+        <div id="change-indicator" class="change-indicator" role="status" aria-live="polite">
+          <output id="save-state" class="save-state" data-state="unsaved"
+            >Proyecto: Cambios generales sin guardar</output
+          >
+          <output id="frame-change-state" class="frame-change-state" data-state="clear"
+            >Fotograma: Sin cambios pendientes</output
+          >
+        </div>
         <button id="emergency-export" class="header-action danger" hidden>
           <i data-lucide="download"></i><span>Exportación de emergencia</span>
         </button>
@@ -314,6 +323,12 @@
         </div>
         <div class="tree-actions">
           <button id="add-bone" class="small-button"><i data-lucide="plus"></i> Dibujar hueso</button
+          ><button
+            id="mirror-chain"
+            class="small-button"
+            title="Duplicar la cadena seleccionada y reflejarla horizontalmente"
+          >
+            <i data-lucide="copy-plus"></i> Duplicar y reflejar</button
           ><button id="delete-bone" class="small-button danger" aria-label="Eliminar hueso">
             <i data-lucide="trash-2"></i>
           </button>
@@ -509,6 +524,12 @@
             </label>
             <span class="shortcut-hint"><kbd>Mayús</kbd> Ángulos de 15°</span>
             <label class="inline-control"><input id="bones" type="checkbox" checked /> Huesos</label>
+            <label
+              class="inline-control rig-test-control"
+              title="Mover temporalmente las articulaciones sin modificar el proyecto"
+            >
+              <input id="rig-test" type="checkbox" /> Probar esqueleto
+            </label>
             <label class="inline-control"><input id="ghost" type="checkbox" checked /> Fotograma de referencia</label>
             <label class="inline-control"
               >Opacidad <input id="ghost-alpha" class="opacity-slider" type="range" min="5" max="70" value="28"
@@ -668,10 +689,10 @@
                   </div>
                 </div>
                 <div class="button-row">
-                  <button id="flip-part" class="small-button" title="Voltear horizontalmente">
-                    Voltear horizontalmente</button
-                  ><button id="flip-part-y" class="small-button" title="Voltear verticalmente">
-                    Voltear verticalmente</button
+                  <button id="flip-part" class="small-button" title="Reflejar la selección horizontalmente">
+                    Reflejar horizontalmente</button
+                  ><button id="flip-part-y" class="small-button" title="Reflejar la selección verticalmente">
+                    Reflejar verticalmente</button
                   ><button id="layer-up" class="small-button">Traer adelante</button
                   ><button id="layer-down" class="small-button">Enviar atrás</button
                   ><button id="remove-part" class="small-button danger">Eliminar capa</button>
@@ -731,8 +752,9 @@
         <div id="presets-panel" class="right-tabs-content">
           <section class="inspector-section">
             <h2>Curvas de interpolación</h2>
+            <p id="preset-active" class="preset-active" aria-live="polite">Activa: Lineal</p>
             <div id="preset-grid" class="preset-grid"></div>
-            <p class="muted">Define cómo cambia la velocidad al acercarse al fotograma clave.</p>
+            <p class="muted">Pasa el cursor o usa el teclado para previsualizar el cambio de velocidad.</p>
           </section>
         </div>
       </aside>

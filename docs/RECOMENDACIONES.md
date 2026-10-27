@@ -24,11 +24,11 @@ Detectar la forma transformada real de cada capa al seleccionarla, considerando:
 
 Esto evitaría seleccionar otra pieza por accidente cuando varias capas se superponen.
 
-### 3. Creación continua de huesos
+### 3. Creación continua de huesos — Implementada
 
 Después de dibujar un hueso, permitir continuar inmediatamente desde su articulación final para construir una cadena completa. La tecla `Escape` finalizaría la operación.
 
-### 4. Transformación múltiple de capas
+### 4. Transformación múltiple de capas — Implementada
 
 Permitir mover, rotar, escalar y reflejar conjuntamente todas las capas seleccionadas desde el visor.
 
@@ -52,11 +52,11 @@ Incorporar opciones para:
 
 Esto facilitaría construir esqueletos simétricos y ordenados.
 
-### 7. Duplicación y reflejo estructural
+### 7. Duplicación y reflejo estructural — Implementada
 
 Permitir duplicar y reflejar cadenas completas de huesos junto con sus capas vinculadas. Por ejemplo, construir un brazo derecho y generar automáticamente su equivalente izquierdo.
 
-### 8. Estado activo de la interpolación
+### 8. Estado activo de la interpolación — Implementada
 
 Resaltar qué curva está aplicada al fotograma seleccionado. También podría mostrarse una pequeña animación de ejemplo al pasar el cursor sobre estas opciones:
 
@@ -65,17 +65,17 @@ Resaltar qué curva está aplicada al fotograma seleccionado. También podría m
 - Desaceleración.
 - Sobrepaso.
 
-### 9. Edición directa de articulaciones
+### 9. Edición directa de articulaciones — Implementada
 
 Permitir arrastrar una articulación en Ensamblaje para cambiar su posición base sin depender exclusivamente de los campos X/Y del Inspector.
 
-### 10. Modo de prueba del esqueleto
+### 10. Modo de prueba del esqueleto — Implementada
 
 Ofrecer un modo temporal para mover las articulaciones sin crear fotogramas clave. Serviría para comprobar conexiones, posiciones de articulaciones y capas vinculadas antes de comenzar a animar.
 
 ## Mejoras complementarias
 
-### 11. Indicador global de cambios
+### 11. Indicador global de cambios — Implementada
 
 Distinguir claramente entre:
 
@@ -83,7 +83,7 @@ Distinguir claramente entre:
 - Cambios pendientes en el fotograma actual.
 - Cambios generales del proyecto todavía sin guardar.
 
-### 12. Nombres automáticos inteligentes
+### 12. Nombres automáticos inteligentes — Implementada
 
 Sugerir nombres relacionados con la jerarquía o la anatomía, como `Brazo`, `Antebrazo` y `Mano`, en lugar de utilizar únicamente nombres como `Hueso 14` o `Hueso 15`.
 
