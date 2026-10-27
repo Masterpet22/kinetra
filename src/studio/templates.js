@@ -294,7 +294,7 @@ function blankProject() {
     fps: 24,
     templateId: "blank",
     assets: [],
-    rig: { id: "custom", name: "Rig personalizado", bones: [] },
+    rig: { id: "custom", name: "Esqueleto personalizado", bones: [] },
     parts: [],
     clip: createKinetraClip()
   };

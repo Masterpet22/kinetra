@@ -69,6 +69,130 @@ test("deshacer/rehacer y controles de clips no pierden el estado", async ({ page
   await page.screenshot({ path: test.info().outputPath("studio-desktop.png"), fullPage: true });
 });
 
+test("indica si las herramientas transforman capas o huesos", async ({ page }) => {
+  await expect(page.locator("#tool-context-kind")).toHaveText("Esqueleto");
+  await expect(page.locator("[data-tool='rotate']")).toHaveAttribute("title", /Rotar hueso o selección/);
+  await switchWorkspace(page, "calibrador");
+  await expect(page.locator("#tool-context-kind")).toHaveText("Capa seleccionada");
+  await expect(page.locator("#tool-context-target")).not.toBeEmpty();
+  await expect(page.locator("[data-tool='rotate']")).toHaveAttribute("title", /Rotar capa/);
+});
+
+test("refleja la capa seleccionada horizontal y verticalmente", async ({ page }) => {
+  await switchWorkspace(page, "calibrador");
+  await page.locator("#flip-part").click();
+  await expect(page.locator("#status")).toContainText("volteada horizontalmente");
+  await page.locator("#flip-part-y").click();
+  await expect(page.locator("#status")).toContainText("volteada verticalmente");
+});
+
+test("escala una capa desde el visor y ajusta el personaje a la vista", async ({ page }) => {
+  await switchWorkspace(page, "calibrador");
+  await page.locator("[data-tool='scale']").click();
+  const canvas = page.locator("#canvas");
+  const box = await canvas.boundingBox();
+  const centerX = box.x + box.width / 2 - 7;
+  const centerY = box.y + box.height / 2 - 44;
+  const initialScale = Number(await page.locator("#part-scale").inputValue());
+  await page.mouse.move(centerX - 58, centerY - 99);
+  await page.mouse.down();
+  await page.mouse.move(centerX - 100, centerY - 140, { steps: 8 });
+  await expect(page.locator("#transform-readout")).toBeVisible();
+  await expect(page.locator("#transform-readout")).toContainText("Escala:");
+  await expect(page.locator("#transform-readout")).toContainText("%");
+  await page.mouse.up();
+  await expect(page.locator("#transform-readout")).toBeHidden();
+  expect(Number(await page.locator("#part-scale").inputValue())).toBeGreaterThan(initialScale);
+
+  await page.locator("#fit").click();
+  await expect(page.locator("#status")).toContainText("ajustado y centrado");
+});
+
+test("muestra posición y rotación junto al cursor durante el arrastre", async ({ page }) => {
+  await switchWorkspace(page, "calibrador");
+  const canvas = page.locator("#canvas");
+  const box = await canvas.boundingBox();
+  const centerX = box.x + box.width / 2 - 7;
+  const centerY = box.y + box.height / 2 - 44;
+
+  await page.mouse.move(centerX, centerY);
+  await page.mouse.down();
+  await page.mouse.move(centerX + 25, centerY + 15, { steps: 4 });
+  await expect(page.locator("#transform-readout")).toContainText(/Posición · X: .* · Y: /);
+  await page.mouse.up();
+
+  await page.locator("[data-tool='rotate']").click();
+  const movedCenterX = centerX + 25;
+  const movedCenterY = centerY + 15;
+  await page.mouse.move(movedCenterX - 116, movedCenterY - 90);
+  await page.mouse.down();
+  await page.mouse.move(movedCenterX - 85, movedCenterY - 65, { steps: 5 });
+  await expect(page.locator("#transform-readout")).toContainText(/Rotación: .*°/);
+  await page.mouse.up();
+});
+
+test("aplica una curva de interpolación a los cambios pendientes", async ({ page }) => {
+  await page.locator(".dock-tab:visible", { hasText: "Interpolación" }).click();
+  await page.locator("#preset-grid button", { hasText: "Sobrepaso" }).click();
+  await expect(page.locator("#status")).toContainText("Interpolación “Sobrepaso” aplicada");
+  await page.locator(".dock-tab:visible", { hasText: "Inspector" }).click();
+  await expect(page.locator("#draft-status")).toContainText("cambios sin guardar");
+});
+
+test("dibuja huesos libres y encadena desde una articulación existente", async ({ page }) => {
+  const treeRows = page.locator("[data-panel='skeleton'] [data-hierarchy-tree] .tree-row[data-hierarchy-id]");
+  const initialCount = await treeRows.count();
+
+  await page.locator("#add-bone").click();
+  await expect(page.locator("#add-bone")).toHaveAttribute("aria-pressed", "true");
+  const canvas = page.locator("#canvas");
+  const box = await canvas.boundingBox();
+  await page.mouse.move(box.x + 45, box.y + 45);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 145, box.y + 75, { steps: 5 });
+  await page.mouse.up();
+  await expect(treeRows).toHaveCount(initialCount + 2);
+
+  await page.locator("#add-bone").click();
+  const centeredBox = await canvas.boundingBox();
+  const center = { x: centeredBox.x + centeredBox.width / 2, y: centeredBox.y + centeredBox.height / 2 };
+  await page.mouse.move(center.x, center.y);
+  await page.mouse.down();
+  await page.mouse.move(center.x + 90, center.y + 50, { steps: 5 });
+  await page.mouse.up();
+  await expect(treeRows).toHaveCount(initialCount + 3);
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#add-bone")).toHaveAttribute("aria-pressed", "false");
+});
+
+test("ajusta capas a la cuadrícula y rotaciones a intervalos de 15 grados", async ({ page }) => {
+  await switchWorkspace(page, "calibrador");
+  const canvas = page.locator("#canvas");
+  const box = await canvas.boundingBox();
+  const centerX = box.x + box.width / 2 - 7;
+  const centerY = box.y + box.height / 2 - 44;
+
+  await page.locator("#snap-grid").check();
+  await page.mouse.move(centerX, centerY);
+  await page.mouse.down();
+  await page.mouse.move(centerX + 27, centerY + 18, { steps: 4 });
+  await page.mouse.up();
+  expect(Number(await page.locator("#part-x").inputValue()) % 50).toBe(0);
+  expect(Number(await page.locator("#part-y").inputValue()) % 50).toBe(0);
+
+  await page.locator("[data-tool='rotate']").click();
+  const movedCenterX = box.x + box.width / 2;
+  const movedCenterY = box.y + box.height / 2;
+  await page.mouse.move(movedCenterX - 116, movedCenterY - 90);
+  await page.keyboard.down("Shift");
+  await page.mouse.down();
+  await page.mouse.move(movedCenterX - 85, movedCenterY - 65, { steps: 5 });
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+  expect(Number(await page.locator("#part-rotation").inputValue()) % 15).toBe(0);
+});
+
 test("reordena como un bloque las capas seleccionadas y muestra el punto de inserción", async ({ page }) => {
   await switchWorkspace(page, "calibrador");
   const layerRows = page.locator("[data-panel='layers'] [data-hierarchy-tree] .tree-row[data-hierarchy-id]");
@@ -182,7 +306,7 @@ test("selecciona una columna de claves desde la regla temporal", async ({ page }
   await expect(page.locator("[data-key-identity$=':250'].selected")).toHaveCount(2);
 });
 
-test("muestra como fantasma la clave anterior y ninguna para la primera", async ({ page }) => {
+test("muestra como referencia la clave anterior y ninguna para la primera", async ({ page }) => {
   for (const at of [200, 400]) {
     await page.locator("#scrub").evaluate((input, value) => {
       input.value = String(value);
@@ -192,9 +316,9 @@ test("muestra como fantasma la clave anterior y ninguna para la primera", async 
   }
 
   await page.locator("[data-key-identity='rig:200']").click();
-  await expect(page.locator("#ghost-label")).toHaveText("Sin referencia");
+  await expect(page.locator("#ghost-label")).toHaveText("Sin fotograma de referencia");
   await page.locator("[data-key-identity='rig:400']").click();
-  await expect(page.locator("#ghost-label")).toHaveText("Guardado · 200 ms");
+  await expect(page.locator("#ghost-label")).toHaveText("Fotograma guardado · 200 ms");
 });
 
 test("inicia aunque el navegador rechace las preferencias locales", async ({ page }) => {

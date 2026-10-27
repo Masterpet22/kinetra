@@ -6,7 +6,7 @@ import { PUPPET_PART_JOINTS as PART_JOINTS } from "../animations/rig.js";
 import { animationEase } from "../animations/runtime.js";
 import { normalizeKinetraClip, parseKinetraClip, STUDIO_EASES } from "../animations/studio-format.js";
 import { sampleKinetraClip } from "../animations/studio-runtime.js";
-import { constrainKinetraTransform, validateKinetraProject } from "../animations/kinetra-runtime.js";
+import { KINETRA_LIMITS, constrainKinetraTransform, validateKinetraProject } from "../animations/kinetra-runtime.js";
 import {
   collapseHierarchicalSelection,
   constrainedTranslation,
@@ -40,7 +40,7 @@ import {
   writeStorageValue
 } from "./persistence.js";
 import { downloadJson, exportPortableBundle } from "./project-io.js";
-import { effectiveLayerRotation } from "./canvas-renderer.js";
+import { effectiveLayerRotation, inverseTransformPoint, transformedRectContainsPoint } from "./canvas-renderer.js";
 import {
   clampKeyframeDelta,
   collectKeyTimes,
@@ -64,6 +64,8 @@ import { HELP_TOPICS, TUTORIALS } from "./tutorials.js";
 
 const $ = (id) => document.getElementById(id);
 const BASE_SCALE = 0.32;
+const GRID_SIZE = 50;
+const JOINT_SNAP_PIXELS = 16;
 const STORAGE_KEY = "kinetra:project";
 const PANEL_STORAGE_KEY = "kinetra:panels";
 const PREVIEW_STORAGE_KEY = "kinetra:preview-visible";
@@ -118,7 +120,7 @@ const MIRROR_TARGETS = Object.freeze({
   ankleLeft: "ankleRight"
 });
 const WORKSPACE_LABELS = Object.freeze({
-  animador: "Animador",
+  animador: "Animación",
   calibrador: "Ensamblaje",
   exportar: "Exportación",
   proyecto: "Proyecto"
@@ -203,6 +205,7 @@ let playing = false;
 let lastTick = 0;
 let animationFrame = 0;
 let interaction = null;
+let boneCreationAnchor = null;
 let dragKey = null;
 let layerDrag = null;
 let layerAutoScrollFrame = 0;
@@ -248,6 +251,10 @@ const canvas = $("canvas");
 const context = canvas.getContext("2d");
 const previewCanvas = $("preview-canvas");
 const previewContext = previewCanvas.getContext("2d");
+const layerHitCanvas = document.createElement("canvas");
+layerHitCanvas.width = 1;
+layerHitCanvas.height = 1;
+const layerHitContext = layerHitCanvas.getContext("2d", { willReadFrequently: true });
 const images = {};
 
 function status(message, state = "info") {
@@ -262,6 +269,45 @@ function status(message, state = "info") {
     () => output.classList.remove("visible"),
     ["error", "quota"].includes(state) ? 6000 : 3200
   );
+}
+
+function formatTransformNumber(value, digits = 1) {
+  const rounded = Number(value.toFixed(digits));
+  return Object.is(rounded, -0) ? "0" : String(rounded);
+}
+
+function positionReadout(x, y) {
+  return `Posición · X: ${formatTransformNumber(x)} · Y: ${formatTransformNumber(y)}`;
+}
+
+function rotationReadout(angle) {
+  return `Rotación: ${formatTransformNumber(angle)}°`;
+}
+
+function scaleReadout(scaleX, scaleY) {
+  const x = Math.abs(scaleX) * 100;
+  const y = Math.abs(scaleY) * 100;
+  return Math.abs(x - y) < 0.05
+    ? `Escala: ${formatTransformNumber(x)} %`
+    : `Escala · X: ${formatTransformNumber(x)} % · Y: ${formatTransformNumber(y)} %`;
+}
+
+function showTransformReadout(event, text) {
+  const output = $("transform-readout");
+  const box = canvas.getBoundingClientRect();
+  output.textContent = text;
+  output.hidden = false;
+  const gap = 14;
+  const left = Math.max(8, Math.min(box.width - output.offsetWidth - 8, event.clientX - box.left + gap));
+  const top = Math.max(8, Math.min(box.height - output.offsetHeight - 8, event.clientY - box.top + gap));
+  output.style.left = `${left}px`;
+  output.style.top = `${top}px`;
+}
+
+function hideTransformReadout() {
+  const output = $("transform-readout");
+  output.hidden = true;
+  output.textContent = "";
 }
 
 function createIcon(name, className = "") {
@@ -715,7 +761,7 @@ function ikChainFor(target) {
 }
 function selectionLabel() {
   if (!selectedTargets.size) return "Sin selección";
-  return selectedTargets.size > 1 ? `${selectedTargets.size} objetivos` : label(selectedTarget);
+  return selectedTargets.size > 1 ? `${selectedTargets.size} elementos` : label(selectedTarget);
 }
 function selectAnimationTarget(target, append = false) {
   if (!append) selectedTargets = new Set([target]);
@@ -796,8 +842,8 @@ function updateDraftUI() {
   host.classList.toggle("dirty", dirty);
   host.textContent = dirty
     ? draftTime === Math.round(time)
-      ? `${draftFrames.size} objetivo(s) con cambios sin guardar · ${draftTime} ms`
-      : `Borrador pendiente en ${draftTime} ms`
+      ? `${draftFrames.size} elemento(s) con cambios sin guardar · ${draftTime} ms`
+      : `Cambios de otro fotograma pendientes en ${draftTime} ms`
     : "Sin cambios pendientes";
   $("set-key")?.classList.toggle("dirty", dirty);
   if ($("discard-key-draft")) $("discard-key-draft").disabled = !dirty;
@@ -824,7 +870,7 @@ function clearGhost() {
 
 function updateGhostLabel() {
   const output = $("ghost-label");
-  if (output) output.textContent = ghostPose ? `Guardado · ${ghostTime} ms` : "Sin referencia";
+  if (output) output.textContent = ghostPose ? `Fotograma guardado · ${ghostTime} ms` : "Sin fotograma de referencia";
 }
 
 function normalizeLoadedProject(candidate) {
@@ -928,7 +974,7 @@ function undo() {
 }
 
 function redo() {
-  if (hasDraft()) return status("Guarda o descarta el borrador antes de rehacer");
+  if (hasDraft()) return status("Guarda o descarta los cambios del fotograma antes de rehacer");
   if (!restoreHistory(commandBus.redo())) return status("No hay cambios para rehacer");
   status("Cambio rehecho");
 }
@@ -1080,6 +1126,42 @@ function worldToCanvasPoint(x, y) {
   return { x: base.x + x * viewScale, y: base.y + y * viewScale };
 }
 
+function snapPointToGrid(point) {
+  return {
+    x: Math.round(point.x / GRID_SIZE) * GRID_SIZE,
+    y: Math.round(point.y / GRID_SIZE) * GRID_SIZE
+  };
+}
+
+function snapPointToAngle(start, end, increment = 15) {
+  const distance = Math.hypot(end.x - start.x, end.y - start.y);
+  if (distance < 1e-6) return end;
+  const angle = Math.atan2(end.y - start.y, end.x - start.x);
+  const snapped = Math.round(angle / ((increment * Math.PI) / 180)) * ((increment * Math.PI) / 180);
+  return { x: start.x + Math.cos(snapped) * distance, y: start.y + Math.sin(snapped) * distance };
+}
+
+function nearbyJoint(point, state, exclude = null) {
+  const viewScale = BASE_SCALE * zoom;
+  const candidates = [["rig", state.root], ...Object.entries(state.joints)];
+  let nearest = null;
+  candidates.forEach(([target, matrix]) => {
+    if (target === exclude) return;
+    const distance = Math.hypot(point.x - matrix[4], point.y - matrix[5]) * viewScale;
+    if (distance <= JOINT_SNAP_PIXELS && (!nearest || distance < nearest.distance)) {
+      nearest = { target, point: { x: matrix[4], y: matrix[5] }, distance };
+    }
+  });
+  return nearest;
+}
+
+function snappedBoneEndpoint(world, event, interaction) {
+  let point = $("snap-grid").checked ? snapPointToGrid(world) : world;
+  if (event.shiftKey) point = snapPointToAngle(interaction.start, point);
+  const joint = $("snap-joints").checked ? nearbyJoint(point, interaction.state, interaction.startTarget) : null;
+  return joint ? { point: joint.point, target: joint.target } : { point, target: null };
+}
+
 function targetHidden(partId) {
   if (hiddenTargets.has("rig")) return true;
   const item = project.parts.find((partItem) => partItem.id === partId);
@@ -1185,6 +1267,60 @@ function figureBounds(at) {
   return { minX, minY, maxX, maxY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) };
 }
 
+function layerGeometry(item, at = 0) {
+  if (!item || item.visible === false || targetHidden(item.id)) return null;
+  const image = images[item.id];
+  if (!image?.complete || !image.naturalWidth) return null;
+  const source = layerSourceRect(item, image);
+  const state = matrices(at);
+  const targetId = partBoneId(item);
+  const jointId = targetId !== "rig" && targetId !== "torso" ? targetId : null;
+  const parentMatrix =
+    jointId && state.joints[jointId]
+      ? state.joints[jointId]
+      : multiply(state.root, targetId === "torso" ? transformMatrix(state.pose.torso) : [1, 0, 0, 1, 0, 0]);
+  const anchor = jointId ? rigJoints()[jointId] || { x: 0, y: 0 } : { x: 0, y: 0 };
+  const baseMatrix = multiply(
+    multiply(parentMatrix, translate(item.x - anchor.x, item.y - anchor.y)),
+    rotate(effectiveLayerRotation(item))
+  );
+  const matrix = multiply(baseMatrix, scale(item.scaleX, item.scaleY));
+  const localCorners = [
+    [-source.width / 2, -source.height / 2],
+    [source.width / 2, -source.height / 2],
+    [source.width / 2, source.height / 2],
+    [-source.width / 2, source.height / 2]
+  ];
+  const corners = localCorners.map(([x, y]) => point(matrix, x, y));
+  const center = point(matrix, 0, 0);
+  const canvasCenter = worldToCanvasPoint(center.x, center.y);
+  const canvasCorners = corners.map(({ x, y }) => worldToCanvasPoint(x, y));
+  const rotateRadius =
+    Math.max(...canvasCorners.map(({ x, y }) => Math.hypot(x - canvasCenter.x, y - canvasCenter.y))) + 22;
+  return { item, source, matrix, center, canvasCenter, corners, canvasCorners, rotateRadius };
+}
+
+function selectedLayerGeometry(at = 0) {
+  return layerGeometry(part(), at);
+}
+
+function hitLayerTransformGizmo(clientX, clientY) {
+  if (mode !== "calibrador" || !["rotate", "scale"].includes(tool)) return null;
+  const geometry = selectedLayerGeometry(0);
+  if (!geometry || lockedParts.has(geometry.item.id)) return null;
+  const pointer = toCanvasPoint(clientX, clientY);
+  if (tool === "scale") {
+    const corner = geometry.canvasCorners.find(
+      ({ x, y }) => Math.hypot(pointer.x - x, pointer.y - y) <= GIZMO_METRICS.scaleHandleRadius + 2
+    );
+    return corner ? { type: "piece-scale", geometry } : null;
+  }
+  const distance = Math.hypot(pointer.x - geometry.canvasCenter.x, pointer.y - geometry.canvasCenter.y);
+  return Math.abs(distance - geometry.rotateRadius) <= GIZMO_METRICS.rotateTolerance
+    ? { type: "piece-rotate", geometry }
+    : null;
+}
+
 function themeColor(name, fallback) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
@@ -1198,11 +1334,11 @@ function drawGrid(width, height, base, viewScale) {
   context.strokeStyle = "#1e3449";
   context.lineWidth = 1 / viewScale;
   context.beginPath();
-  for (let x = Math.ceil(left / 50) * 50; x < right; x += 50) {
+  for (let x = Math.ceil(left / GRID_SIZE) * GRID_SIZE; x < right; x += GRID_SIZE) {
     context.moveTo(x, top);
     context.lineTo(x, bottom);
   }
-  for (let y = Math.ceil(top / 50) * 50; y < bottom; y += 50) {
+  for (let y = Math.ceil(top / GRID_SIZE) * GRID_SIZE; y < bottom; y += GRID_SIZE) {
     context.moveTo(left, y);
     context.lineTo(right, y);
   }
@@ -1221,19 +1357,84 @@ function drawBones(at) {
   const state = matrices(at);
   const parents = rigParents();
   Object.entries(state.joints).forEach(([id, matrix]) => {
+    const bone = project.rig?.bones?.find((item) => item.id === id);
     const parent = parents[id];
     const parentMatrix = parent === "torso" ? targetMatrix(state, "torso") : parent ? state.joints[parent] : state.root;
     context.strokeStyle = selectedTargets.has(id) ? "#efbd67" : "#63c9ff";
     context.fillStyle = selectedTargets.has(id) ? "#ffd68e" : "#83d9ff";
     context.lineWidth = 3 / (BASE_SCALE * zoom);
-    context.beginPath();
-    context.moveTo(parentMatrix[4], parentMatrix[5]);
-    context.lineTo(matrix[4], matrix[5]);
-    context.stroke();
+    if (!bone?.jointOrigin) {
+      context.beginPath();
+      context.moveTo(parentMatrix[4], parentMatrix[5]);
+      context.lineTo(matrix[4], matrix[5]);
+      context.stroke();
+    }
     context.beginPath();
     context.arc(matrix[4], matrix[5], 7 / (BASE_SCALE * zoom), 0, Math.PI * 2);
     context.fill();
   });
+}
+
+function drawBoneCreationPreview() {
+  if (interaction?.type !== "create-bone") return;
+  const { start, end, existingStart } = interaction;
+  const radius = 7 / (BASE_SCALE * zoom);
+  context.save();
+  context.strokeStyle = "#efbd67";
+  context.fillStyle = "#ffd68e";
+  context.lineWidth = 3 / (BASE_SCALE * zoom);
+  context.setLineDash([10 / (BASE_SCALE * zoom), 7 / (BASE_SCALE * zoom)]);
+  context.beginPath();
+  context.moveTo(start.x, start.y);
+  context.lineTo(end.x, end.y);
+  context.stroke();
+  context.setLineDash([]);
+  if (!existingStart) {
+    context.beginPath();
+    context.arc(start.x, start.y, radius, 0, Math.PI * 2);
+    context.fill();
+  }
+  context.beginPath();
+  context.arc(end.x, end.y, radius, 0, Math.PI * 2);
+  context.fill();
+  if (interaction.snapTarget) {
+    context.strokeStyle = "#6fe08b";
+    context.lineWidth = 2 / (BASE_SCALE * zoom);
+    context.beginPath();
+    context.arc(end.x, end.y, radius * 1.65, 0, Math.PI * 2);
+    context.stroke();
+  }
+  context.restore();
+}
+
+function drawLayerTransformGizmo() {
+  if (mode !== "calibrador" || !["rotate", "scale"].includes(tool)) return;
+  const geometry = selectedLayerGeometry(0);
+  if (!geometry || lockedParts.has(geometry.item.id)) return;
+  const inverseViewScale = 1 / (BASE_SCALE * zoom);
+  context.save();
+  context.lineWidth = 2 * inverseViewScale;
+  context.strokeStyle = tool === "rotate" ? "#efbd67" : "#b58cff";
+  context.fillStyle = context.strokeStyle;
+  context.beginPath();
+  geometry.corners.forEach(({ x, y }, index) => (index ? context.lineTo(x, y) : context.moveTo(x, y)));
+  context.closePath();
+  context.stroke();
+  if (tool === "scale") {
+    geometry.corners.forEach(({ x, y }) => {
+      context.fillRect(
+        x - 5 * inverseViewScale,
+        y - 5 * inverseViewScale,
+        10 * inverseViewScale,
+        10 * inverseViewScale
+      );
+    });
+  } else {
+    context.beginPath();
+    context.arc(geometry.center.x, geometry.center.y, geometry.rotateRadius * inverseViewScale, 0, Math.PI * 2);
+    context.stroke();
+  }
+  context.restore();
 }
 
 function targetMatrix(state, target = selectedTarget) {
@@ -1392,19 +1593,35 @@ function nearestCanvasTarget(clientX, clientY, state) {
   return result?.target || null;
 }
 
+function layerPixelIsVisible(geometry, local) {
+  const image = images[geometry.item.id];
+  if (!image?.complete || !image.naturalWidth) return false;
+  const { source } = geometry;
+  const localX = Math.max(0, Math.min(source.width - 1, Math.floor(local.x + source.width / 2)));
+  const localY = Math.max(0, Math.min(source.height - 1, Math.floor(local.y + source.height / 2)));
+  try {
+    layerHitContext.clearRect(0, 0, 1, 1);
+    layerHitContext.drawImage(image, source.x + localX, source.y + localY, 1, 1, 0, 0, 1, 1);
+    return layerHitContext.getImageData(0, 0, 1, 1).data[3] > 8;
+  } catch {
+    layerHitCanvas.width = 1;
+    layerHitCanvas.height = 1;
+    return true;
+  }
+}
+
 function nearestCanvasLayer(clientX, clientY) {
   const world = toWorld(clientX, clientY);
-  let result = null;
-  [...project.parts]
-    .filter((item) => item.visible !== false)
-    .sort((left, right) => right.z - left.z)
-    .forEach((item) => {
-      const image = images[item.id];
-      const source = layerSourceRect(item, image);
-      const score = Math.hypot((world.x - item.x) / (source.width / 2), (world.y - item.y) / (source.height / 2));
-      if (score < 1.4 && (!result || score < result.score)) result = { id: item.id, score };
-    });
-  return result?.id || null;
+  const ordered = [...project.parts]
+    .filter((item) => item.visible !== false && !targetHidden(item.id))
+    .sort((left, right) => right.z - left.z);
+  for (const item of ordered) {
+    const geometry = layerGeometry(item, 0);
+    if (!geometry || !transformedRectContainsPoint(geometry.matrix, geometry.source, world)) continue;
+    const local = inverseTransformPoint(geometry.matrix, world);
+    if (local && layerPixelIsVisible(geometry, local)) return item.id;
+  }
+  return null;
 }
 
 function cursorForGizmoHit(hit) {
@@ -1417,7 +1634,7 @@ function cursorForGizmoHit(hit) {
 }
 
 function drawTransformGizmo(at) {
-  if (mode !== "animador" || tool === "pan") return;
+  if (mode !== "animador" || tool === "pan" || tool === "bone") return;
   if (tool === "select" && ![...selectedTargets].some((target) => canTranslateTarget(target))) return;
   const state = matrices(at);
   const center = transformGizmoCenter(state).world;
@@ -1538,6 +1755,8 @@ function draw() {
   }
   renderFigure(context, mode === "animador" ? time : 0);
   drawBones(mode === "animador" ? time : 0);
+  drawBoneCreationPreview();
+  drawLayerTransformGizmo();
   drawTransformGizmo(mode === "animador" ? time : 0);
   context.restore();
   $("zoom-label").textContent = `${Math.round(zoom * 100)} %`;
@@ -1545,7 +1764,7 @@ function draw() {
   document.querySelectorAll("[data-view-toggle]").forEach((toggle) => {
     toggle.checked = $(toggle.dataset.viewToggle).checked;
   });
-  const pending = hasDraft() ? ` · Borrador ${draftTime} ms` : "";
+  const pending = hasDraft() ? ` · Cambios sin guardar ${draftTime} ms` : "";
   const selection = mode === "animador" ? ` · ${selectionLabel()}` : "";
   $("canvas-status").textContent =
     `Zoom: ${Math.round(zoom * 100)} % · ${label(mode)} · ${Math.round(time)} ms${selection}${pending}`;
@@ -2315,7 +2534,7 @@ function copyHierarchySelection(kind) {
 
 async function pasteHierarchySelection(kind) {
   if (hierarchyClipboard?.kind !== kind) return status("No hay elementos compatibles copiados");
-  if (hasDraft()) return status("Guarda o descarta el borrador antes de pegar");
+  if (hasDraft()) return status("Guarda o descarta los cambios del fotograma antes de pegar");
   if (kind === "layers") {
     const names = hierarchyClipboard.items.map(({ item }) => item.name || item.id);
     const resolution = await resolveDuplicateNames(
@@ -2491,7 +2710,7 @@ function deleteHierarchySelection(kind) {
   if (ids.length < 2) return status("Selecciona al menos dos elementos para eliminarlos");
   if (
     !confirm(
-      `¿Eliminar ${ids.length} elementos seleccionados de ${kind === "layers" ? "Capas" : kind === "tracks" ? "Pistas" : "Esqueleto"}?`
+      `¿Eliminar ${ids.length} elementos seleccionados de ${kind === "layers" ? "Capas" : kind === "tracks" ? "Pistas de animación" : "Esqueleto"}?`
     )
   )
     return;
@@ -2511,7 +2730,7 @@ function deleteHierarchySelection(kind) {
     normalizeLayerOrder();
   } else if (kind === "skeleton") {
     const removeIds = new Set(ids.filter((id) => id !== "rig" && id !== "torso"));
-    if (!removeIds.size) return status("El rig raíz no se puede eliminar");
+    if (!removeIds.size) return status("La raíz del esqueleto no se puede eliminar");
     const parentById = rigParents();
     project.rig.bones.forEach((bone) => {
       if (removeIds.has(bone.id) || !removeIds.has(bone.parent)) return;
@@ -2611,7 +2830,7 @@ function renderTree() {
     const description =
       kind === "layers"
         ? `${project.parts.length} capas reales · ${(project.assets || []).length} recursos importados`
-        : `${project.rig?.name || project.rig?.id || "Rig personalizado"} · ${(project.rig?.bones || []).length} huesos · ${Object.keys(project.clip.keys).length} pistas`;
+        : `${project.rig?.name || project.rig?.id || "Esqueleto personalizado"} · ${(project.rig?.bones || []).length} huesos · ${Object.keys(project.clip.keys).length} pistas de animación`;
     panel.querySelector("[data-hierarchy-meta]").textContent = description;
     updateMultiSelectionMenu(panel, kind);
     refreshIcons(panel);
@@ -2624,16 +2843,19 @@ function renderInspector() {
   $("animation-inspector").hidden = calibration;
   $("calibration-inspector").hidden = !calibration;
   const currentPart = part();
+  updateToolContext(currentPart);
   $("selected-name").textContent = calibration ? currentPart?.name || "Sin capas" : selectionLabel();
   $("selected-type").textContent = calibration
     ? currentPart
       ? `Capa ${currentPart.z + 1} · Hueso: ${label(partBoneId(currentPart))}`
       : "Importa una imagen para crear la primera capa"
     : selectedTargets.size > 1
-      ? `Selección múltiple · Principal: ${label(selectedTarget)}`
-      : selectedTargets.size
-        ? `Hueso · Objetivo: ${selectedTarget}`
-        : "Sin objetivo seleccionado";
+      ? `Varios huesos seleccionados · Principal: ${label(selectedTarget)}`
+      : selectedTarget === "rig"
+        ? "Raíz del esqueleto"
+        : selectedTargets.size
+          ? "Hueso seleccionado"
+          : "Sin huesos seleccionados";
   if (calibration) {
     const current = currentPart;
     $("part-name").value = current?.name || "";
@@ -2654,6 +2876,7 @@ function renderInspector() {
       "part-rotation",
       "part-scale",
       "flip-part",
+      "flip-part-y",
       "layer-up",
       "layer-down",
       "remove-part"
@@ -2662,7 +2885,7 @@ function renderInspector() {
     });
 
     const bone = selectedBone();
-    $("bone-name").value = bone?.name || project.rig?.name || "Rig";
+    $("bone-name").value = bone?.name || project.rig?.name || "Esqueleto";
     $("bone-x").value = bone?.x ?? 0;
     $("bone-y").value = bone?.y ?? 0;
     $("bone-lock-x").checked = bone?.motionLimits?.x === 0;
@@ -2670,7 +2893,7 @@ function renderInspector() {
     $("bone-lock-both").checked = $("bone-lock-x").checked && $("bone-lock-y").checked;
     $("bone-lock-both").indeterminate = $("bone-lock-x").checked !== $("bone-lock-y").checked;
     $("bone-parent").replaceChildren(
-      new Option("Rig (raíz)", ""),
+      new Option("Raíz del esqueleto", ""),
       ...(project.rig?.bones || [])
         .filter((candidate) => candidate.id !== bone?.id && !isBoneDescendant(candidate.id, bone?.id))
         .map(
@@ -2717,14 +2940,56 @@ function renderInspector() {
   if (rightTab === "curves") drawCurve();
 }
 
+function updateToolContext(currentPart = part()) {
+  const calibration = mode === "calibrador";
+  const kind = $("tool-context-kind");
+  const target = $("tool-context-target");
+  if (calibration) {
+    kind.textContent = selectedParts.size > 1 ? "Capas seleccionadas" : "Capa seleccionada";
+    target.textContent = currentPart
+      ? selectedParts.size > 1
+        ? `${selectedParts.size} capas · Principal: ${currentPart.name || label(currentPart.id)}`
+        : currentPart.name || label(currentPart.id)
+      : "Sin capas";
+  } else {
+    kind.textContent =
+      selectedTargets.size > 1 ? "Selección de huesos" : selectedTarget === "rig" ? "Esqueleto" : "Hueso seleccionado";
+    target.textContent =
+      selectedTargets.size > 1
+        ? `${selectedTargets.size} huesos · Principal: ${label(selectedTarget)}`
+        : label(selectedTarget);
+  }
+  const subject = calibration
+    ? currentPart?.name || "la capa seleccionada"
+    : selectedTargets.size > 1
+      ? "la selección de huesos"
+      : label(selectedTarget);
+  const labels = calibration
+    ? {
+        select: `Seleccionar y mover capas (V) · Actual: ${subject}`,
+        rotate: `Rotar capa (R) · Actual: ${subject}`,
+        scale: `Escalar capa (S) · Actual: ${subject}`
+      }
+    : {
+        select: `Seleccionar y mover huesos (V) · Actual: ${subject}`,
+        rotate: `Rotar hueso o selección (R) · Actual: ${subject}`,
+        scale: `Escalar hueso o selección (S) · Actual: ${subject}`
+      };
+  Object.entries(labels).forEach(([toolName, text]) => {
+    const button = document.querySelector(`[data-tool="${toolName}"]`);
+    button.title = text;
+    button.setAttribute("aria-label", text);
+  });
+}
+
 function renderPresets() {
   const host = $("preset-grid");
   host.replaceChildren();
   const presets = [
     ["Linear", "Lineal"],
     ["Sine.inOut", "Suave"],
-    ["Cubic.out", "Impacto"],
-    ["Back.out", "Rebote"]
+    ["Cubic.out", "Desaceleración"],
+    ["Back.out", "Sobrepaso"]
   ];
   presets.forEach(([value, text]) => {
     const button = document.createElement("button");
@@ -2732,7 +2997,9 @@ function renderPresets() {
     button.textContent = text;
     button.onclick = () => {
       $("key-ease").value = value;
+      previewKeyFromInspector();
       showRightTab("curves");
+      status(`Interpolación “${text}” aplicada a los cambios del fotograma`);
     };
     host.append(button);
   });
@@ -2776,7 +3043,7 @@ function drawCurve() {
     else curveContext.lineTo(x, y);
   }
   curveContext.stroke();
-  $("curve-label").textContent = `${ease} · compartida con el runtime`;
+  $("curve-label").textContent = `${ease} · usada durante la reproducción y exportación`;
 }
 
 function setTime(next, rebuild = false) {
@@ -2973,7 +3240,7 @@ function makeTrackRow(target) {
     const marker = document.createElement("span");
     marker.className = "key-marker selected draft";
     marker.style.left = `${(draftTime / duration()) * 100}%`;
-    marker.title = `${draftTime} ms · borrador sin guardar`;
+    marker.title = `${draftTime} ms · cambios sin guardar`;
     line.append(marker);
   }
   line.append(makePlayhead());
@@ -3331,28 +3598,75 @@ function removeSelectedLayer() {
   refresh();
 }
 
-function addBone() {
-  const parent = selectedTarget !== "rig" && selectedBone() ? selectedTarget : null;
-  const parentBone = parent ? project.rig.bones.find((bone) => bone.id === parent) : null;
+function createBoneAt(point, parent = null, { jointOrigin = false } = {}) {
   const used = new Set(project.rig.bones.map((bone) => bone.id));
   const id = uniqueId("hueso", used);
-  project.rig.bones.push({
+  const bone = {
     id,
     name: `Hueso ${project.rig.bones.length + 1}`,
     parent,
-    x: parentBone?.x || 0,
-    y: (parentBone?.y || 0) + 140
-  });
+    x: point.x,
+    y: point.y
+  };
+  if (jointOrigin) bone.jointOrigin = true;
+  project.rig.bones.push(bone);
+  return bone;
+}
+
+function restPointFromWorld(world, parentTarget, state) {
+  const parentBone =
+    parentTarget && parentTarget !== "rig" ? project.rig.bones.find((bone) => bone.id === parentTarget) : null;
+  const parentMatrix = parentTarget && parentTarget !== "rig" ? state.joints[parentTarget] : state.root;
+  const matrix = parentMatrix || state.root;
+  const delta = localDelta(matrix, world.x - matrix[4], world.y - matrix[5]);
+  return { x: (parentBone?.x || 0) + delta.x, y: (parentBone?.y || 0) + delta.y };
+}
+
+function finishBoneCreation(completed) {
+  if (!completed?.moved) return status("Arrastra para definir la longitud del hueso");
+  const requiredBones = completed.existingStart ? 1 : 2;
+  if (project.rig.bones.length + requiredBones > KINETRA_LIMITS.bones) {
+    return status(`El esqueleto no puede superar ${KINETRA_LIMITS.bones} huesos`, "error");
+  }
+  let parent = completed.startTarget === "rig" ? null : completed.startTarget;
+  if (!completed.existingStart) {
+    const originPoint = restPointFromWorld(completed.start, "rig", completed.state);
+    parent = createBoneAt(originPoint, null, { jointOrigin: true }).id;
+  }
+  const endPoint = completed.existingStart
+    ? restPointFromWorld(completed.end, completed.startTarget, completed.state)
+    : restPointFromWorld(completed.end, "rig", completed.state);
+  const endBone = createBoneAt(endPoint, parent);
   project.rig.id = "custom";
-  project.rig.name = project.rig.name === "Humanoide" ? "Rig personalizado" : project.rig.name;
-  selectAnimationTarget(id);
-  commit("Hueso añadido al rig");
+  project.rig.name = project.rig.name === "Humanoide" ? "Esqueleto personalizado" : project.rig.name;
+  selectAnimationTarget(endBone.id);
+  boneCreationAnchor = endBone.id;
+  commit(requiredBones === 1 ? "Hueso añadido al esqueleto" : "Segmento de hueso añadido al esqueleto");
   refresh();
+}
+
+function addBone() {
+  boneCreationAnchor = selectedBone()?.id || null;
+  setTool("bone");
+  const state = matrices(mode === "animador" ? time : 0);
+  if (boneCreationAnchor && state.joints[boneCreationAnchor]) {
+    const anchor = state.joints[boneCreationAnchor];
+    const viewScale = BASE_SCALE * zoom;
+    offsetX = -anchor[4] * viewScale;
+    offsetY = 80 * viewScale - anchor[5] * viewScale;
+  }
+  canvas.focus({ preventScroll: true });
+  draw();
+  status(
+    boneCreationAnchor
+      ? "Visor centrado en la articulación seleccionada; arrastra desde ella para crear el hueso"
+      : "Arrastra en el visor para crear los puntos de origen y final del hueso"
+  );
 }
 
 function removeSelectedBone() {
   const bone = selectedBone();
-  if (!bone) return status("Selecciona un hueso; el rig raíz no se puede eliminar");
+  if (!bone) return status("Selecciona un hueso; la raíz del esqueleto no se puede eliminar");
   if (!confirm(`¿Eliminar el hueso “${bone.name || bone.id}”? Sus hijos se vincularán a su padre.`)) return;
   project.rig.bones.forEach((candidate) => {
     if (candidate.parent === bone.id) candidate.parent = bone.parent || null;
@@ -3721,11 +4035,11 @@ function renderModeOverlay() {
   overlay.hidden = !["exportar", "proyecto"].includes(mode);
   if (overlay.hidden) return;
   if (mode === "exportar") {
-    overlay.innerHTML = `<h2>Exportar</h2><p class="muted">Kinetra v2 exporta el rig, las capas, las imágenes y todos los clips en un paquete autocontenido.</p><div class="summary-grid"><div class="summary-card"><strong>Paquete Kinetra v2</strong><span>${project.rig.bones.length} huesos · ${project.parts.length} capas · ${project.assets.length} recursos · ${project.clips.length} clips</span><div class="button-row"><button id="download-project" class="small-button primary">Exportar .kinetra.json</button></div></div></div><div class="export-actions"><button id="cancel-export" class="small-button">Cancelar</button></div>`;
+    overlay.innerHTML = `<h2>Revisar exportación</h2><p class="muted">Kinetra v2 reúne el esqueleto, las capas, las imágenes y todos los clips en un paquete autocontenido.</p><div class="summary-grid"><div class="summary-card"><strong>Archivo de Kinetra v2</strong><span>${project.rig.bones.length} huesos · ${project.parts.length} capas · ${project.assets.length} recursos · ${project.clips.length} clips</span><div class="button-row"><button id="download-project" class="small-button primary">Descargar .kinetra.json</button></div></div></div><div class="export-actions"><button id="cancel-export" class="small-button">Cancelar</button></div>`;
     $("download-project").onclick = exportProject;
     $("cancel-export").onclick = () => setMode(lastEditorMode);
   } else {
-    overlay.innerHTML = `<h2>Proyecto</h2><div class="summary-grid"><div class="summary-card"><strong>${project.clip.label}</strong><span>ID activo: ${project.clip.id}<br>Rig: ${project.rig.name}<br>${project.rig.bones.length} huesos · ${project.parts.length} capas · ${project.clips.length} clips<br>Estado: ${project.clip.status}</span></div><div class="summary-card"><strong>Kinetra v2</strong><span>Los recursos importados, la jerarquía y todas las animaciones viajan juntos en la exportación para web.</span></div></div><div class="button-row"><button id="new-project" class="small-button danger">Crear proyecto nuevo</button></div>`;
+    overlay.innerHTML = `<h2>Proyecto</h2><div class="summary-grid"><div class="summary-card"><strong>${project.clip.label}</strong><span>ID activo: ${project.clip.id}<br>Esqueleto: ${project.rig.name}<br>${project.rig.bones.length} huesos · ${project.parts.length} capas · ${project.clips.length} clips<br>Estado de edición: ${project.clip.status}</span></div><div class="summary-card"><strong>Kinetra v2</strong><span>Los recursos importados, la jerarquía y todas las animaciones viajan juntos en la exportación para web.</span></div></div><div class="button-row"><button id="new-project" class="small-button danger">Crear proyecto nuevo</button></div>`;
     $("new-project").onclick = createNewProject;
   }
 }
@@ -3805,12 +4119,17 @@ function setMode(next) {
 
 function setTool(next) {
   tool = next;
+  if (next !== "bone") boneCreationAnchor = null;
   canvas.style.cursor = "";
   document
     .querySelectorAll("[data-tool]")
     .forEach((button) => button.classList.toggle("active", button.dataset.tool === next));
-  $("viewport").classList.remove("select", "pan", "rotate", "scale");
+  $("viewport").classList.remove("select", "pan", "rotate", "scale", "bone");
   $("viewport").classList.add(next);
+  [$("add-bone"), $("inspector-add-bone")].forEach((button) => {
+    button?.classList.toggle("active", next === "bone");
+    button?.setAttribute("aria-pressed", String(next === "bone"));
+  });
   draw();
 }
 
@@ -3838,14 +4157,15 @@ function upsertKey(target, frame) {
 
 function setKey() {
   if (!hasDraft()) setDraftFrame(selectedTarget, readTransformFields());
-  if (draftTime !== Math.round(time)) return status(`El borrador pendiente pertenece a ${draftTime} ms`);
+  if (draftTime !== Math.round(time))
+    return status(`Los cambios pendientes pertenecen al fotograma de ${draftTime} ms`);
   const editable = [...draftFrames.entries()].filter(([target]) => !lockedTargets.has(target));
-  if (!editable.length) return status("Los objetivos del borrador están bloqueados");
+  if (!editable.length) return status("Los elementos con cambios pendientes están bloqueados");
   const at = draftTime;
   editable.forEach(([target, frame]) => upsertKey(target, structuredClone(frame)));
   selectedKeys = new Set(editable.map(([target]) => `${target}:${at}`));
   clearDraft();
-  commit(`${editable.length} objetivo(s) guardado(s) en ${at} ms`);
+  commit(`${editable.length} elemento(s) guardado(s) en ${at} ms`);
   setGhostToPreviousKey(at);
   time = at;
   refresh();
@@ -3881,7 +4201,7 @@ function resetSelectedTransform() {
     scaleY: 0
   });
   refresh();
-  status(`Transformación restablecida en borrador: ${label(selectedTarget)}`);
+  status(`Transformación restablecida en los cambios del fotograma: ${label(selectedTarget)}`);
 }
 
 function mirrorTransform(transform = {}) {
@@ -3914,11 +4234,11 @@ function mirrorCurrentPose() {
   selectedKeys = new Set(mirrored.map(([target]) => `${target}:${at}`));
   updateDraftUI();
   refresh();
-  status(`Pose reflejada en borrador · ${mirrored.length} objetivo(s)`);
+  status(`Pose reflejada en los cambios del fotograma · ${mirrored.length} elemento(s)`);
 }
 
 function duplicateCurrentKey() {
-  if (hasDraft()) return status("Guarda o descarta el borrador antes de duplicar");
+  if (hasDraft()) return status("Guarda o descarta los cambios del fotograma antes de duplicar");
   const at = Math.round(time);
   const source = animationTargets()
     .map((target) => [target, exactKey(target, at)])
@@ -4002,7 +4322,7 @@ async function exportProject() {
 
 function play() {
   if (playing) return;
-  if (hasDraft()) return status("Guarda o descarta el borrador antes de reproducir");
+  if (hasDraft()) return status("Guarda o descarta los cambios del fotograma antes de reproducir");
   if (time >= duration()) time = 0;
   playing = true;
   lastTick = performance.now();
@@ -4102,7 +4422,7 @@ function bindControls() {
     save: () =>
       saveLocal(
         hasDraft()
-          ? "Proyecto guardado; el borrador del fotograma sigue pendiente"
+          ? "Proyecto guardado; los cambios del fotograma siguen pendientes"
           : "Proyecto guardado en este navegador"
       ),
     "export-project": exportProject,
@@ -4187,7 +4507,7 @@ function bindControls() {
   $("save-local").onclick = () => {
     saveLocal(
       hasDraft()
-        ? "Proyecto guardado; el borrador del fotograma sigue pendiente"
+        ? "Proyecto guardado; los cambios del fotograma siguen pendientes"
         : "Proyecto guardado en este navegador"
     );
   };
@@ -4276,7 +4596,7 @@ function bindControls() {
     const bone = selectedBone();
     if (!bone) return;
     bone.parent = $("bone-parent").value || null;
-    commit("Jerarquía del rig actualizada");
+    commit("Jerarquía del esqueleto actualizada");
     refresh();
   };
   const updateBonePivot = () => {
@@ -4284,7 +4604,7 @@ function bindControls() {
     if (!bone) return;
     bone.x = Number($("bone-x").value) || 0;
     bone.y = Number($("bone-y").value) || 0;
-    commit("Pivote del hueso actualizado");
+    commit("Posición de la articulación actualizada");
     refresh();
   };
   $("bone-x").onchange = updateBonePivot;
@@ -4394,14 +4714,17 @@ function bindControls() {
       refresh();
     };
   });
-  $("flip-part").onclick = () => {
+  const flipPart = (axis) => {
     const current = part();
-    if (!current) return status("Importa o selecciona una capa para voltearla");
+    if (!current) return status("Importa o selecciona una capa para reflejarla");
     if (lockedParts.has(current.id)) return status(`${current.name || current.id} está bloqueado`);
-    current.scaleX *= -1;
-    commit("Pieza volteada");
+    const property = axis === "y" ? "scaleY" : "scaleX";
+    current[property] = (current[property] || 1) * -1;
+    commit(axis === "y" ? "Pieza volteada verticalmente" : "Pieza volteada horizontalmente");
     refresh();
   };
+  $("flip-part").onclick = () => flipPart("x");
+  $("flip-part-y").onclick = () => flipPart("y");
   const moveLayer = (delta) => {
     const current = part();
     if (!current) return status("Importa o selecciona una capa para ordenarla");
@@ -4420,10 +4743,21 @@ function bindControls() {
   $("copy-keys").onclick = copySelectedKeys;
   $("paste-keys").onclick = () => pasteKeys();
   $("fit").onclick = () => {
-    zoom = 1;
-    offsetX = 0;
-    offsetY = 0;
+    const bounds = figureBounds(mode === "animador" ? time : 0);
+    const margin = 56;
+    const availableWidth = Math.max(1, canvas.clientWidth - margin * 2);
+    const availableHeight = Math.max(1, canvas.clientHeight - margin * 2);
+    zoom = Math.max(
+      0.4,
+      Math.min(2.2, availableWidth / (bounds.width * BASE_SCALE), availableHeight / (bounds.height * BASE_SCALE))
+    );
+    const viewScale = BASE_SCALE * zoom;
+    const centerX = (bounds.minX + bounds.maxX) / 2;
+    const centerY = (bounds.minY + bounds.maxY) / 2;
+    offsetX = -centerX * viewScale;
+    offsetY = 80 * viewScale - centerY * viewScale;
     draw();
+    status("Personaje ajustado y centrado en el visor");
   };
   $("zoomin").onclick = () => {
     zoom = Math.min(2.2, zoom * 1.12);
@@ -4441,6 +4775,10 @@ function bindControls() {
   ["grid", "bones", "ghost", "ghost-alpha"].forEach((id) => {
     $(id).oninput = draw;
   });
+  $("snap-grid").onchange = () =>
+    status($("snap-grid").checked ? "Ajuste a cuadrícula activado" : "Ajuste a cuadrícula desactivado");
+  $("snap-joints").onchange = () =>
+    status($("snap-joints").checked ? "Encaje a articulaciones activado" : "Encaje a articulaciones desactivado");
   $("file").onchange = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -4474,19 +4812,75 @@ function bindCanvas() {
   };
   canvas.onpointerdown = (event) => {
     canvas.focus({ preventScroll: true });
+    hideTransformReadout();
+    if (event.button !== 0) return;
     canvas.setPointerCapture(event.pointerId);
     const world = toWorld(event.clientX, event.clientY);
+    if (tool === "bone") {
+      const state = matrices(mode === "animador" ? time : 0);
+      const startTarget = nearestCanvasTarget(event.clientX, event.clientY, state);
+      const startMatrix = startTarget ? targetMatrix(state, startTarget) : null;
+      const start = startMatrix
+        ? { x: startMatrix[4], y: startMatrix[5] }
+        : $("snap-grid").checked
+          ? snapPointToGrid(world)
+          : world;
+      interaction = {
+        type: "create-bone",
+        pointerId: event.pointerId,
+        start,
+        end: world,
+        startTarget,
+        existingStart: Boolean(startTarget),
+        state,
+        snapTarget: null,
+        moved: false
+      };
+      canvas.style.cursor = "crosshair";
+      draw();
+      return;
+    }
     if (tool === "pan") {
       interaction = { type: "pan", x: event.clientX, y: event.clientY, offsetX, offsetY };
       return;
     }
     if (mode === "calibrador") {
+      const gizmoHit = hitLayerTransformGizmo(event.clientX, event.clientY);
+      if (gizmoHit) {
+        const pointer = toCanvasPoint(event.clientX, event.clientY);
+        const { geometry } = gizmoHit;
+        if (gizmoHit.type === "piece-scale") {
+          interaction = {
+            type: "piece-scale",
+            center: geometry.canvasCenter,
+            startDistance: Math.max(
+              1,
+              Math.hypot(pointer.x - geometry.canvasCenter.x, pointer.y - geometry.canvasCenter.y)
+            ),
+            scaleX: geometry.item.scaleX,
+            scaleY: geometry.item.scaleY,
+            moved: false
+          };
+        } else {
+          interaction = {
+            type: "piece-rotate",
+            center: geometry.canvasCenter,
+            startPointerAngle:
+              (Math.atan2(pointer.y - geometry.canvasCenter.y, pointer.x - geometry.canvasCenter.x) * 180) / Math.PI,
+            rotation: geometry.item.rotation || 0,
+            moved: false
+          };
+        }
+        canvas.style.cursor = tool === "rotate" ? "crosshair" : "nwse-resize";
+        return;
+      }
       const chosen = nearestCanvasLayer(event.clientX, event.clientY);
       if (chosen) {
         selectLayer(chosen);
-        if (!lockedParts.has(chosen))
+        if (tool === "select" && !lockedParts.has(chosen))
           interaction = { type: "piece", start: world, x: part().x, y: part().y, moved: false };
         refresh();
+        if (tool !== "select") status(`Capa seleccionada; arrastra ${tool === "rotate" ? "el anillo" : "una esquina"}`);
       }
       return;
     }
@@ -4502,7 +4896,7 @@ function bindCanvas() {
     const gizmoHit = hitTransformGizmo(event.clientX, event.clientY, state);
     if (gizmoHit) {
       if (![...selectedTargets].some((target) => !lockedTargets.has(target)))
-        return status("Todos los objetivos seleccionados están bloqueados");
+        return status("Todos los elementos seleccionados están bloqueados");
       interaction = beginTransformInteraction(gizmoHit, state, world, toCanvasPoint(event.clientX, event.clientY));
       canvas.style.cursor = cursorForGizmoHit(gizmoHit);
       status(
@@ -4534,10 +4928,15 @@ function bindCanvas() {
   };
   canvas.onpointermove = (event) => {
     if (!interaction) {
-      if (tool === "pan") canvas.style.cursor = "grab";
-      else if (mode === "calibrador" && tool === "select") {
-        const chosen = nearestCanvasLayer(event.clientX, event.clientY);
-        canvas.style.cursor = chosen && !lockedParts.has(chosen) ? "move" : "default";
+      if (tool === "bone") canvas.style.cursor = "crosshair";
+      else if (tool === "pan") canvas.style.cursor = "grab";
+      else if (mode === "calibrador") {
+        const hit = hitLayerTransformGizmo(event.clientX, event.clientY);
+        if (hit) canvas.style.cursor = tool === "rotate" ? "crosshair" : "nwse-resize";
+        else if (tool === "select") {
+          const chosen = nearestCanvasLayer(event.clientX, event.clientY);
+          canvas.style.cursor = chosen && !lockedParts.has(chosen) ? "move" : "default";
+        } else canvas.style.cursor = "default";
       } else if (mode === "animador") {
         const state = matrices(time);
         const hit = hitTransformGizmo(event.clientX, event.clientY, state);
@@ -4551,15 +4950,57 @@ function bindCanvas() {
       return;
     }
     const world = toWorld(event.clientX, event.clientY);
-    if (interaction.type === "pan") {
+    if (interaction.type === "create-bone") {
+      const snapped = snappedBoneEndpoint(world, event, interaction);
+      interaction.end = snapped.point;
+      interaction.snapTarget = snapped.target;
+      interaction.moved =
+        Math.hypot(interaction.end.x - interaction.start.x, interaction.end.y - interaction.start.y) *
+          BASE_SCALE *
+          zoom >=
+        4;
+      draw();
+      showTransformReadout(
+        event,
+        `${positionReadout(interaction.end.x, interaction.end.y)}${interaction.snapTarget ? ` · Encajado: ${label(interaction.snapTarget)}` : event.shiftKey ? " · 15°" : ""}`
+      );
+    } else if (interaction.type === "pan") {
       offsetX = interaction.offsetX + event.clientX - interaction.x;
       offsetY = interaction.offsetY + event.clientY - interaction.y;
       draw();
     } else if (interaction.type === "piece") {
-      part().x = interaction.x + world.x - interaction.start.x;
-      part().y = interaction.y + world.y - interaction.start.y;
+      const position = {
+        x: interaction.x + world.x - interaction.start.x,
+        y: interaction.y + world.y - interaction.start.y
+      };
+      const snapped = $("snap-grid").checked ? snapPointToGrid(position) : position;
+      part().x = snapped.x;
+      part().y = snapped.y;
       interaction.moved = true;
       draw();
+      showTransformReadout(event, positionReadout(part().x, part().y));
+    } else if (interaction.type === "piece-scale") {
+      const pointer = toCanvasPoint(event.clientX, event.clientY);
+      const distance = Math.hypot(pointer.x - interaction.center.x, pointer.y - interaction.center.y);
+      const ratio = Math.max(0.1, Math.min(4, distance / interaction.startDistance));
+      part().scaleX =
+        Math.sign(interaction.scaleX || 1) * Math.max(0.1, Math.min(4, Math.abs(interaction.scaleX) * ratio));
+      part().scaleY =
+        Math.sign(interaction.scaleY || 1) * Math.max(0.1, Math.min(4, Math.abs(interaction.scaleY) * ratio));
+      interaction.moved = true;
+      draw();
+      renderInspector();
+      showTransformReadout(event, scaleReadout(part().scaleX, part().scaleY));
+    } else if (interaction.type === "piece-rotate") {
+      const pointer = toCanvasPoint(event.clientX, event.clientY);
+      const pointerAngle =
+        (Math.atan2(pointer.y - interaction.center.y, pointer.x - interaction.center.x) * 180) / Math.PI;
+      const rotation = interaction.rotation + shortestAngleDelta(interaction.startPointerAngle, pointerAngle);
+      part().rotation = event.shiftKey ? Math.round(rotation / 15) * 15 : rotation;
+      interaction.moved = true;
+      draw();
+      renderInspector();
+      showTransformReadout(event, rotationReadout(part().rotation));
     } else if (interaction.type === "translate") {
       const worldDelta = constrainedWorldDelta(
         {
@@ -4581,6 +5022,9 @@ function bindCanvas() {
       interaction.moved = true;
       draw();
       renderInspector();
+      const primary = interaction.targets.find((item) => item.target === selectedTarget) || interaction.targets[0];
+      const frame = draftFrame(primary.target);
+      showTransformReadout(event, positionReadout(frame?.x || 0, frame?.y || 0));
     } else if (interaction.type === "ik") {
       const delta = constrainedWorldDelta(
         {
@@ -4598,11 +5042,20 @@ function bindCanvas() {
       if (!solved) return status("La cadena no tiene longitud suficiente para aplicar cinemática inversa");
       const upperFrame = ensureDraftFrame(interaction.chain.upper);
       const middleFrame = ensureDraftFrame(interaction.chain.middle);
-      setDraftFrame(interaction.chain.upper, { ...upperFrame, angle: interaction.upperAngle + solved.upperDelta });
-      setDraftFrame(interaction.chain.middle, { ...middleFrame, angle: interaction.middleAngle + solved.lowerDelta });
+      const upperAngle = interaction.upperAngle + solved.upperDelta;
+      const middleAngle = interaction.middleAngle + solved.lowerDelta;
+      setDraftFrame(interaction.chain.upper, {
+        ...upperFrame,
+        angle: event.shiftKey ? Math.round(upperAngle / 15) * 15 : upperAngle
+      });
+      setDraftFrame(interaction.chain.middle, {
+        ...middleFrame,
+        angle: event.shiftKey ? Math.round(middleAngle / 15) * 15 : middleAngle
+      });
       interaction.moved = true;
       draw();
       renderInspector();
+      showTransformReadout(event, rotationReadout(draftFrame(interaction.chain.middle)?.angle || 0));
     } else if (interaction.type === "joint") {
       const delta = constrainedWorldDelta(
         {
@@ -4619,21 +5072,29 @@ function bindCanvas() {
       const solved = solveJointRotation(interaction.points.root, interaction.points.joint, target);
       if (!solved) return status("La articulación no puede rotar desde esa posición");
       const upperFrame = ensureDraftFrame(interaction.chain.upper);
-      setDraftFrame(interaction.chain.upper, { ...upperFrame, angle: interaction.upperAngle + solved.angleDelta });
+      const angle = interaction.upperAngle + solved.angleDelta;
+      setDraftFrame(interaction.chain.upper, {
+        ...upperFrame,
+        angle: event.shiftKey ? Math.round(angle / 15) * 15 : angle
+      });
       interaction.moved = true;
       draw();
       renderInspector();
+      showTransformReadout(event, rotationReadout(draftFrame(interaction.chain.upper)?.angle || 0));
     } else if (interaction.type === "rotate") {
       const pointerAngle = (Math.atan2(world.y - interaction.center.y, world.x - interaction.center.x) * 180) / Math.PI;
       const delta = shortestAngleDelta(interaction.startPointerAngle, pointerAngle);
       interaction.targets.forEach((item) => {
-        const angle = Math.max(-360, Math.min(360, item.angle + delta));
+        const rawAngle = Math.max(-360, Math.min(360, item.angle + delta));
+        const angle = event.shiftKey ? Math.round(rawAngle / 15) * 15 : rawAngle;
         const current = ensureDraftFrame(item.target);
         setDraftFrame(item.target, { ...current, angle });
       });
       interaction.moved = true;
       draw();
       renderInspector();
+      const primary = interaction.targets.find((item) => item.target === selectedTarget) || interaction.targets[0];
+      showTransformReadout(event, rotationReadout(draftFrame(primary.target)?.angle || 0));
     } else if (interaction.type === "scale") {
       const point = toCanvasPoint(event.clientX, event.clientY);
       const canvasDelta = rotateCanvasDelta(
@@ -4651,15 +5112,32 @@ function bindCanvas() {
       interaction.moved = true;
       draw();
       renderInspector();
+      const primary = interaction.targets.find((item) => item.target === selectedTarget) || interaction.targets[0];
+      const frame = draftFrame(primary.target);
+      showTransformReadout(event, scaleReadout(1 + (frame?.scaleX || 0), 1 + (frame?.scaleY || 0)));
     }
   };
-  canvas.onpointerup = () => {
+  canvas.onpointerup = (event) => {
     const completed = interaction;
+    if (completed?.type === "create-bone") {
+      const snapped = snappedBoneEndpoint(toWorld(event.clientX, event.clientY), event, completed);
+      completed.end = snapped.point;
+      completed.snapTarget = snapped.target;
+      completed.moved =
+        Math.hypot(completed.end.x - completed.start.x, completed.end.y - completed.start.y) * BASE_SCALE * zoom >= 4;
+    }
     if (completed?.moved && completed.type === "piece") commit("Pieza desplazada");
+    if (completed?.moved && completed.type === "piece-scale") commit("Escala de la capa actualizada");
+    if (completed?.moved && completed.type === "piece-rotate") commit("Rotación de la capa actualizada");
     interaction = null;
-    canvas.style.cursor = "";
+    hideTransformReadout();
+    canvas.style.cursor = tool === "bone" ? "crosshair" : "";
+    if (completed?.type === "create-bone") {
+      finishBoneCreation(completed);
+      return;
+    }
     refresh();
-    if (completed?.moved && completed.type !== "piece") {
+    if (completed?.moved && !["piece", "piece-scale", "piece-rotate"].includes(completed.type)) {
       const action =
         completed.type === "translate"
           ? "Posición"
@@ -4670,10 +5148,15 @@ function bindCanvas() {
               : completed.type === "rotate"
                 ? "Rotación"
                 : "Escala";
-      status(`${action} actualizada en borrador; pulsa Guardar fotograma`);
+      status(`${action} actualizada en los cambios del fotograma; pulsa Guardar fotograma clave`);
     }
   };
-  canvas.onpointercancel = canvas.onpointerup;
+  canvas.onpointercancel = () => {
+    interaction = null;
+    hideTransformReadout();
+    canvas.style.cursor = tool === "bone" ? "crosshair" : "";
+    refresh();
+  };
   canvas.onpointerleave = () => {
     if (!interaction) canvas.style.cursor = "";
   };
@@ -4698,6 +5181,13 @@ function bindKeyboard() {
       }
       const editing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "");
       if (editing) return;
+      if (event.key === "Escape" && tool === "bone") {
+        event.preventDefault();
+        interaction = null;
+        setTool("select");
+        status("Creación de huesos cancelada");
+        return;
+      }
       const command = event.ctrlKey || event.metaKey;
       const activeSelection = activeHierarchyKind ? hierarchySelection(activeHierarchyKind) : [];
       if (event.shiftKey && activeHierarchyKind && event.key === "ArrowUp") {

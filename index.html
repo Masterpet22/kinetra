@@ -78,17 +78,17 @@
               <span><i data-lucide="images"></i> Importar imágenes como capas…</span>
             </button>
             <button data-menu-command="save">
-              <span><i data-lucide="save"></i> Guardar localmente</span>
+              <span><i data-lucide="save"></i> Guardar en este navegador</span>
             </button>
             <hr />
             <button data-mode="proyecto">
               <span><i data-lucide="layout-dashboard"></i> Resumen del proyecto</span>
             </button>
             <button data-mode="exportar">
-              <span><i data-lucide="package-check"></i> Preparar exportación</span>
+              <span><i data-lucide="package-check"></i> Revisar exportación</span>
             </button>
             <button data-menu-command="export-project">
-              <span><i data-lucide="download"></i> Exportar proyecto…</span>
+              <span><i data-lucide="download"></i> Descargar archivo de Kinetra…</span>
             </button>
           </div>
         </details>
@@ -108,10 +108,10 @@
           <div class="app-menu-popover">
             <label><input type="checkbox" data-view-toggle="grid" checked /> Cuadrícula</label>
             <label><input type="checkbox" data-view-toggle="bones" checked /> Huesos</label>
-            <label><input type="checkbox" data-view-toggle="ghost" checked /> Vista fantasma</label>
+            <label><input type="checkbox" data-view-toggle="ghost" checked /> Fotograma de referencia</label>
             <hr />
             <button data-menu-command="fit">
-              <span><i data-lucide="scan"></i> Centrar vista</span>
+              <span><i data-lucide="scan"></i> Ajustar personaje a la vista</span>
             </button>
             <button data-menu-command="fullscreen">
               <span><i data-lucide="maximize-2"></i> Pantalla completa</span>
@@ -127,10 +127,10 @@
           <summary>Ventana</summary>
           <div class="app-menu-popover app-menu-windows">
             <label><input type="checkbox" data-panel-toggle="skeleton" checked /> Esqueleto</label>
-            <label><input type="checkbox" data-panel-toggle="tracks" checked /> Pistas</label>
+            <label><input type="checkbox" data-panel-toggle="tracks" checked /> Pistas de animación</label>
             <label><input type="checkbox" data-panel-toggle="layers" checked /> Capas</label>
             <label><input type="checkbox" data-panel-toggle="inspector" checked /> Inspector</label>
-            <label><input type="checkbox" data-panel-toggle="presets" checked /> Presets</label>
+            <label><input type="checkbox" data-panel-toggle="presets" checked /> Interpolación</label>
             <label><input type="checkbox" data-panel-toggle="curves" checked /> Curvas</label>
             <label><input type="checkbox" data-panel-toggle="timeline" checked /> Línea de tiempo</label>
             <label><input id="preview-toggle" type="checkbox" checked /> Vista previa</label>
@@ -145,7 +145,7 @@
           <summary>Ayuda</summary>
           <div class="app-menu-popover help-menu-popover">
             <button data-tutorial="animador">
-              <span><i data-lucide="film"></i> Tutorial del Animador</span>
+              <span><i data-lucide="film"></i> Tutorial de Animación</span>
             </button>
             <button data-tutorial="calibrador">
               <span><i data-lucide="bone"></i> Tutorial de Ensamblaje</span>
@@ -169,12 +169,12 @@
       <div class="workspace-switcher">
         <details class="app-menu workspace-menu" id="workspace-menu">
           <summary>
-            <i data-lucide="panels-top-left"></i><span id="workspace-menu-label">Animador</span
+            <i data-lucide="panels-top-left"></i><span id="workspace-menu-label">Animación</span
             ><i data-lucide="chevron-down"></i>
           </summary>
           <div class="app-menu-popover">
             <button data-mode="animador">
-              <span><i data-lucide="film"></i> Animador</span>
+              <span><i data-lucide="film"></i> Animación</span>
             </button>
             <button data-mode="calibrador">
               <span><i data-lucide="bone"></i> Ensamblaje</span>
@@ -215,7 +215,7 @@
         </button>
       </div>
       <label class="project-title"
-        >ID clip <input id="project-name" value="nuevo_movimiento" maxlength="80" aria-label="ID del clip activo"
+        >ID del clip <input id="project-name" value="nuevo_movimiento" maxlength="80" aria-label="ID del clip activo"
       /></label>
       <div class="header-actions">
         <button id="undo" class="header-action icon-button" title="Deshacer (Ctrl+Z)" aria-label="Deshacer">
@@ -259,7 +259,7 @@
           ></span>
         </div>
         <div class="panel-body">
-          <input class="search" data-hierarchy-search type="search" placeholder="Buscar articulación…" />
+          <input class="search" data-hierarchy-search type="search" placeholder="Buscar hueso o articulación…" />
           <div class="tree" data-hierarchy-tree></div>
         </div>
         <div class="multi-selection-menu" data-multi-menu hidden>
@@ -313,12 +313,12 @@
           </button>
         </div>
         <div class="tree-actions">
-          <button id="add-bone" class="small-button"><i data-lucide="plus"></i> Hueso</button
+          <button id="add-bone" class="small-button"><i data-lucide="plus"></i> Dibujar hueso</button
           ><button id="delete-bone" class="small-button danger" aria-label="Eliminar hueso">
             <i data-lucide="trash-2"></i>
           </button>
         </div>
-        <div class="tree-meta" data-hierarchy-meta>Rig humanoide · Proyecto local</div>
+        <div class="tree-meta" data-hierarchy-meta>Esqueleto humanoide · Proyecto local</div>
       </aside>
 
       <aside class="panel left-panel hierarchy-panel" data-panel="tracks" data-hierarchy-kind="tracks">
@@ -326,9 +326,9 @@
           <span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span
           ><span class="dock-tab-list" data-dock-tabs="tracks"></span
           ><span class="panel-window-actions"
-            ><button data-panel-float="tracks" aria-label="Desacoplar o acoplar Pistas">
+            ><button data-panel-float="tracks" aria-label="Desacoplar o acoplar Pistas de animación">
               <i data-lucide="external-link"></i></button
-            ><button data-panel-close="tracks" aria-label="Ocultar Pistas"><i data-lucide="x"></i></button
+            ><button data-panel-close="tracks" aria-label="Ocultar Pistas de animación"><i data-lucide="x"></i></button
           ></span>
         </div>
         <div class="panel-body">
@@ -470,10 +470,13 @@
       <section class="workspace">
         <div class="toolbar">
           <div class="tool-group">
+            <output id="tool-context" class="tool-context" aria-live="polite">
+              <span id="tool-context-kind">Hueso</span><strong id="tool-context-target">Raíz del esqueleto</strong>
+            </output>
             <button
               class="tool-button active"
               data-tool="select"
-              title="Seleccionar y mover objetivo (V) · Mayús para selección múltiple"
+              title="Seleccionar y mover elementos (V) · Mayús para selección múltiple"
               aria-label="Seleccionar y mover"
             >
               <i data-lucide="mouse-pointer-2"></i>
@@ -484,17 +487,29 @@
             <button class="tool-button" data-tool="rotate" title="Rotar (R)" aria-label="Rotar">
               <i data-lucide="rotate-cw"></i>
             </button>
-            <button class="tool-button" data-tool="scale" title="Escalar objetivo (S)" aria-label="Escalar">
+            <button class="tool-button" data-tool="scale" title="Escalar selección (S)" aria-label="Escalar selección">
               <i data-lucide="scaling"></i>
             </button>
-            <button id="fit" class="tool-button" title="Centrar" aria-label="Centrar vista">
+            <button
+              id="fit"
+              class="tool-button"
+              title="Ajustar personaje a la vista"
+              aria-label="Ajustar personaje a la vista"
+            >
               <i data-lucide="scan"></i>
             </button>
           </div>
           <div class="tool-group">
-            <label class="inline-control"><input id="grid" type="checkbox" checked /> Cuadrícula</label>
+            <label class="inline-control"><input id="grid" type="checkbox" checked /> Mostrar cuadrícula</label>
+            <label class="inline-control" title="Ajustar posiciones a intervalos de la cuadrícula">
+              <input id="snap-grid" type="checkbox" /> Ajustar a cuadrícula
+            </label>
+            <label class="inline-control" title="Encajar el extremo del hueso en articulaciones próximas">
+              <input id="snap-joints" type="checkbox" checked /> Encajar articulaciones
+            </label>
+            <span class="shortcut-hint"><kbd>Mayús</kbd> Ángulos de 15°</span>
             <label class="inline-control"><input id="bones" type="checkbox" checked /> Huesos</label>
-            <label class="inline-control"><input id="ghost" type="checkbox" checked /> Vista fantasma</label>
+            <label class="inline-control"><input id="ghost" type="checkbox" checked /> Fotograma de referencia</label>
             <label class="inline-control"
               >Opacidad <input id="ghost-alpha" class="opacity-slider" type="range" min="5" max="70" value="28"
             /></label>
@@ -512,6 +527,7 @@
         </div>
         <div id="viewport" class="viewport">
           <canvas id="canvas" tabindex="0" aria-label="Lienzo del personaje y su esqueleto"></canvas>
+          <output id="transform-readout" class="transform-readout" aria-live="polite" hidden></output>
           <section class="preview-card" aria-label="Vista previa">
             <div class="preview-title">
               <span>Vista previa</span
@@ -556,26 +572,28 @@
               <div class="selection-icon"><i data-lucide="bone"></i></div>
               <div>
                 <div id="selected-name" class="selection-name">Torso</div>
-                <div id="selected-type" class="selection-type">Hueso · Objetivo: rig</div>
+                <div id="selected-type" class="selection-type">Raíz del esqueleto</div>
               </div>
             </section>
 
             <div id="animation-inspector">
               <section class="inspector-section">
-                <h2>Transformación relativa</h2>
+                <h2>Cambios del fotograma clave</h2>
                 <div class="field-grid">
                   <div><label for="key-x">Posición X</label><input id="key-x" type="number" step=".5" /></div>
                   <div><label for="key-y">Posición Y</label><input id="key-y" type="number" step=".5" /></div>
                   <div><label for="key-angle">Rotación</label><input id="key-angle" type="number" step="1" /></div>
                   <div>
-                    <label for="key-alpha">Opacidad Δ</label
+                    <label for="key-alpha">Cambio de opacidad</label
                     ><input id="key-alpha" type="number" min="-1" max="0" step=".05" />
                   </div>
                   <div>
-                    <label for="key-scale-x">Escala X Δ</label><input id="key-scale-x" type="number" step=".01" />
+                    <label for="key-scale-x">Cambio de escala X</label
+                    ><input id="key-scale-x" type="number" step=".01" />
                   </div>
                   <div>
-                    <label for="key-scale-y">Escala Y Δ</label><input id="key-scale-y" type="number" step=".01" />
+                    <label for="key-scale-y">Cambio de escala Y</label
+                    ><input id="key-scale-y" type="number" step=".01" />
                   </div>
                 </div>
                 <div class="stack-field">
@@ -584,16 +602,16 @@
                 </div>
                 <p id="draft-status" class="draft-status">Sin cambios pendientes</p>
                 <div class="button-row">
-                  <button id="set-key" class="small-button primary">Guardar fotograma</button>
+                  <button id="set-key" class="small-button primary">Guardar fotograma clave</button>
                   <button id="discard-key-draft" class="small-button">Descartar cambios</button>
-                  <button id="duplicate-key" class="small-button">Duplicar</button>
-                  <button id="reset-transform" class="small-button">Restablecer</button>
-                  <button id="mirror-pose" class="small-button">Reflejar pose</button>
-                  <button id="delete-key" class="small-button danger">Eliminar</button>
+                  <button id="duplicate-key" class="small-button">Duplicar clave</button>
+                  <button id="reset-transform" class="small-button">Restablecer transformación</button>
+                  <button id="mirror-pose" class="small-button">Reflejar pose izquierda/derecha</button>
+                  <button id="delete-key" class="small-button danger">Eliminar clave</button>
                 </div>
               </section>
               <section class="inspector-section">
-                <h2>Propiedades de animación</h2>
+                <h2>Propiedades del clip</h2>
                 <div class="stack-field">
                   <label for="clip-label">Nombre visible</label><input id="clip-label" type="text" maxlength="100" />
                 </div>
@@ -604,7 +622,7 @@
                 <div class="field-grid">
                   <div><label for="clip-category">Categoría</label><input id="clip-category" type="text" /></div>
                   <div>
-                    <label for="clip-state">Estado</label
+                    <label for="clip-state">Estado del personaje</label
                     ><select id="clip-state">
                       <option value="idle">Reposo</option>
                       <option value="locomotion">Locomoción</option>
@@ -650,14 +668,17 @@
                   </div>
                 </div>
                 <div class="button-row">
-                  <button id="flip-part" class="small-button">Voltear X</button
-                  ><button id="layer-up" class="small-button">Subir capa</button
-                  ><button id="layer-down" class="small-button">Bajar capa</button
+                  <button id="flip-part" class="small-button" title="Voltear horizontalmente">
+                    Voltear horizontalmente</button
+                  ><button id="flip-part-y" class="small-button" title="Voltear verticalmente">
+                    Voltear verticalmente</button
+                  ><button id="layer-up" class="small-button">Traer adelante</button
+                  ><button id="layer-down" class="small-button">Enviar atrás</button
                   ><button id="remove-part" class="small-button danger">Eliminar capa</button>
                 </div>
               </section>
               <section class="inspector-section">
-                <h2>Constructor de rig</h2>
+                <h2>Editor de esqueleto</h2>
                 <div class="stack-field">
                   <label for="bone-name">Nombre del hueso</label><input id="bone-name" type="text" maxlength="80" />
                 </div>
@@ -666,8 +687,14 @@
                   ><select id="bone-parent"></select>
                 </div>
                 <div class="field-grid">
-                  <div><label for="bone-x">Pivote X</label><input id="bone-x" type="number" step="1" /></div>
-                  <div><label for="bone-y">Pivote Y</label><input id="bone-y" type="number" step="1" /></div>
+                  <div>
+                    <label for="bone-x">Posición de la articulación X</label
+                    ><input id="bone-x" type="number" step="1" />
+                  </div>
+                  <div>
+                    <label for="bone-y">Posición de la articulación Y</label
+                    ><input id="bone-y" type="number" step="1" />
+                  </div>
                 </div>
                 <div class="bone-position-locks">
                   <h3>Fijación de posición</h3>
@@ -681,7 +708,7 @@
                   <p class="muted">Mantiene la articulación en su conexión con el hueso padre; puede rotar.</p>
                 </div>
                 <div class="button-row">
-                  <button id="inspector-add-bone" class="small-button primary">Añadir hijo</button
+                  <button id="inspector-add-bone" class="small-button primary">Dibujar hueso hijo</button
                   ><button id="inspector-delete-bone" class="small-button danger">Eliminar hueso</button>
                 </div>
               </section>
@@ -695,16 +722,17 @@
           <span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span
           ><span class="dock-tab-list" data-dock-tabs="presets"></span
           ><span class="panel-window-actions"
-            ><button data-panel-float="presets" aria-label="Desacoplar o acoplar Presets">
+            ><button data-panel-float="presets" aria-label="Desacoplar o acoplar Interpolación">
               <i data-lucide="external-link"></i></button
-            ><button data-panel-close="presets" aria-label="Ocultar Presets"><i data-lucide="x"></i></button
+            ><button data-panel-close="presets" aria-label="Ocultar Interpolación">
+              <i data-lucide="x"></i></button
           ></span>
         </div>
         <div id="presets-panel" class="right-tabs-content">
           <section class="inspector-section">
-            <h2>Curvas permitidas</h2>
+            <h2>Curvas de interpolación</h2>
             <div id="preset-grid" class="preset-grid"></div>
-            <p class="muted">Cada preset corresponde a una curva comprendida por Studio y por el runtime del juego.</p>
+            <p class="muted">Define cómo cambia la velocidad al acercarse al fotograma clave.</p>
           </section>
         </div>
       </aside>
@@ -775,7 +803,7 @@
           /></label>
           <label class="inline-control"><input id="loop" type="checkbox" /> Bucle</label>
           <label class="inline-control timeline-zoom-control"
-            >Zoom tiempo <input id="timeline-zoom" type="range" min="100" max="250" value="100" step="10"
+            >Escala temporal <input id="timeline-zoom" type="range" min="100" max="250" value="100" step="10"
           /></label>
           <button id="copy-keys" class="tool-button" title="Copiar claves" aria-label="Copiar claves">
             <i data-lucide="copy"></i>
