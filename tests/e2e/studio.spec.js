@@ -206,6 +206,8 @@ test("dibuja una cadena continua de huesos hasta pulsar Escape", async ({ page }
 });
 
 test("asigna nombres anatómicos según la jerarquía del hueso", async ({ page }) => {
+  await switchWorkspace(page, "calibrador");
+  await page.locator(".dock-tab:visible", { hasText: "Esqueleto" }).click();
   const boneRows = page.locator("[data-panel='skeleton'] [data-hierarchy-tree] .tree-row[data-hierarchy-id]");
   await boneRows.filter({ hasText: "Hombro derecho" }).locator(".tree-select").click();
   await page.locator("#add-bone").click();
