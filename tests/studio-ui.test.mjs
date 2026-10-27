@@ -738,8 +738,8 @@ assert.match(
 );
 assert.match(
   css,
-  /@media \(max-width: 1450px\)[\s\S]*\.status\s*\{[^}]*left:\s*33\.3%[^}]*right:\s*8px/s,
-  "En encabezados de dos filas, el aviso debe usar la franja vacía superior"
+  /@media \(max-width: 1450px\)[\s\S]*\.status\s*\{[^}]*bottom:\s*5px[^}]*left:\s*590px[^}]*right:\s*8px/s,
+  "En encabezados de dos filas, el aviso debe usar la zona libre de la fila inferior"
 );
 assert.match(
   editor,

@@ -97,6 +97,64 @@ test("indica si las herramientas transforman capas o huesos", async ({ page }) =
   await expect(page.locator("[data-tool='rotate']")).toHaveAttribute("title", /Rotar capa/);
 });
 
+test("mantiene separados los controles del encabezado en pantallas medianas", async ({ page }) => {
+  const layout = await page.evaluate(() => {
+    const bounds = (selector) => {
+      const { left, right, top, bottom } = document.querySelector(selector).getBoundingClientRect();
+      return { left, right, top, bottom };
+    };
+    const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    const status = document.querySelector("#status");
+    status.textContent = "Aviso de prueba";
+    status.classList.add("visible");
+    return {
+      workspaceVsActions: overlaps(bounds(".workspace-switcher"), bounds(".header-actions")),
+      workspaceVsClip: overlaps(bounds(".workspace-switcher"), bounds(".clip-switcher")),
+      workspaceVsStatus: overlaps(bounds(".workspace-switcher"), bounds("#status"))
+    };
+  });
+
+  expect(layout).toEqual({
+    workspaceVsActions: false,
+    workspaceVsClip: false,
+    workspaceVsStatus: false
+  });
+});
+
+test("adapta el espacio de trabajo a resoluciones de escritorio, tableta y móvil", async ({ page }) => {
+  for (const [width, height] of [
+    [1440, 900],
+    [1024, 768],
+    [768, 900],
+    [390, 844]
+  ]) {
+    await page.setViewportSize({ width, height });
+    const layout = await page.evaluate(() => {
+      document.querySelector("#emergency-export").hidden = false;
+      const bounds = (selector) => {
+        const { left, right, top, bottom } = document.querySelector(selector).getBoundingClientRect();
+        return { left, right, top, bottom };
+      };
+      const workspace = bounds(".workspace");
+      const hierarchy = bounds("[data-panel='skeleton']");
+      const timeline = bounds("[data-panel='timeline']");
+      return {
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+        workspace,
+        hierarchy,
+        timeline,
+        mobileOrder: workspace.top < timeline.top && timeline.top < hierarchy.top
+      };
+    });
+
+    expect(layout.scrollWidth, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(layout.clientWidth);
+    expect(layout.workspace.left).toBeGreaterThanOrEqual(0);
+    expect(layout.workspace.right).toBeLessThanOrEqual(layout.clientWidth);
+    if (width <= 940) expect(layout.mobileOrder, `canvas should precede panels at ${width}px`).toBe(true);
+  }
+});
+
 test("refleja la capa seleccionada horizontal y verticalmente", async ({ page }) => {
   await switchWorkspace(page, "calibrador");
   await page.locator("#flip-part").click();
