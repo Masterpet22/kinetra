@@ -6,6 +6,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+### Added
+
+- Las capas pueden acumular sprites alternativos como variantes desplegables, previsualizarlos en Ensamblaje y aplicarlos en el tiempo actual de Animación sin crear grupos adicionales.
+- El lienzo resalta el sprite seleccionado y las capas enlazadas al hueso seleccionado, incluida la variante activa.
+- El Studio admite varios proyectos abiertos en pestañas independientes, con estado visual, borradores e historial propios y apertura múltiple de archivos Kinetra.
+- Los presets y la gráfica de la curva activa comparten ahora una sola ventana de Interpolación.
+
 ### Fixed
 
 - Cada artefacto publicado identifica sus recursos con el commit del despliegue, evitando reutilizar JavaScript o CSS de una versión anterior con el mismo número de release.

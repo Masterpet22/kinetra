@@ -15,6 +15,8 @@ Kinetra es un editor web estático para ensamblar y animar personajes 2D constru
 
 Cada proyecto puede contener varios clips. El selector del encabezado permite crear, duplicar, renombrar, ordenar y eliminar clips; la vista previa puede reproducir cualquiera de ellos y la exportación conserva la colección completa.
 
+La barra de proyectos permite mantener varios archivos abiertos durante la misma sesión. Crear una plantilla o abrir uno o varios archivos `.kinetra.json` genera pestañas independientes; cada una conserva su proyecto, clips, tiempo, selección, borradores e historial de deshacer y rehacer.
+
 Para que las articulaciones deformen zonas distintas, el personaje debe estar separado en imágenes por pieza (por ejemplo, brazo, antebrazo y mano). Una ilustración plana importada como una única capa se mueve como una sola pieza; el corte automático y la deformación por malla pertenecen a una etapa posterior.
 
 La lectura de PSD utiliza ag-psd, cargada bajo demanda desde esm.sh; el documento se procesa en el navegador.
@@ -41,6 +43,8 @@ Las plantillas son puntos de partida normales: sus capas, pivotes, jerarquías y
 
 El espacio de trabajo usa un sistema modular inspirado en aplicaciones como GIMP. Jerarquía, Inspector, Vista previa y Línea de tiempo pueden ocultarse o reactivarse desde el menú `Ventana`.
 
+La ventana `Interpolación` reúne los presets de velocidad y la gráfica de la curva activa; al elegir una opción, ambos estados se actualizan en el mismo panel.
+
 - Arrastra una ventana desde el asa de su cabecera al menos 8 píxeles para desacoplarla y moverla libremente dentro del escritorio de Kinetra; un clic o un movimiento mínimo no la despega. Las ventanas quedan contenidas dentro de la aplicación y no pueden perderse fuera de la página.
 - Arrastra las divisiones verticales entre paneles laterales y el lienzo, o la horizontal sobre la línea de tiempo, para cambiar el tamaño de esas áreas. Los tamaños se guardan junto con la disposición; también puedes usar las flechas del teclado cuando el divisor está enfocado.
 - Suéltala sobre la zona azul izquierda, derecha o inferior para acoplarla.
@@ -51,6 +55,7 @@ El espacio de trabajo usa un sistema modular inspirado en aplicaciones como GIMP
 - Al importar o pegar un elemento con un nombre duplicado, puedes reemplazar los existentes, mantener todos o cancelar. La casilla del diálogo permite aplicar la decisión a todos los elementos duplicados restantes; si no se marca, se pregunta por cada elemento. Al mantenerlos, los elementos nuevos reciben un sufijo numérico (`Brazo 2`, `Brazo 3`, etc.).
 - En Capas, el icono de lápiz de cada fila abre una caja de texto en el lugar del nombre, al estilo del Explorador de archivos. Pulsa `Enter` para confirmar o `Escape` para cancelar. Si el nombre ya existe, se conserva la capa y se añade el siguiente sufijo numérico; el nombre del recurso importado también se actualiza.
 - En Capas, selecciona dos o más elementos y pulsa el icono de carpeta para crear un grupo. Los grupos se pueden contraer, expandir, renombrar o deshacer sin alterar el orden de dibujo ni la apariencia del personaje; su organización se conserva al guardar y exportar el proyecto.
+- En Capas, selecciona una pieza y pulsa el icono de imágenes para importar sprites alternativos. La flecha de la pieza despliega su sprite original y todas las variantes sin crear un grupo. En Ensamblaje, un clic previsualiza la variante; en Animación, la aplica en el tiempo actual y crea el evento de sprite correspondiente.
 
 Cada herramienta usa un tamaño flotante apropiado y el dock inferior mantiene una altura limitada. La composición de pestañas, los acoplamientos, tamaños y posiciones internas se conservan en el navegador.
 

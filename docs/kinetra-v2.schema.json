@@ -80,6 +80,28 @@
           "visible": { "type": "boolean" },
           "z": { "type": "number" },
           "groupId": { "type": "string" },
+          "variants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "assetId"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "name": { "type": "string" },
+                "assetId": { "type": "string", "minLength": 1 },
+                "crop": {
+                  "type": "object",
+                  "required": ["x", "y", "width", "height"],
+                  "properties": {
+                    "x": { "type": "number", "minimum": 0 },
+                    "y": { "type": "number", "minimum": 0 },
+                    "width": { "type": "number", "exclusiveMinimum": 0 },
+                    "height": { "type": "number", "exclusiveMinimum": 0 }
+                  }
+                }
+              }
+            }
+          },
           "crop": {
             "type": "object",
             "required": ["x", "y", "width", "height"],

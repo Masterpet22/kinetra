@@ -59,6 +59,47 @@ test("crea, duplica, persiste, exporta y reimporta un proyecto multiclips", asyn
   await expect(page.locator("#clip-select option")).toHaveCount(3);
 });
 
+test("acumula, despliega y aplica variantes dentro de una capa", async ({ page }) => {
+  await switchWorkspace(page, "calibrador");
+  const head = page.locator("[data-panel='layers'] [data-hierarchy-id='cabeza']");
+  await head.locator(".tree-select").click();
+  await page.locator("#variant-files").setInputFiles([
+    { name: "cabeza_feliz.png", mimeType: "image/png", buffer: tinyPng },
+    { name: "cabeza_enojada.png", mimeType: "image/png", buffer: tinyPng }
+  ]);
+
+  await expect(head.locator(".tree-variant-collapse")).toBeVisible();
+  await expect(page.locator("[data-variant-of='cabeza']")).toHaveCount(3);
+  await expect(page.locator("[data-variant-id='cabeza_enojada']")).toHaveClass(/active/);
+
+  await switchWorkspace(page, "animador");
+  await page.locator(".dock-tab:visible", { hasText: "Capas" }).click();
+  await page.locator("[data-variant-id='cabeza_feliz'] .tree-select").click();
+  await expect(page.locator("#status")).toContainText("Variante cabeza_feliz aplicada en 0 ms");
+  await expect(page.locator(".event-marker", { hasText: "cabeza: cabeza_feliz" })).toBeVisible();
+});
+
+test("mantiene varios proyectos abiertos en pestañas independientes", async ({ page }) => {
+  page.once("dialog", (dialog) => dialog.accept("Clip de la primera pestaña"));
+  await page.locator("#clip-new").click();
+  await expect(page.locator("#clip-select option")).toHaveCount(2);
+
+  await page.locator("#new-project-tab").click();
+  await expect(page.locator("#new-project-dialog")).toBeVisible();
+  await page.locator("[data-project-template='blank']").click();
+  await expect(page.locator("#project-tabs .project-tab")).toHaveCount(2);
+  await expect(page.locator("#clip-select option")).toHaveCount(1);
+
+  await page.locator("#project-tabs .project-tab").first().locator(".project-tab-name").click();
+  await expect(page.locator("#clip-select option")).toHaveCount(2);
+  await page.locator("#project-tabs .project-tab").nth(1).locator(".project-tab-name").click();
+  await expect(page.locator("#clip-select option")).toHaveCount(1);
+
+  await page.locator("#project-tabs .project-tab").nth(1).locator(".project-tab-close").click();
+  await expect(page.locator("#project-tabs .project-tab")).toHaveCount(1);
+  await expect(page.locator("#clip-select option")).toHaveCount(2);
+});
+
 test("deshacer/rehacer y controles de clips no pierden el estado", async ({ page }) => {
   await switchWorkspace(page, "calibrador");
   await page.locator("#part-x").fill("25");
@@ -231,6 +272,8 @@ test("aplica una curva de interpolación a los cambios pendientes", async ({ pag
   await overshoot.click();
   await expect(overshoot).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#preset-active")).toHaveText("Activa: Sobrepaso");
+  await expect(page.locator("#curve-canvas")).toBeVisible();
+  await expect(page.locator("#curve-label")).toContainText("Back.out");
   await expect(page.locator("#status")).toContainText("Interpolación “Sobrepaso” aplicada");
   await page.locator(".dock-tab:visible", { hasText: "Inspector" }).click();
   await expect(page.locator("#draft-status")).toContainText("cambios sin guardar");

@@ -49,9 +49,15 @@ assert.match(html, /<h2>Curvas de interpolación<\/h2>/, "El panel debe explicar
 assert.match(html, /id=["']preset-active["']/, "El panel debe anunciar la interpolación activa");
 assert.match(
   editor,
-  /\$\("key-ease"\)\.value = value;\s*previewKeyFromInspector\(\);\s*updatePresetSelection\(\);\s*showRightTab\("curves"\)/,
+  /\$\("key-ease"\)\.value = value;\s*previewKeyFromInspector\(\);\s*updatePresetSelection\(\);\s*requestAnimationFrame\(drawCurve\)/,
   "Elegir una interpolación predefinida debe incorporarla a los cambios pendientes"
 );
+assert.match(
+  html,
+  /id=["']preset-grid["'][\s\S]*id=["']curve-canvas["']/,
+  "Los presets y la curva activa deben compartir el panel de Interpolación"
+);
+assert.doesNotMatch(html, /data-panel=["']curves["']/, "Curvas no debe conservar una ventana independiente");
 assert.match(editor, /function updatePresetSelection\(/, "La opción aplicada debe conservar un estado activo visible");
 assert.match(
   editor,
@@ -269,10 +275,23 @@ assert.match(editor, /lockedTargets/);
 assert.match(editor, /timelineZoom/);
 assert.match(editor, /TRANSFORM_FIELDS/);
 assert.match(editor, /spriteEvents/);
+assert.match(editor, /resolveSpriteLayerVariant/, "El visor debe resolver los eventos de reemplazo de sprite");
+assert.match(html, /id=["']event-slot-options["']/, "El editor debe sugerir las capas reemplazables");
+assert.match(html, /id=["']event-variant-options["']/, "El editor debe sugerir variantes previsualizables");
+assert.match(html, /id=["']add-layer-variants["']/, "Capas debe permitir acumular variantes sin crear grupos");
+assert.match(editor, /function renderLayerVariantRow\(/, "Las variantes deben desplegarse dentro de su capa");
+assert.match(editor, /function useLayerVariant\(/, "Una variante debe poder aplicarse en el tiempo actual");
+assert.match(editor, /function layerIsHighlighted\(/, "El visor debe identificar sprites seleccionados o enlazados");
+assert.match(editor, /highlightSelection: true/, "El lienzo principal debe resaltar la selección visualmente");
+assert.match(editor, /drop-shadow\(0 0 3px #55c7ff\)/, "El sprite seleccionado debe recibir un contorno visible");
+assert.match(html, /id=["']project-tabs["']/, "El estudio debe mostrar una barra de proyectos abiertos");
+assert.match(html, /id=["']new-project-tab["']/, "La barra debe permitir abrir otra pestaña de proyecto");
+assert.match(editor, /function switchProjectTab\(/, "Cada pestaña debe poder restaurar su proyecto activo");
+assert.match(editor, /function closeProjectTab\(/, "Las pestañas de proyecto deben poder cerrarse");
 assert.match(
   editor,
-  /if \(rightTab === ["']curves["']\) drawCurve\(\)/,
-  "El inspector solo debe actualizar la curva cuando esa ventana está activa"
+  /if \(rightTab === ["']presets["']\) requestAnimationFrame\(drawCurve\)/,
+  "El inspector debe actualizar la curva dentro de Interpolación"
 );
 assert.match(
   editor,
@@ -522,7 +541,7 @@ assert.match(
   /duplicateDialogResolve = null;\s*resolve\?\.\(duplicateDialogChoice\)/,
   "Cerrar el diálogo debe finalizar la operación, incluso al cancelar"
 );
-for (const panel of ["skeleton", "tracks", "layers", "inspector", "presets", "curves", "timeline"]) {
+for (const panel of ["skeleton", "tracks", "layers", "inspector", "presets", "timeline"]) {
   assert.match(html, new RegExp(`data-panel=["']${panel}["']`), `Debe existir el panel móvil ${panel}`);
   assert.match(html, new RegExp(`data-panel-toggle=["']${panel}["']`), `El panel ${panel} debe poder activarse`);
 }
@@ -908,6 +927,11 @@ assert.match(
   css,
   /\.app-menu-bar \.app-menu:not\(\[open\]\) > summary\s*\{[^}]*z-index:\s*241/s,
   "Los encabezados cerrados deben poder recibir hover aunque el desplegable actual los cubra"
+);
+assert.match(
+  css,
+  /\.app-menu-bar \.app-menu\[open\]\s*\{[^}]*z-index:\s*260/s,
+  "El menú de aplicación abierto debe superponerse al selector de espacio de trabajo"
 );
 assert.match(
   css,

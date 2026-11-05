@@ -131,7 +131,6 @@
             <label><input type="checkbox" data-panel-toggle="layers" checked /> Capas</label>
             <label><input type="checkbox" data-panel-toggle="inspector" checked /> Inspector</label>
             <label><input type="checkbox" data-panel-toggle="presets" checked /> Interpolación</label>
-            <label><input type="checkbox" data-panel-toggle="curves" checked /> Curvas</label>
             <label><input type="checkbox" data-panel-toggle="timeline" checked /> Línea de tiempo</label>
             <label><input id="preview-toggle" type="checkbox" checked /> Vista previa</label>
             <hr />
@@ -250,6 +249,18 @@
       </div>
       <output id="status" class="status" role="status" aria-live="polite"></output>
     </header>
+
+    <nav class="project-tabs-bar" aria-label="Proyectos abiertos">
+      <div id="project-tabs" class="project-tabs"></div>
+      <button
+        id="new-project-tab"
+        class="project-tab-add icon-button"
+        title="Abrir un proyecto nuevo"
+        aria-label="Abrir un proyecto nuevo"
+      >
+        <i data-lucide="plus"></i>
+      </button>
+    </nav>
 
     <main class="studio-shell">
       <aside class="panel left-panel hierarchy-panel" data-panel="skeleton" data-hierarchy-kind="skeleton">
@@ -476,6 +487,14 @@
             disabled
           >
             <i data-lucide="folder-plus"></i></button
+          ><button
+            id="add-layer-variants"
+            class="small-button"
+            title="Añadir variantes a la capa seleccionada"
+            aria-label="Añadir variantes a la capa seleccionada"
+            disabled
+          >
+            <i data-lucide="images"></i></button
           ><button id="import-layers" class="small-button primary"><i data-lucide="image-plus"></i> Importar</button
           ><button id="delete-layer" class="small-button danger"><i data-lucide="trash-2"></i></button>
         </div>
@@ -657,13 +676,23 @@
               <section class="inspector-section">
                 <h2>Evento de sprite</h2>
                 <div class="field-grid">
-                  <div><label for="event-slot">Ranura</label><input id="event-slot" value="handRight" /></div>
-                  <div><label for="event-variant">Variante</label><input id="event-variant" value="grip" /></div>
+                  <div>
+                    <label for="event-slot">Capa a reemplazar</label
+                    ><input id="event-slot" list="event-slot-options" placeholder="mano_abierta" />
+                    <datalist id="event-slot-options"></datalist>
+                  </div>
+                  <div>
+                    <label for="event-variant">Nueva variante</label
+                    ><input id="event-variant" list="event-variant-options" placeholder="mano_cerrada" />
+                    <datalist id="event-variant-options"></datalist>
+                  </div>
                 </div>
                 <div class="button-row">
                   <button id="add-event" class="small-button">Insertar en el tiempo actual</button>
                 </div>
-                <p class="muted">El evento se exporta por ID; no incrusta imágenes ni prendas.</p>
+                <p class="muted">
+                  Usa el ID de una capa o recurso del proyecto para previsualizar el reemplazo desde este instante.
+                </p>
               </section>
             </div>
 
@@ -755,25 +784,11 @@
             <p id="preset-active" class="preset-active" aria-live="polite">Activa: Lineal</p>
             <div id="preset-grid" class="preset-grid"></div>
             <p class="muted">Pasa el cursor o usa el teclado para previsualizar el cambio de velocidad.</p>
-          </section>
-        </div>
-      </aside>
-
-      <aside class="panel right-panel" data-panel="curves">
-        <div class="panel-window-bar" data-panel-handle="curves">
-          <span class="dock-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span
-          ><span class="dock-tab-list" data-dock-tabs="curves"></span
-          ><span class="panel-window-actions"
-            ><button data-panel-float="curves" aria-label="Desacoplar o acoplar Curvas">
-              <i data-lucide="external-link"></i></button
-            ><button data-panel-close="curves" aria-label="Ocultar Curvas"><i data-lucide="x"></i></button
-          ></span>
-        </div>
-        <div id="curves-panel" class="right-tabs-content">
-          <section class="inspector-section">
-            <h2>Vista de interpolación</h2>
-            <canvas id="curve-canvas"></canvas>
-            <p id="curve-label" class="muted">Linear</p>
+            <div class="curve-preview-section">
+              <h3>Vista de la curva activa</h3>
+              <canvas id="curve-canvas"></canvas>
+              <p id="curve-label" class="muted">Linear</p>
+            </div>
           </section>
         </div>
       </aside>
@@ -904,9 +919,7 @@
         </button>
       </div>
       <div class="template-dialog-body">
-        <p>
-          La plantilla reemplazará el proyecto guardado localmente. Después podrás modificar todas sus capas y huesos.
-        </p>
+        <p>La plantilla se abrirá en una pestaña nueva. Después podrás modificar todas sus capas y huesos.</p>
         <div id="template-grid" class="template-grid"></div>
       </div>
     </dialog>
@@ -955,11 +968,19 @@
       </section>
     </div>
 
-    <input id="file" type="file" accept=".json,application/json" />
+    <input id="file" type="file" accept=".json,application/json" aria-label="Abrir proyectos" multiple />
     <input
       id="image-files"
       type="file"
       accept="image/png,image/webp,image/jpeg,.psd,image/vnd.adobe.photoshop,image/psd"
+      aria-label="Importar imágenes como capas"
+      multiple
+    />
+    <input
+      id="variant-files"
+      type="file"
+      accept="image/png,image/webp,image/jpeg"
+      aria-label="Importar variantes de sprite"
       multiple
     />
     <script type="module" src="./src/studio/editor.js?v=0.13.0"></script>

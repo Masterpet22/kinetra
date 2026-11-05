@@ -7,7 +7,7 @@ import {
 } from "../src/animations/studio-format.js";
 import { sampleKinetraClip } from "../src/animations/studio-runtime.js";
 import { PuppetAnimationController } from "../src/animations/controller.js";
-import { animationEase, sampleKeyframeAnimationPose } from "../src/animations/runtime.js";
+import { animationEase, sampleKeyframeAnimationPose, sampleSpriteVariants } from "../src/animations/runtime.js";
 
 assert.equal(animationEase(0.5, "Linear"), 0.5);
 assert.equal(animationEase(0.5, "Quad.in"), 0.25);
@@ -55,6 +55,8 @@ project.keys.rig = [
   { t: 1000, y: -10, scaleX: 0.1, scaleY: -0.1, alpha: -1, ease: "Linear" }
 ];
 project.spriteEvents = [{ t: 400, slot: "handRight", variant: "grip" }];
+assert.deepEqual(sampleSpriteVariants(project, 399), {});
+assert.deepEqual(sampleSpriteVariants(project, 400), { handRight: "grip" });
 
 assert.deepEqual(
   validateKinetraClip(project, { mode: "game" }),

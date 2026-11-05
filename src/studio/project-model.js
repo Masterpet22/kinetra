@@ -1,7 +1,7 @@
 import { createKinetraClip, normalizeKinetraClip } from "../animations/studio-format.js";
 import { PUPPET_NECK_CONTROL, PUPPET_ROOT_POSITION_LOCK } from "../animations/rig.js";
 
-export const AUTHORING_VERSION = 5;
+export const AUTHORING_VERSION = 6;
 
 export function assertUsableAuthoringProject(project) {
   const errors = [];
@@ -12,6 +12,7 @@ export function assertUsableAuthoringProject(project) {
   if (!Array.isArray(project?.assets)) errors.push("los recursos no son una lista");
   const assetIds = new Set((project?.assets || []).map((asset) => asset?.id).filter(Boolean));
   const layerIds = new Set();
+  const variantIds = new Set();
   (project?.parts || []).forEach((part, index) => {
     if (!part?.id || layerIds.has(part.id)) errors.push(`la capa ${index} no tiene un ID único`);
     layerIds.add(part?.id);
@@ -19,6 +20,19 @@ export function assertUsableAuthoringProject(project) {
     else if (part.source !== "builtin" && !assetIds.has(part.assetId)) {
       errors.push(`la capa ${part.id || index} referencia un recurso inexistente`);
     }
+    if (part.variants !== undefined && !Array.isArray(part.variants)) {
+      errors.push(`las variantes de ${part.id || index} no son una lista`);
+    }
+    (Array.isArray(part.variants) ? part.variants : []).forEach((variant, variantIndex) => {
+      if (!variant?.id || variantIds.has(variant.id)) {
+        errors.push(`la variante ${variantIndex} de ${part.id || index} no tiene un ID único`);
+      } else variantIds.add(variant.id);
+      if (!assetIds.has(variant?.assetId)) {
+        errors.push(
+          `la variante ${variant?.id || variantIndex} de ${part.id || index} referencia un recurso inexistente`
+        );
+      }
+    });
   });
   if (errors.length) throw new Error(`Proyecto local incompatible: ${errors.join("; ")}`);
   return project;
@@ -92,7 +106,8 @@ export function migrateAuthoringProject(source) {
       scaleX: 1,
       scaleY: 1,
       z,
-      ...part
+      ...part,
+      variants: structuredClone(Array.isArray(part.variants) ? part.variants : [])
     })),
     clips,
     activeClipId
