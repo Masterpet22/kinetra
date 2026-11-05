@@ -226,9 +226,9 @@ test("escala una capa desde el visor y ajusta el personaje a la vista", async ({
   const centerX = box.x + box.width / 2 - 7;
   const centerY = box.y + box.height / 2 - 44;
   const initialScale = Number(await page.locator("#part-scale").inputValue());
-  await page.mouse.move(centerX - 58, centerY - 99);
+  await page.mouse.move(centerX - 70, centerY + 87);
   await page.mouse.down();
-  await page.mouse.move(centerX - 100, centerY - 140, { steps: 8 });
+  await page.mouse.move(centerX - 105, centerY + 125, { steps: 8 });
   await expect(page.locator("#transform-readout")).toBeVisible();
   await expect(page.locator("#transform-readout")).toContainText("Escala:");
   await expect(page.locator("#transform-readout")).toContainText("%");
