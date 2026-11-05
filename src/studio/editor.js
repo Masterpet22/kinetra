@@ -1737,7 +1737,7 @@ function hitLayerTransformGizmo(clientX, clientY) {
   const pointer = toCanvasPoint(clientX, clientY);
   if (tool === "scale") {
     const corner = geometry.canvasCorners.find(
-      ({ x, y }) => Math.hypot(pointer.x - x, pointer.y - y) <= GIZMO_METRICS.scaleHandleRadius + 2
+      ({ x, y }) => Math.hypot(pointer.x - x, pointer.y - y) <= GIZMO_METRICS.scaleHandleRadius + 6
     );
     return corner ? { type: "piece-scale", geometry } : null;
   }
