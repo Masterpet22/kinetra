@@ -1,5 +1,5 @@
 /** Runtime portable de Kinetra v2: no depende del DOM ni del editor. */
-import { sampleKeyframeAnimationPose } from "./runtime.js";
+import { resolveSpriteLayerVariant, sampleKeyframeAnimationPose, spriteVariantSourceIds } from "./runtime.js";
 
 export const KINETRA_SCHEMA = "kinetra/v2";
 export const KINETRA_LIMITS = Object.freeze({
@@ -119,10 +119,22 @@ export function validateKinetraProject(project) {
     }
   });
   const layerIds = new Set();
+  const spriteVariantIds = new Set();
   (project.layers || []).forEach((layer, index) => {
     if (!layer?.id || layerIds.has(layer.id)) errors.push(`layers[${index}].id inválido o duplicado`);
     layerIds.add(layer?.id);
     if (!assetIds.has(layer?.assetId) && layer?.source !== "builtin") errors.push(`layers[${index}].assetId no existe`);
+    if (layer?.variants !== undefined && !Array.isArray(layer.variants)) {
+      errors.push(`layers[${index}].variants debe ser una lista`);
+    }
+    (Array.isArray(layer?.variants) ? layer.variants : []).forEach((variant, variantIndex) => {
+      if (!variant?.id || spriteVariantIds.has(variant.id)) {
+        errors.push(`layers[${index}].variants[${variantIndex}].id inválido o duplicado`);
+      } else spriteVariantIds.add(variant.id);
+      if (!assetIds.has(variant?.assetId)) {
+        errors.push(`layers[${index}].variants[${variantIndex}].assetId no existe`);
+      }
+    });
     if (layer?.boneId && layer.boneId !== "torso" && !boneIds.has(layer.boneId))
       errors.push(`layers[${index}].boneId no existe`);
     if (layer?.crop) {
@@ -204,14 +216,17 @@ export function resolveKinetraRig(project, pose = {}) {
  * Cada capa devuelve su matriz afín [a,b,c,d,e,f] y el recurso que debe usar.
  */
 export function resolveKinetraFrame(project, clipId, time) {
+  const clip = project.clips.find((item) => item.id === clipId) || project.clips[0];
   const pose = sampleKinetraClip(project, clipId, time);
   const bones = resolveKinetraRig(project, pose);
   const rest = new Map((project.rig?.bones || []).map((bone) => [bone.id, bone]));
   const assets = new Map((project.assets || []).map((asset) => [asset.id, asset]));
+  const variantSources = spriteVariantSourceIds(project.layers, clip);
   const layers = [...(project.layers || [])]
-    .filter((layer) => layer.visible !== false)
+    .filter((layer) => layer.visible !== false && !variantSources.has(layer.id))
     .sort((left, right) => (left.z || 0) - (right.z || 0))
     .map((layer) => {
+      const sprite = resolveSpriteLayerVariant(project.layers, project.assets, clip, time, layer);
       const boneId = layer.boneId || "rig";
       const anchor = rest.get(boneId) || { x: 0, y: 0 };
       const parent = bones[boneId] || bones.rig;
@@ -224,9 +239,11 @@ export function resolveKinetraFrame(project, clipId, time) {
       );
       return {
         id: layer.id,
-        assetId: layer.assetId,
-        asset: assets.get(layer.assetId) || null,
-        crop: layer.crop ? { ...layer.crop } : null,
+        assetId: sprite.assetId,
+        asset: assets.get(sprite.assetId) || null,
+        crop: sprite.crop ? { ...sprite.crop } : null,
+        spriteVariant: sprite.variant,
+        spriteVariantResolved: sprite.resolved,
         opacity: layer.opacity ?? 1,
         matrix: multiplyMatrix(parent, calibration)
       };

@@ -20,7 +20,10 @@ const project = {
       { id: "mano", name: "Mano", parent: "brazo", x: 120, y: 0 }
     ]
   },
-  assets: [{ id: "mano_png", name: "mano.png", type: "image/png", src: "data:image/png;base64,AA==" }],
+  assets: [
+    { id: "mano_png", name: "mano.png", type: "image/png", src: "data:image/png;base64,AA==" },
+    { id: "puño_png", name: "puño.png", type: "image/png", src: "data:image/png;base64,AA==" }
+  ],
   layers: [
     {
       id: "mano_capa",
@@ -36,7 +39,15 @@ const project = {
       visible: true,
       z: 0,
       groupId: "extremidad",
-      crop: { x: 0, y: 0, width: 32, height: 48 }
+      crop: { x: 0, y: 0, width: 32, height: 48 },
+      variants: [
+        {
+          id: "mano_cerrada",
+          name: "Mano cerrada",
+          assetId: "puño_png",
+          crop: { x: 0, y: 0, width: 24, height: 40 }
+        }
+      ]
     }
   ],
   layerGroups: [{ id: "extremidad", name: "Extremidad", collapsed: false }],
@@ -50,7 +61,8 @@ const project = {
           { t: 0, angle: 0 },
           { t: 1000, angle: 90 }
         ]
-      }
+      },
+      spriteEvents: [{ t: 600, slot: "mano_capa", variant: "mano_cerrada" }]
     }
   ]
 };
@@ -66,6 +78,10 @@ assert.equal(frame.layers[0].assetId, "mano_png");
 assert.equal(frame.layers[0].asset.src, "data:image/png;base64,AA==");
 assert.deepEqual(frame.layers[0].crop, { x: 0, y: 0, width: 32, height: 48 });
 assert.equal(frame.layers[0].matrix.length, 6);
+const swappedFrame = resolveKinetraFrame(project, "saludo", 700);
+assert.equal(swappedFrame.layers[0].assetId, "puño_png", "El evento debe reemplazar el recurso de la capa");
+assert.deepEqual(swappedFrame.layers[0].crop, { x: 0, y: 0, width: 24, height: 40 });
+assert.equal(swappedFrame.layers[0].spriteVariant, "mano_cerrada");
 const restCalibrated = structuredClone(project);
 restCalibrated.layers[0].restRotation = 15;
 const restFrame = resolveKinetraFrame(restCalibrated, "saludo", 0);

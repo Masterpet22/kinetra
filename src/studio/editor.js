@@ -3,7 +3,12 @@
  * Une calibración, autoría por fotogramas clave, timeline, historial y exportación.
  */
 import { PUPPET_PART_JOINTS as PART_JOINTS } from "../animations/rig.js";
-import { animationEase } from "../animations/runtime.js";
+import {
+  animationEase,
+  resolveSpriteLayerVariant,
+  sampleSpriteVariants,
+  spriteVariantSourceIds
+} from "../animations/runtime.js";
 import { normalizeKinetraClip, parseKinetraClip, STUDIO_EASES } from "../animations/studio-format.js";
 import { sampleKinetraClip } from "../animations/studio-runtime.js";
 import { KINETRA_LIMITS, constrainKinetraTransform, validateKinetraProject } from "../animations/kinetra-runtime.js";
@@ -190,6 +195,8 @@ let selectedTarget = "rig";
 let selectedTargets = new Set(["rig"]);
 let selectedPart = "torso";
 let selectedParts = new Set(["torso"]);
+let previewLayerVariants = new Map();
+let expandedVariantLayers = new Set();
 let selectedKeys = new Set();
 let keyClipboard = [];
 let hierarchyClipboard = null;
@@ -215,13 +222,36 @@ let boneCreationAnchor = null;
 let dragKey = null;
 let layerDrag = null;
 let layerAutoScrollFrame = 0;
-const commandHistory = createCommandHistory();
+let projectTabSequence = 0;
+const createProjectTabRecord = (tabProject, { dirty = true } = {}) => ({
+  id: `project-tab-${Date.now()}-${++projectTabSequence}`,
+  project: tabProject,
+  history: createCommandHistory(),
+  view: null,
+  dirty
+});
+const projectTabs = [createProjectTabRecord(project)];
+let activeProjectTabId = projectTabs[0].id;
+let projectTabSwitching = false;
+function activeProjectTab() {
+  return projectTabs.find((tab) => tab.id === activeProjectTabId) || projectTabs[0];
+}
+const commandHistory = {
+  reset: (...args) => activeProjectTab().history.reset(...args),
+  record: (...args) => activeProjectTab().history.record(...args),
+  undo: (...args) => activeProjectTab().history.undo(...args),
+  redo: (...args) => activeProjectTab().history.redo(...args),
+  canUndo: () => activeProjectTab().history.canUndo(),
+  canRedo: () => activeProjectTab().history.canRedo()
+};
 let persistence = null;
 const studioState = createStudioState(project);
 const commandBus = createCommandBus({
   getProject: () => project,
   setProject: (next, reason) => {
     project = next;
+    const tab = activeProjectTab();
+    if (tab) tab.project = next;
     studioState.setProject(next, reason);
   },
   history: commandHistory,
@@ -233,7 +263,11 @@ const commandBus = createCommandBus({
 });
 function replaceProject(next, reason) {
   project = next;
+  const tab = activeProjectTab();
+  if (tab) tab.project = next;
   rigTestPose.clear();
+  previewLayerVariants.clear();
+  expandedVariantLayers.clear();
   studioState.setProject(next, reason);
   return project;
 }
@@ -283,6 +317,194 @@ function status(message, state = "info") {
     () => output.classList.remove("visible"),
     ["error", "quota"].includes(state) ? 6000 : 3200
   );
+}
+
+function projectTabLabel(tab) {
+  return tab.project.projectId || tab.project.clip?.label || tab.project.activeClipId || "Proyecto sin título";
+}
+
+function saveActiveProjectTabView() {
+  const tab = activeProjectTab();
+  if (!tab) return;
+  tab.project = project;
+  tab.view = {
+    mode,
+    time,
+    zoom,
+    timelineZoom,
+    offsetX,
+    offsetY,
+    selectedTarget,
+    selectedTargets: new Set(selectedTargets),
+    selectedPart,
+    selectedParts: new Set(selectedParts),
+    selectedKeys: new Set(selectedKeys),
+    hiddenTargets: new Set(hiddenTargets),
+    lockedTargets: new Set(lockedTargets),
+    lockedParts: new Set(lockedParts),
+    previewLayerVariants: new Map(previewLayerVariants),
+    expandedVariantLayers: new Set(expandedVariantLayers),
+    activeHierarchyKind,
+    rigTestActive,
+    rigTestPose: new Map([...rigTestPose].map(([target, frame]) => [target, structuredClone(frame)])),
+    draftTime,
+    draftFrames: new Map([...draftFrames].map(([target, frame]) => [target, structuredClone(frame)])),
+    ghostPose: ghostPose ? structuredClone(ghostPose) : null,
+    ghostTime
+  };
+}
+
+function restoreProjectTabView(tab) {
+  const view = tab.view;
+  time = Math.min(Number(view?.time || 0), duration());
+  zoom = Number(view?.zoom || 1);
+  timelineZoom = Number(view?.timelineZoom || 1);
+  offsetX = Number(view?.offsetX || 0);
+  offsetY = Number(view?.offsetY || 0);
+  selectedTarget = animationTargets().includes(view?.selectedTarget) ? view.selectedTarget : "rig";
+  selectedTargets = new Set(
+    [...(view?.selectedTargets || [selectedTarget])].filter((target) => animationTargets().includes(target))
+  );
+  if (!selectedTargets.size) selectedTargets.add(selectedTarget);
+  selectedPart = project.parts.some((item) => item.id === view?.selectedPart)
+    ? view.selectedPart
+    : project.parts.find((item) => item.id === "torso")?.id || project.parts[0]?.id || "";
+  selectedParts = new Set(
+    [...(view?.selectedParts || [selectedPart])].filter((id) => project.parts.some((item) => item.id === id))
+  );
+  if (!selectedParts.size && selectedPart) selectedParts.add(selectedPart);
+  selectedKeys = new Set(view?.selectedKeys || []);
+  hiddenTargets = new Set(view?.hiddenTargets || []);
+  lockedTargets = new Set(view?.lockedTargets || []);
+  lockedParts = new Set(view?.lockedParts || []);
+  previewLayerVariants = new Map(view?.previewLayerVariants || []);
+  expandedVariantLayers = new Set(view?.expandedVariantLayers || []);
+  activeHierarchyKind = view?.activeHierarchyKind || null;
+  rigTestActive = Boolean(view?.rigTestActive);
+  rigTestPose.clear();
+  (view?.rigTestPose || []).forEach((frame, target) => rigTestPose.set(target, structuredClone(frame)));
+  if ($("rig-test")) $("rig-test").checked = rigTestActive;
+  draftTime = view?.draftTime ?? null;
+  draftFrames = new Map(view?.draftFrames || []);
+  ghostPose = view?.ghostPose ? structuredClone(view.ghostPose) : null;
+  ghostTime = view?.ghostTime ?? null;
+  mode = view?.mode || "animador";
+}
+
+function renderProjectTabs() {
+  const host = $("project-tabs");
+  if (!host) return;
+  host.replaceChildren();
+  projectTabs.forEach((tab) => {
+    const row = document.createElement("div");
+    row.className = `project-tab${tab.id === activeProjectTabId ? " active" : ""}`;
+    row.dataset.projectTabId = tab.id;
+    if (tab.dirty) {
+      const dirty = document.createElement("span");
+      dirty.className = "project-tab-dirty";
+      dirty.title = "Cambios pendientes";
+      row.append(dirty);
+    }
+    const name = document.createElement("button");
+    name.className = "project-tab-name";
+    name.textContent = projectTabLabel(tab);
+    name.title = projectTabLabel(tab);
+    if (tab.id === activeProjectTabId) name.setAttribute("aria-current", "page");
+    name.onclick = () => switchProjectTab(tab.id);
+    const close = document.createElement("button");
+    close.className = "project-tab-close";
+    close.append(createIcon("x"));
+    close.title = `Cerrar ${projectTabLabel(tab)}`;
+    close.setAttribute("aria-label", close.title);
+    close.disabled = projectTabs.length === 1;
+    close.onclick = () => closeProjectTab(tab.id);
+    row.append(name, close);
+    host.append(row);
+  });
+  refreshIcons(host);
+}
+
+async function switchProjectTab(tabId) {
+  if (tabId === activeProjectTabId || projectTabSwitching) return;
+  const next = projectTabs.find((tab) => tab.id === tabId);
+  if (!next) return;
+  projectTabSwitching = true;
+  pause();
+  saveActiveProjectTabView();
+  const previous = activeProjectTab();
+  try {
+    if (previous?.dirty && persistence) {
+      try {
+        await persistence.saveNow(previous.project);
+        previous.dirty = false;
+      } catch (error) {
+        console.warn("No se pudo guardar la pestaña anterior", error);
+      }
+    }
+    activeProjectTabId = next.id;
+    project = next.project;
+    studioState.setProject(project, "switch-project-tab");
+    restoreProjectTabView(next);
+    normalizeLayerOrder();
+    ensureImages();
+    setMode(mode);
+    updateHistoryButtons();
+    renderProjectTabs();
+    if (persistence) {
+      try {
+        await persistence.saveNow(project);
+        next.dirty = false;
+        renderProjectTabs();
+      } catch (error) {
+        console.warn("No se pudo guardar la pestaña activa", error);
+      }
+    }
+    status(`Proyecto “${projectTabLabel(next)}” activo`);
+  } catch (error) {
+    console.warn("No se pudo sincronizar la pestaña de proyecto", error);
+    refresh();
+  } finally {
+    projectTabSwitching = false;
+  }
+}
+
+function activateNewProjectTab(nextProject, { dirty = true, mode: nextMode = "calibrador" } = {}) {
+  pause();
+  saveActiveProjectTabView();
+  const tab = createProjectTabRecord(nextProject, { dirty });
+  tab.history.reset(nextProject);
+  tab.view = { mode: nextMode, time: 0 };
+  projectTabs.push(tab);
+  activeProjectTabId = tab.id;
+  project = tab.project;
+  studioState.setProject(project, "open-project-tab");
+  restoreProjectTabView(tab);
+  normalizeLayerOrder();
+  ensureImages();
+  renderProjectTabs();
+  setMode(nextMode);
+  return tab;
+}
+
+function closeProjectTab(tabId) {
+  if (projectTabs.length === 1) return;
+  const index = projectTabs.findIndex((tab) => tab.id === tabId);
+  if (index < 0) return;
+  const tab = projectTabs[index];
+  if (tab.dirty && !confirm(`¿Cerrar “${projectTabLabel(tab)}” con cambios pendientes?`)) return;
+  projectTabs.splice(index, 1);
+  if (tabId === activeProjectTabId) {
+    const next = projectTabs[Math.min(index, projectTabs.length - 1)];
+    activeProjectTabId = next.id;
+    project = next.project;
+    studioState.setProject(project, "close-project-tab");
+    restoreProjectTabView(next);
+    normalizeLayerOrder();
+    ensureImages();
+    setMode(mode);
+  }
+  renderProjectTabs();
+  status(`Pestaña “${projectTabLabel(tab)}” cerrada`);
 }
 
 function formatTransformNumber(value, digits = 1) {
@@ -414,10 +636,10 @@ function renderDockTabs(panelId) {
       button.onclick = (event) => {
         event.stopPropagation();
         dockActive[state.dock] = id;
-        if (["inspector", "presets", "curves"].includes(id)) rightTab = id;
+        if (["inspector", "presets"].includes(id)) rightTab = id;
         applyPanelLayout();
         savePanelStates();
-        if (id === "curves") requestAnimationFrame(drawCurve);
+        if (id === "presets") requestAnimationFrame(drawCurve);
       };
       return button;
     })
@@ -489,10 +711,10 @@ function applyPanelLayout() {
 function setPanelVisible(id, visible) {
   panelStates[id].visible = visible;
   if (visible && panelStates[id].dock !== "floating") dockActive[panelStates[id].dock] = id;
-  if (visible && ["inspector", "presets", "curves"].includes(id)) rightTab = id;
+  if (visible && ["inspector", "presets"].includes(id)) rightTab = id;
   applyPanelLayout();
   savePanelStates();
-  if (visible && id === "curves") requestAnimationFrame(drawCurve);
+  if (visible && id === "presets") requestAnimationFrame(drawCurve);
 }
 
 function setPanelFloating(id, floating) {
@@ -978,7 +1200,10 @@ function updateGlobalChangeIndicator() {
 
 function updatePersistenceState(detail) {
   persistenceState = { ...persistenceState, ...detail };
+  const tab = activeProjectTab();
+  if (tab && detail.state === "saved") tab.dirty = false;
   updateGlobalChangeIndicator();
+  renderProjectTabs();
   status(detail.message, detail.state);
   const emergency = $("emergency-export");
   if (emergency) emergency.hidden = !["error", "quota"].includes(detail.state);
@@ -1016,6 +1241,9 @@ async function saveLocal(message = null) {
   try {
     if (!persistence) throw new Error("La persistencia local no está disponible");
     await persistence.saveNow(project);
+    const tab = activeProjectTab();
+    if (tab) tab.dirty = false;
+    renderProjectTabs();
     if (message) status(message);
   } catch (error) {
     console.warn("No se pudo guardar la copia local", error);
@@ -1030,6 +1258,9 @@ function checkpoint() {
 
 function commit(message) {
   commandBus.commit(message);
+  const tab = activeProjectTab();
+  if (tab) tab.dirty = true;
+  renderProjectTabs();
   if (message) status(message);
   updateHistoryButtons();
 }
@@ -1037,6 +1268,7 @@ function commit(message) {
 function restoreHistory(result) {
   if (!result) return false;
   project = result.project;
+  previewLayerVariants.clear();
   normalizeLayerOrder();
   time = Math.min(time, duration());
   clearDraft();
@@ -1071,6 +1303,20 @@ function updateHistoryButtons() {
 }
 
 function ensureImages() {
+  (project.assets || []).forEach((asset) => {
+    const key = `asset:${asset.id}`;
+    if (!asset.src || images[key]?.dataset.source === asset.src) return;
+    const image = new Image();
+    image.dataset.assetId = asset.id;
+    image.dataset.source = asset.src;
+    image.src = asset.src;
+    image.onload = draw;
+    image.onerror = () => {
+      image.dataset.state = "error";
+      status(`No se pudo visualizar el recurso “${asset.name || asset.id}”`);
+    };
+    images[key] = image;
+  });
   project.parts.forEach((item) => {
     const asset = project.assets?.find((entry) => entry.id === item.assetId);
     const source =
@@ -1087,6 +1333,21 @@ function ensureImages() {
     };
     images[item.id] = image;
   });
+}
+
+function spritePreview(item, at, applyEvents = mode === "animador") {
+  const previewVariant = !applyEvents ? previewLayerVariants.get(item.id) : null;
+  const previewClip = previewVariant
+    ? { duration: 1, loop: false, spriteEvents: [{ t: 0, slot: item.id, variant: previewVariant }] }
+    : project.clip;
+  const sprite =
+    applyEvents || previewVariant
+      ? resolveSpriteLayerVariant(project.parts, project.assets, previewClip, applyEvents ? at : 0, item)
+      : { assetId: item.assetId, crop: item.crop || null, variant: null, resolved: true };
+  return {
+    ...sprite,
+    image: images[`asset:${sprite.assetId}`] || (sprite.assetId === item.assetId ? images[item.id] : null)
+  };
 }
 
 function layerSourceRect(item, image) {
@@ -1255,17 +1516,29 @@ function targetHidden(partId) {
   return target ? hiddenTargets.has(target) : false;
 }
 
-function renderFigure(targetContext, at, { alpha = 1, tint = false, sampledPose = null } = {}) {
+function layerIsHighlighted(item) {
+  const target = partBoneId(item);
+  if (mode === "animador" || activeHierarchyKind === "skeleton") return selectedTargets.has(target);
+  return selectedParts.has(item.id);
+}
+
+function renderFigure(
+  targetContext,
+  at,
+  { alpha = 1, tint = false, highlightSelection = false, sampledPose = null } = {}
+) {
   const state = matrices(at, sampledPose);
+  const variantSources = mode === "animador" ? spriteVariantSourceIds(project.parts, project.clip) : new Set();
   targetContext.save();
   targetContext.globalAlpha *= alpha;
   [...project.parts]
     .sort((left, right) => left.z - right.z)
     .forEach((item) => {
-      if (!item.visible || targetHidden(item.id)) return;
-      const image = images[item.id];
+      if (!item.visible || targetHidden(item.id) || variantSources.has(item.id)) return;
+      const sprite = spritePreview(item, at);
+      const image = sprite.image;
       if (!image?.complete || !image.naturalWidth) return;
-      const source = layerSourceRect(item, image);
+      const source = layerSourceRect({ crop: sprite.crop }, image);
       const targetId = partBoneId(item);
       const jointId = targetId !== "rig" && targetId !== "torso" ? targetId : null;
       const matrix =
@@ -1283,6 +1556,11 @@ function renderFigure(targetContext, at, { alpha = 1, tint = false, sampledPose 
       targetContext.translate(item.x - anchor.x, item.y - anchor.y);
       targetContext.rotate((effectiveLayerRotation(item) * Math.PI) / 180);
       targetContext.scale(item.scaleX, item.scaleY);
+      if (highlightSelection && layerIsHighlighted(item)) {
+        targetContext.shadowColor = "#55c7ff";
+        targetContext.shadowBlur = 12;
+        targetContext.filter = "drop-shadow(0 0 3px #55c7ff)";
+      }
       targetContext.drawImage(
         image,
         source.x,
@@ -1307,6 +1585,7 @@ function renderFigure(targetContext, at, { alpha = 1, tint = false, sampledPose 
 
 function figureBounds(at) {
   const state = matrices(at);
+  const variantSources = mode === "animador" ? spriteVariantSourceIds(project.parts, project.clip) : new Set();
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -1318,10 +1597,11 @@ function figureBounds(at) {
     maxY = Math.max(maxY, y);
   };
   project.parts.forEach((item) => {
-    if (!item.visible || targetHidden(item.id)) return;
-    const image = images[item.id];
+    if (!item.visible || targetHidden(item.id) || variantSources.has(item.id)) return;
+    const sprite = spritePreview(item, at);
+    const image = sprite.image;
     if (!image?.complete || !image.naturalWidth) return;
-    const source = layerSourceRect(item, image);
+    const source = layerSourceRect({ crop: sprite.crop }, image);
     const targetId = partBoneId(item);
     const jointId = targetId !== "rig" && targetId !== "torso" ? targetId : null;
     const parentMatrix =
@@ -1911,7 +2191,7 @@ function draw() {
     const ghostAlpha = Number($("ghost-alpha").value) / 100;
     renderFigure(context, ghostTime, { alpha: ghostAlpha, tint: true, sampledPose: ghostPose });
   }
-  renderFigure(context, mode === "animador" ? time : 0);
+  renderFigure(context, mode === "animador" ? time : 0, { highlightSelection: true });
   drawBones(mode === "animador" ? time : 0);
   drawBoneCreationPreview();
   drawLayerTransformGizmo();
@@ -2113,7 +2393,7 @@ function updateLayerAutoScroll() {
   if (!layerDrag) return;
   const container = layerDrag.scrollContainer;
   const bounds = container.getBoundingClientRect();
-  const edgeSize = 64;
+  const edgeSize = 32;
   const maxSpeed = 2.25;
   const distanceFromTop = layerDrag.clientY - bounds.top;
   const distanceFromBottom = bounds.bottom - layerDrag.clientY;
@@ -2202,13 +2482,28 @@ function bindLayerDrag(row, item, host) {
 
 function renderLayerRow(item, host) {
   const itemLabel = item.name || label(item.id);
+  const variants = item.variants || [];
   const row = document.createElement("div");
   row.className = `tree-row${selectedParts.has(item.id) ? " active" : ""}`;
   row.dataset.hierarchyId = item.id;
   if (item.groupId) row.classList.add("tree-layer-in-group");
+  const expand = variants.length ? document.createElement("button") : document.createElement("span");
+  expand.className = variants.length ? "tree-toggle tree-variant-collapse" : "tree-variant-spacer";
+  if (variants.length) {
+    const expanded = expandedVariantLayers.has(item.id);
+    expand.append(createIcon(expanded ? "chevron-down" : "chevron-right"));
+    expand.title = expanded ? "Contraer variantes" : `Mostrar ${variants.length} variante(s)`;
+    expand.setAttribute("aria-label", expand.title);
+    expand.setAttribute("aria-expanded", String(expanded));
+    expand.onclick = () => {
+      if (expanded) expandedVariantLayers.delete(item.id);
+      else expandedVariantLayers.add(item.id);
+      renderTree();
+    };
+  }
   const icon = document.createElement("span");
   icon.className = "tree-icon";
-  icon.append(createIcon("layers-3"));
+  icon.append(createIcon(variants.length ? "images" : "layers-3"));
   const multi = document.createElement("button");
   multi.className = "tree-multi";
   multi.append(createIcon(selectedParts.has(item.id) ? "check" : "plus"));
@@ -2256,16 +2551,109 @@ function renderLayerRow(item, host) {
   rename.title = `Renombrar ${itemLabel}`;
   rename.setAttribute("aria-label", `Renombrar ${itemLabel}`);
   rename.onclick = () => renameLayer(item);
-  row.append(icon, multi, button, toggle, lock, rename);
+  row.append(expand, icon, multi, button, toggle, lock, rename);
   bindLayerDrag(row, item, host);
   host.append(row);
+}
+
+function currentLayerVariant(item) {
+  const preview = mode === "calibrador" ? previewLayerVariants.get(item.id) : null;
+  const selected = preview || sampleSpriteVariants(project.clip, time)[item.id];
+  if (!selected || [item.id, item.name, item.assetId].includes(selected)) return item.assetId;
+  return (
+    (item.variants || []).find((variant) => [variant.id, variant.name, variant.assetId].includes(selected))?.id ||
+    selected
+  );
+}
+
+function useLayerVariant(item, variant) {
+  selectLayer(item.id);
+  expandedVariantLayers.add(item.id);
+  if (mode !== "animador") {
+    previewLayerVariants.set(item.id, variant.id);
+    refresh();
+    status(`Previsualizando ${variant.name || variant.id} en ${item.name || item.id}`);
+    return;
+  }
+  const at = Math.round(time);
+  project.clip.spriteEvents = project.clip.spriteEvents.filter((event) => event.t !== at || event.slot !== item.id);
+  project.clip.spriteEvents.push({ t: at, slot: item.id, variant: variant.id });
+  project.clip.spriteEvents.sort((left, right) => left.t - right.t);
+  commit(`Variante ${variant.name || variant.id} aplicada en ${at} ms`);
+  refresh();
+}
+
+function removeLayerVariant(item, variant) {
+  if (!confirm(`¿Eliminar la variante “${variant.name || variant.id}”?`)) return;
+  item.variants = (item.variants || []).filter((candidate) => candidate.id !== variant.id);
+  project.clips.forEach((clip) => {
+    clip.spriteEvents = (clip.spriteEvents || []).filter(
+      (event) => event.variant !== variant.id && event.variant !== variant.assetId
+    );
+  });
+  previewLayerVariants.delete(item.id);
+  const usedAssetIds = layerAssetIds();
+  project.assets = project.assets.filter((asset) => usedAssetIds.has(asset.id));
+  commit("Variante eliminada");
+  refresh();
+}
+
+function renderLayerVariantRow(item, variant, host, original = false) {
+  const active = currentLayerVariant(item) === variant.id;
+  const row = document.createElement("div");
+  row.className = `tree-row tree-variant-row${active ? " active" : ""}`;
+  row.dataset.variantId = variant.id;
+  row.dataset.variantOf = item.id;
+  const icon = document.createElement("span");
+  icon.className = "tree-icon";
+  icon.append(createIcon(active ? "circle-check" : "image"));
+  const button = document.createElement("button");
+  button.className = "tree-select";
+  button.textContent = original ? `Original · ${item.name || item.id}` : variant.name || variant.id;
+  button.title = mode === "animador" ? `Usar en ${Math.round(time)} ms` : `Previsualizar ${variant.name || variant.id}`;
+  button.onclick = () => useLayerVariant(item, variant);
+  row.append(icon, button);
+  if (!original) {
+    const remove = document.createElement("button");
+    remove.className = "tree-toggle";
+    remove.append(createIcon("x"));
+    remove.title = `Eliminar variante ${variant.name || variant.id}`;
+    remove.setAttribute("aria-label", remove.title);
+    remove.onclick = () => removeLayerVariant(item, variant);
+    row.append(remove);
+  }
+  host.append(row);
+}
+
+function renderLayerWithVariants(item, host, search = "") {
+  const variants = item.variants || [];
+  const itemMatches = (item.name || label(item.id)).toLocaleLowerCase().includes(search);
+  const matchingVariants = variants.filter((variant) =>
+    (variant.name || variant.id).toLocaleLowerCase().includes(search)
+  );
+  if (search && !itemMatches && !matchingVariants.length) return;
+  renderLayerRow(item, host);
+  if (!variants.length || (!expandedVariantLayers.has(item.id) && !search)) return;
+  renderLayerVariantRow(
+    item,
+    { id: item.assetId, name: item.name, assetId: item.assetId, crop: item.crop },
+    host,
+    true
+  );
+  (search && !itemMatches ? matchingVariants : variants).forEach((variant) =>
+    renderLayerVariantRow(item, variant, host)
+  );
 }
 
 function renderLayerGroup(group, items, host, search) {
   const groupMatches = group.name.toLocaleLowerCase().includes(search);
   const matchingItems =
     search && !groupMatches
-      ? items.filter((item) => (item.name || label(item.id)).toLocaleLowerCase().includes(search))
+      ? items.filter(
+          (item) =>
+            (item.name || label(item.id)).toLocaleLowerCase().includes(search) ||
+            (item.variants || []).some((variant) => (variant.name || variant.id).toLocaleLowerCase().includes(search))
+        )
       : items;
   if (search && !groupMatches && !matchingItems.length) return;
 
@@ -2339,7 +2727,7 @@ function renderLayerGroup(group, items, host, search) {
   row.append(icon, name, visibility, lock, rename, ungroup, toggle);
   host.append(row);
 
-  if (!group.collapsed || search) matchingItems.forEach((item) => renderLayerRow(item, host));
+  if (!group.collapsed || search) matchingItems.forEach((item) => renderLayerWithVariants(item, host, search));
 }
 
 function renderLayers(search, host) {
@@ -2352,9 +2740,7 @@ function renderLayers(search, host) {
   });
   orderedItems
     .filter((item) => !item.groupId || !groupIds.has(item.groupId))
-    .forEach((item) => {
-      if ((item.name || label(item.id)).toLocaleLowerCase().includes(search)) renderLayerRow(item, host);
-    });
+    .forEach((item) => renderLayerWithVariants(item, host, search));
 }
 
 function uniqueDuplicateName(name, existingNames) {
@@ -2460,6 +2846,12 @@ function renameLayerGroup(group, nameButton) {
 function pruneLayerGroups() {
   const nonEmptyGroupIds = new Set(project.parts.map((item) => item.groupId).filter(Boolean));
   project.layerGroups = layerGroups().filter((group) => nonEmptyGroupIds.has(group.id));
+}
+
+function layerAssetIds() {
+  return new Set(
+    project.parts.flatMap((item) => [item.assetId, ...(item.variants || []).map((variant) => variant.assetId)])
+  );
 }
 
 function createLayerGroup() {
@@ -2621,12 +3013,22 @@ async function resolveDuplicateNames(kind, incomingNames, existingNames) {
 
 function removeLayerItems(ids) {
   const removed = project.parts.filter((item) => ids.has(item.id));
+  const removedVariants = new Set(
+    removed.flatMap((item) => (item.variants || []).flatMap((variant) => [variant.id, variant.assetId]))
+  );
   project.parts = project.parts.filter((item) => !ids.has(item.id));
   removed.forEach((item) => {
     delete images[item.id];
     lockedParts.delete(item.id);
+    previewLayerVariants.delete(item.id);
+    expandedVariantLayers.delete(item.id);
   });
-  const usedAssetIds = new Set(project.parts.map((item) => item.assetId));
+  project.clips.forEach((clip) => {
+    clip.spriteEvents = (clip.spriteEvents || []).filter(
+      (event) => !ids.has(event.slot) && !removedVariants.has(event.variant)
+    );
+  });
+  const usedAssetIds = layerAssetIds();
   project.assets = project.assets.filter((asset) => usedAssetIds.has(asset.id));
   pruneLayerGroups();
   normalizeLayerOrder();
@@ -2652,6 +3054,8 @@ function updateMultiSelectionMenu(panel, kind) {
   menu.querySelector('[data-selection-action="paste"]').disabled = hierarchyClipboard?.kind !== kind;
   const groupButton = panel.querySelector("#group-layers");
   if (groupButton) groupButton.disabled = selection.length < 2;
+  const variantsButton = panel.querySelector("#add-layer-variants");
+  if (variantsButton) variantsButton.disabled = selection.length !== 1;
   refreshIcons(menu);
 }
 
@@ -2663,8 +3067,9 @@ function copyHierarchySelection(kind) {
       kind,
       items: ids.map((id) => {
         const item = project.parts.find((candidate) => candidate.id === id);
-        const asset = project.assets.find((candidate) => candidate.id === item.assetId);
-        return { item: structuredClone(item), asset: asset ? structuredClone(asset) : null };
+        const assetIds = new Set([item.assetId, ...(item.variants || []).map((variant) => variant.assetId)]);
+        const assets = project.assets.filter((candidate) => assetIds.has(candidate.id));
+        return { item: structuredClone(item), assets: structuredClone(assets) };
       })
     };
   } else if (kind === "skeleton") {
@@ -2710,23 +3115,30 @@ async function pasteHierarchySelection(kind) {
     }
     const usedLayers = new Set(project.parts.map((item) => item.id));
     const usedAssets = new Set(project.assets.map((asset) => asset.id));
+    const usedVariants = new Set(project.parts.flatMap((item) => (item.variants || []).map((variant) => variant.id)));
     const pasted = [];
-    hierarchyClipboard.items.forEach(({ item, asset }, index) => {
+    hierarchyClipboard.items.forEach(({ item, asset, assets }, index) => {
       const layer = structuredClone(item);
       const base = safeId(`${layer.id}_copia`, "capa_copia");
       layer.id = uniqueId(base, usedLayers);
       usedLayers.add(layer.id);
       layer.name = resolution.names[index];
       layer.z = project.parts.length;
-      if (asset) {
-        const assetCopy = structuredClone(asset);
-        assetCopy.id = uniqueId(`${asset.id}_copia`, usedAssets);
+      const sourceAssets = assets || (asset ? [asset] : []);
+      const assetIdMap = new Map();
+      sourceAssets.forEach((sourceAsset) => {
+        const assetCopy = structuredClone(sourceAsset);
+        assetCopy.id = uniqueId(`${sourceAsset.id}_copia`, usedAssets);
         usedAssets.add(assetCopy.id);
-        const extension = assetCopy.name.match(/\.[^.]+$/)?.[0] || ".png";
-        assetCopy.name = `${layer.name}${extension}`;
-        layer.assetId = assetCopy.id;
+        assetIdMap.set(sourceAsset.id, assetCopy.id);
         project.assets.push(assetCopy);
-      }
+      });
+      layer.assetId = assetIdMap.get(layer.assetId) || layer.assetId;
+      (layer.variants || []).forEach((variant) => {
+        variant.id = uniqueId(`${variant.id}_copia`, usedVariants);
+        usedVariants.add(variant.id);
+        variant.assetId = assetIdMap.get(variant.assetId) || variant.assetId;
+      });
       project.parts.push(layer);
       pasted.push(layer.id);
     });
@@ -2987,7 +3399,7 @@ function renderTree() {
     } else rigTree().forEach((node) => appendTreeNode(node, 0, search, host));
     const description =
       kind === "layers"
-        ? `${project.parts.length} capas reales · ${(project.assets || []).length} recursos importados`
+        ? `${project.parts.length} capas reales · ${project.parts.reduce((sum, item) => sum + (item.variants?.length || 0), 0)} variantes · ${(project.assets || []).length} recursos importados`
         : `${project.rig?.name || project.rig?.id || "Esqueleto personalizado"} · ${(project.rig?.bones || []).length} huesos · ${Object.keys(project.clip.keys).length} pistas de animación`;
     panel.querySelector("[data-hierarchy-meta]").textContent = description;
     updateMultiSelectionMenu(panel, kind);
@@ -3098,7 +3510,18 @@ function renderInspector() {
   $("clip-description").value = clip.description;
   $("clip-category").value = clip.category;
   $("clip-state").value = clip.state;
-  if (rightTab === "curves") drawCurve();
+  $("event-slot-options").replaceChildren(...project.parts.map((item) => new Option(item.name || item.id, item.id)));
+  $("event-variant-options").replaceChildren(
+    ...project.parts.flatMap((item) => [
+      new Option(`Original de ${item.name || item.id}`, item.assetId),
+      ...(item.variants || []).map(
+        (variant) => new Option(`${item.name || item.id}: ${variant.name || variant.id}`, variant.id)
+      )
+    ]),
+    ...project.parts.map((item) => new Option(`Capa: ${item.name || item.id}`, item.id)),
+    ...(project.assets || []).map((asset) => new Option(`Recurso: ${asset.name || asset.id}`, asset.id))
+  );
+  if (rightTab === "presets") requestAnimationFrame(drawCurve);
 }
 
 function updateToolContext(currentPart = part()) {
@@ -3168,12 +3591,13 @@ function renderPresets() {
       $("key-ease").value = value;
       previewKeyFromInspector();
       updatePresetSelection();
-      showRightTab("curves");
+      requestAnimationFrame(drawCurve);
       status(`Interpolación “${presetLabel}” aplicada a los cambios del fotograma`);
     };
     host.append(button);
   });
   updatePresetSelection();
+  requestAnimationFrame(drawCurve);
 }
 
 function updatePresetSelection() {
@@ -3762,18 +4186,50 @@ async function importImageLayers(files) {
   showRightTab("layers");
 }
 
+async function importLayerVariants(files, item = part()) {
+  if (!item) return status("Selecciona una capa principal antes de añadir variantes");
+  const accepted = [...files].filter((file) => /^image\/(png|webp|jpeg)$/.test(file.type));
+  if (!accepted.length) return status("Selecciona variantes PNG, WebP o JPEG");
+  const total = accepted.reduce((sum, file) => sum + file.size, 0);
+  if (total > 24 * 1024 * 1024) return status("Las variantes superan 24 MB; reduce su tamaño");
+  if (!Array.isArray(item.variants)) item.variants = [];
+  const usedAssets = new Set(project.assets.map((asset) => asset.id));
+  const usedVariants = new Set(project.parts.flatMap((layer) => (layer.variants || []).map((variant) => variant.id)));
+  const existingNames = item.variants.map((variant) => variant.name || variant.id);
+  for (const file of accepted) {
+    const requestedName = file.name.replace(/\.[^.]+$/, "");
+    const name = uniqueDuplicateName(requestedName, existingNames);
+    existingNames.push(name);
+    const base = safeId(name, "variante");
+    const assetId = uniqueId(`asset_${base}`, usedAssets);
+    const variantId = uniqueId(base, usedVariants);
+    usedAssets.add(assetId);
+    usedVariants.add(variantId);
+    project.assets.push({
+      id: assetId,
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      src: await readFileAsDataUrl(file)
+    });
+    item.variants.push({ id: variantId, name, assetId });
+  }
+  expandedVariantLayers.add(item.id);
+  previewLayerVariants.set(item.id, item.variants.at(-1).id);
+  ensureImages();
+  commit(`${accepted.length} variante(s) añadidas a ${item.name || item.id}`);
+  setMode("calibrador");
+  showRightTab("layers");
+  refresh();
+}
+
 function removeSelectedLayer() {
   const current = part();
   if (!current) return;
   if (!confirm(`¿Eliminar la capa “${current.name || current.id}”?`)) return;
-  project.parts = project.parts.filter((item) => item.id !== current.id);
+  removeLayerItems(new Set([current.id]));
   pruneLayerGroups();
   normalizeLayerOrder();
-  delete images[current.id];
-  if (current.source === "asset" && !project.parts.some((item) => item.assetId === current.assetId)) {
-    project.assets = project.assets.filter((asset) => asset.id !== current.assetId);
-  }
-  lockedParts.delete(current.id);
   selectedPart = project.parts.at(-1)?.id || "";
   selectedParts = selectedPart ? new Set([selectedPart]) : new Set();
   commit("Capa eliminada");
@@ -4167,9 +4623,10 @@ function createNewProject() {
 }
 
 function createProjectFromTemplate(templateId) {
-  pause();
-  replaceProject(migrateAuthoringProject({ ...createTemplateProject(templateId), layerGroups: [] }), "new-project");
-  normalizeLayerOrder();
+  activateNewProjectTab(migrateAuthoringProject({ ...createTemplateProject(templateId), layerGroups: [] }), {
+    dirty: true,
+    mode: "calibrador"
+  });
   selectAnimationTarget("rig");
   selectedPart = project.parts.find((item) => partBoneId(item) === "rig")?.id || project.parts[0]?.id || "";
   selectedParts = selectedPart ? new Set([selectedPart]) : new Set();
@@ -4185,7 +4642,7 @@ function createProjectFromTemplate(templateId) {
   const templateName =
     PROJECT_TEMPLATES.find((item) => item.id === templateId)?.name.toLowerCase() || "humano masculino";
   commit(`Plantilla ${templateName} creada`);
-  setMode("calibrador");
+  renderProjectTabs();
 }
 
 function applyPreviewVisibility() {
@@ -4458,6 +4915,7 @@ function refresh() {
   renderTimeline();
   renderPresets();
   renderModeOverlay();
+  renderProjectTabs();
   draw();
   updateHistoryButtons();
 }
@@ -4470,7 +4928,7 @@ function showRightTab(next) {
   if (state.dock !== "floating") dockActive[state.dock] = next;
   applyPanelLayout();
   savePanelStates();
-  if (next === "curves") requestAnimationFrame(drawCurve);
+  if (next === "presets") requestAnimationFrame(drawCurve);
 }
 
 function setMode(next) {
@@ -4939,6 +5397,7 @@ function bindControls() {
     }
   };
   $("import-layers").onclick = () => $("image-files").click();
+  $("add-layer-variants").onclick = () => $("variant-files").click();
   $("group-layers").onclick = createLayerGroup;
   $("delete-layer").onclick = removeSelectedLayer;
   $("remove-part").onclick = removeSelectedLayer;
@@ -4956,6 +5415,16 @@ function bindControls() {
       $("image-files").value = "";
     }
   };
+  $("variant-files").onchange = async () => {
+    try {
+      await importLayerVariants($("variant-files").files);
+    } catch (error) {
+      status(`No se pudieron importar las variantes: ${error.message}`);
+    } finally {
+      $("variant-files").value = "";
+    }
+  };
+  $("new-project-tab").onclick = createNewProject;
   $("part-name").onchange = () => {
     if (!part()) return;
     commitLayerName(part(), $("part-name").value);
@@ -5059,12 +5528,36 @@ function bindControls() {
   $("key-ease").onchange = () => {
     previewKeyFromInspector();
     updatePresetSelection();
-    if (rightTab === "curves") drawCurve();
+    if (rightTab === "presets") requestAnimationFrame(drawCurve);
   };
   $("add-event").onclick = () => {
-    const slot = $("event-slot").value.trim();
-    const variant = $("event-variant").value.trim();
-    if (!slot || !variant) return status("Completa la ranura y la variante");
+    const requestedSlot = $("event-slot").value.trim();
+    const requestedVariant = $("event-variant").value.trim();
+    if (!requestedSlot || !requestedVariant) return status("Completa la capa y la variante");
+    const slotLayer = project.parts.find((item) =>
+      [item.id, item.name, item.assetId].some((identity) => identity === requestedSlot)
+    );
+    if (!slotLayer) return status(`No existe una capa para reemplazar identificada como “${requestedSlot}”`);
+    const variantLayer = project.parts.find((item) =>
+      [item.id, item.name].some((identity) => identity === requestedVariant)
+    );
+    const nestedVariant =
+      (slotLayer.variants || []).find((variant) =>
+        [variant.id, variant.name, variant.assetId].some((identity) => identity === requestedVariant)
+      ) ||
+      project.parts
+        .flatMap((item) => item.variants || [])
+        .find((variant) =>
+          [variant.id, variant.name, variant.assetId].some((identity) => identity === requestedVariant)
+        );
+    const variantAsset = project.assets.find((asset) =>
+      [asset.id, asset.name].some((identity) => identity === requestedVariant)
+    );
+    if (!nestedVariant && !variantLayer && !variantAsset) {
+      return status(`No existe una capa o recurso de variante identificado como “${requestedVariant}”`);
+    }
+    const slot = slotLayer.id;
+    const variant = nestedVariant?.id || variantLayer?.id || variantAsset.id;
     project.clip.spriteEvents.push({ t: Math.round(time), slot, variant });
     project.clip.spriteEvents.sort((left, right) => left.t - right.t);
     commit("Evento de sprite insertado");
@@ -5177,26 +5670,33 @@ function bindControls() {
     status($("snap-joints").checked ? "Encaje a articulaciones activado" : "Encaje a articulaciones desactivado");
   $("rig-test").onchange = () => setRigTestMode($("rig-test").checked);
   $("file").onchange = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    try {
-      replaceProject(normalizeLoadedProject(JSON.parse(await file.text())), "open-project");
-      normalizeLayerOrder();
-      selectAnimationTarget("rig");
-      selectedPart = project.parts.find((item) => item.id === "torso")?.id || project.parts[0]?.id || "";
-      selectedParts = selectedPart ? new Set([selectedPart]) : new Set();
-      selectedKeys.clear();
-      time = 0;
-      clearDraft();
-      resetGhostFromProject(0);
-      ensureImages();
-      commandHistory.reset(project);
-      persistence?.schedule(project);
-      status(`Proyecto importado con ${project.clips.length} clips`);
-      refresh();
-    } catch (error) {
-      status(`No se pudo importar: ${error.message}`);
+    const files = [...(event.target.files || [])];
+    if (!files.length) return;
+    const failures = [];
+    for (const file of files) {
+      try {
+        const opened = normalizeLoadedProject(JSON.parse(await file.text()));
+        activateNewProjectTab(opened, { dirty: true, mode: "animador" });
+        selectAnimationTarget("rig");
+        selectedPart = project.parts.find((item) => item.id === "torso")?.id || project.parts[0]?.id || "";
+        selectedParts = selectedPart ? new Set([selectedPart]) : new Set();
+        selectedKeys.clear();
+        time = 0;
+        clearDraft();
+        resetGhostFromProject(0);
+        ensureImages();
+      } catch (error) {
+        failures.push(`${file.name}: ${error.message}`);
+      }
     }
+    if (projectTabs.length > 1) persistence?.schedule(project);
+    renderProjectTabs();
+    refresh();
+    status(
+      failures.length
+        ? `${files.length - failures.length} proyecto(s) abiertos; ${failures.length} no se pudieron importar`
+        : `${files.length} proyecto(s) abiertos en pestañas`
+    );
     event.target.value = "";
   };
 }
@@ -5249,6 +5749,7 @@ function bindCanvas() {
         if (jointTarget) {
           if (lockedTargets.has(jointTarget)) return status(`${label(jointTarget)} está bloqueado`);
           selectAnimationTarget(jointTarget);
+          activeHierarchyKind = "skeleton";
           selectedKeys.clear();
           if (rigTestActive) {
             interaction = beginTransformInteraction(
@@ -5325,6 +5826,7 @@ function bindCanvas() {
       }
       const chosen = nearestCanvasLayer(event.clientX, event.clientY);
       if (chosen) {
+        activeHierarchyKind = "layers";
         if (event.shiftKey) {
           selectLayer(chosen, true);
           refresh();
@@ -5823,6 +6325,8 @@ async function initialize() {
   updatePlaybackButtons();
   const timelineResize = new ResizeObserver(() => renderTimeline());
   timelineResize.observe($("timeline-scroll"));
+  const curveResize = new ResizeObserver(() => drawCurve());
+  curveResize.observe($("curve-canvas"));
   window.addEventListener("resize", () => {
     draw();
     if (tutorialRun) positionTutorial();
