@@ -422,7 +422,7 @@ test("reordena como un bloque las capas seleccionadas y muestra el punto de inse
   await switchWorkspace(page, "calibrador");
   const layerRows = page.locator("[data-panel='layers'] [data-hierarchy-tree] .tree-row[data-hierarchy-id]");
   const initialOrder = await layerRows.evaluateAll((rows) => rows.map((row) => row.dataset.hierarchyId));
-  const [firstId, secondId, , , targetId, nextId] = initialOrder;
+  const [firstId, secondId, thirdId, targetId, nextId] = initialOrder;
 
   await page.locator(`[data-panel='layers'] [data-hierarchy-id='${firstId}'] .tree-select`).click();
   await page
@@ -443,7 +443,7 @@ test("reordena como un bloque las capas seleccionadas y muestra el punto de inse
   await page.mouse.up();
 
   const finalOrder = await layerRows.evaluateAll((rows) => rows.map((row) => row.dataset.hierarchyId));
-  expect(finalOrder.slice(0, 5)).toEqual([initialOrder[2], initialOrder[3], targetId, firstId, secondId]);
+  expect(finalOrder.slice(0, 5)).toEqual([thirdId, targetId, firstId, secondId, nextId]);
 });
 
 test("agrupa las capas seleccionadas al soltarlas sobre otra capa", async ({ page }) => {
